@@ -3,18 +3,18 @@ import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Diva Addis Lounge — POS System',
-  description: 'Point of Sale System for Diva Addis Lounge, Addis Ababa',
+  title: 'NEXORA TECH PRO — Seat Ticketing & Management',
+  description: 'Intercity Transport & Digital Seat Ticketing Management System by NEXORA TECH',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Diva POS',
+    title: 'NEXORA TECH',
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#4338ca',
+  themeColor: '#00E699',
   width: 'device-width',
   initialScale: 1,
 }
@@ -58,4 +58,3 @@ export default function RootLayout({
     </html>
   )
 }
-

@@ -1,6 +1,7 @@
 'use client'
 
 import { Menu, X } from 'lucide-react'
+import NexoraLogo from '@/components/NexoraLogo'
 
 interface MobileHeaderProps {
   isOpen: boolean
@@ -12,20 +13,7 @@ export default function MobileHeader({ isOpen, onToggle }: MobileHeaderProps) {
     <header className="mobile-header">
       {/* Logo */}
       <div className="mobile-header-logo">
-        <div style={{
-          width: '32px', height: '32px', borderRadius: '50%',
-          border: '1.5px solid var(--gold)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(201,168,76,0.07)', flexShrink: 0,
-        }}>
-          <span style={{ fontSize: '13px' }}>✦</span>
-        </div>
-        <div>
-          <div className="font-cinzel gold-text" style={{ fontSize: '12px', fontWeight: '700', letterSpacing: '1px', lineHeight: 1.2 }}>
-            DIVA ADDIS
-          </div>
-          <div style={{ fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '2px' }}>LOUNGE</div>
-        </div>
+        <NexoraLogo size="sm" showSubtitle={false} />
       </div>
 
       {/* Hamburger / Close */}

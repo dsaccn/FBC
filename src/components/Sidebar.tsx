@@ -16,6 +16,8 @@ interface NavItem {
   roles: string[]
 }
 
+import NexoraLogo from '@/components/NexoraLogo'
+
 const navItems: NavItem[] = [
   { label: 'Tables', href: '/dashboard/tables', icon: <LayoutGrid size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Orders', href: '/dashboard/orders', icon: <ClipboardList size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
@@ -98,23 +100,8 @@ export default function Sidebar({ user, isOpen = true, onClose }: SidebarProps) 
 
       <aside className={`sidebar${isOpen ? ' open' : ''}`}>
         {/* Logo */}
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--black-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%',
-              border: '1.5px solid var(--gold)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(201,168,76,0.05)', flexShrink: 0
-            }}>
-              <span style={{ fontSize: '14px' }}>✦</span>
-            </div>
-            <div>
-              <div className="font-cinzel gold-text" style={{ fontSize: '13px', fontWeight: '700', letterSpacing: '1px' }}>
-                DIVA ADDIS
-              </div>
-              <div style={{ fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '2px' }}>LOUNGE</div>
-            </div>
-          </div>
+        <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--black-border)' }}>
+          <NexoraLogo size="sm" showSubtitle={false} />
         </div>
 
         {/* User info */}

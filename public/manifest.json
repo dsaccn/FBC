@@ -1,11 +1,11 @@
 {
-  "name": "Diva Addis POS",
-  "short_name": "Diva POS",
-  "description": "Point of Sale System for Diva Addis Lounge — works offline",
+  "name": "NEXORA TECH PRO",
+  "short_name": "NEXORA TECH",
+  "description": "Intercity Transport & Digital Seat Ticketing Management — works offline",
   "start_url": "/dashboard/tables",
   "display": "standalone",
-  "background_color": "#F1F5F9",
-  "theme_color": "#4338CA",
+  "background_color": "#0B1120",
+  "theme_color": "#00E699",
   "orientation": "any",
   "icons": [
     {
