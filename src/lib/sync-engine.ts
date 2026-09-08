@@ -136,9 +136,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
 
       for (const u of cloudUsers) {
         await prisma.user.upsert({
-          where: { id: u.id },
+          where: { username: u.username },
           update: {
-            username: u.username,
             passwordHash: u.passwordHash,
             fullName: u.fullName,
             role: u.role,
