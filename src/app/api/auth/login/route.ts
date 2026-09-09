@@ -26,20 +26,24 @@ export async function POST(req: NextRequest) {
 
   const { username, password } = body
 
-  // Input validation
+  // Input validation & sanitization
+  const trimmedUsername = username.trim()
+  const USERNAME_REGEX = /^[a-zA-Z0-9_.\-@]+$/
+
   if (
-    !username ||
+    !trimmedUsername ||
     !password ||
     typeof username !== 'string' ||
     typeof password !== 'string' ||
-    username.length > 100 ||
-    password.length > 200
+    trimmedUsername.length > 64 ||
+    password.length > 128 ||
+    !USERNAME_REGEX.test(trimmedUsername)
   ) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
   // Constant time comparison — prevents timing attacks
-  const user = await prisma.user.findUnique({ where: { username: username.trim() } })
+  const user = await prisma.user.findUnique({ where: { username: trimmedUsername } })
 
   const targetHash = user?.active ? user.passwordHash : '$2b$10$invalidhashfortimingprotection'
   const passwordMatch = await bcrypt.compare(password, targetHash)
