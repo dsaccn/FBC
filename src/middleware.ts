@@ -35,7 +35,13 @@ const ROLE_ROUTES: Record<string, string[]> = {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  const isApi = pathname.startsWith('/api')
+  // Block non-GET requests to UI page routes (e.g. scanner sending POST /login instead of /api/auth/login)
+  if (pathname === '/login' && req.method !== 'GET' && req.method !== 'HEAD') {
+    return NextResponse.json(
+      { error: 'Method Not Allowed. Authentication API is at /api/auth/login' },
+      { status: 405 }
+    )
+  }
 
   // Allow public authentication and static assets
   if (
