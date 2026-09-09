@@ -1,38 +1,50 @@
-import { SignJWT, jwtVerify, type JWTPayload } from 'jose'
+import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 
-const JWT_ISSUER = 'nexora-tech-pos'
-const JWT_AUDIENCE = 'nexora-pos-client'
+const secretStr = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || ''
 
-export function getJwtSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'nexora-tech-pos-super-secure-production-key-2026'
-  return new TextEncoder().encode(secret)
+if (!secretStr || secretStr.length < 64) {
+  throw new Error('JWT_SECRET must be at least 64 characters')
 }
+
+const JWT_SECRET = new TextEncoder().encode(secretStr)
 
 export interface SessionUser {
   id: string
   username: string
-  fullName: string
+  fullName?: string
   role: string
 }
 
-export async function createSession(user: SessionUser) {
-  const secret = getJwtSecret()
-  const randomJti = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+export async function signToken(payload: object): Promise<string> {
+  const jti = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
 
-  const token = await new SignJWT({
-    id: user.id,
-    username: user.username,
-    fullName: user.fullName,
-    role: user.role,
-  } as unknown as JWTPayload)
-    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setIssuer(JWT_ISSUER)
-    .setAudience(JWT_AUDIENCE)
-    .setJti(randomJti)
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('12h')
-    .sign(secret)
+    .setJti(jti) // prevent token replay
+    .sign(JWT_SECRET)
+}
+
+export async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+    })
+    return payload as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+export async function createSession(user: SessionUser) {
+  const token = await signToken({
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName || user.username,
+    role: user.role,
+  })
 
   const cookieStore = await cookies()
   cookieStore.set('session', token, {
@@ -42,24 +54,7 @@ export async function createSession(user: SessionUser) {
     maxAge: 60 * 60 * 12, // 12 hours
     path: '/',
   })
-}
-
-export async function verifyToken(token: string): Promise<SessionUser | null> {
-  try {
-    const secret = getJwtSecret()
-    const { payload } = await jwtVerify(token, secret, {
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE,
-    })
-    return {
-      id: payload.id as string,
-      username: payload.username as string,
-      fullName: payload.fullName as string,
-      role: payload.role as string,
-    }
-  } catch {
-    return null
-  }
+  return token
 }
 
 export async function getSession(): Promise<SessionUser | null> {
@@ -67,7 +62,14 @@ export async function getSession(): Promise<SessionUser | null> {
     const cookieStore = await cookies()
     const token = cookieStore.get('session')?.value
     if (!token) return null
-    return await verifyToken(token)
+    const payload = await verifyToken(token)
+    if (!payload) return null
+    return {
+      id: String(payload.id || ''),
+      username: String(payload.username || ''),
+      fullName: String(payload.fullName || payload.username || ''),
+      role: String(payload.role || ''),
+    }
   } catch {
     return null
   }
