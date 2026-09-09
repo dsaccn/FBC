@@ -10,9 +10,9 @@ interface MobileHeaderProps {
 
 export default function MobileHeader({ isOpen, onToggle }: MobileHeaderProps) {
   return (
-    <header className="mobile-header">
+    <header className="mobile-header" suppressHydrationWarning>
       {/* Logo */}
-      <div className="mobile-header-logo">
+      <div className="mobile-header-logo" suppressHydrationWarning>
         <NexoraLogo size="sm" showSubtitle={false} />
       </div>
 

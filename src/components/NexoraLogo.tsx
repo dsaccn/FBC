@@ -20,7 +20,7 @@ export default function NexoraLogo({
   const iconContainerSize = isLg ? 'w-16 h-16 rounded-2xl' : isSm ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center gap-3 ${className}`} suppressHydrationWarning>
       {/* Glow Icon Container */}
       <div
         className={`${iconContainerSize} flex items-center justify-center flex-shrink-0 relative`}

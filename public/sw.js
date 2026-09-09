@@ -8,7 +8,7 @@
  * - Static assets (/icons, /manifest): Cache-first, long TTL
  */
 
-const CACHE_NAME = 'diva-pos-v2';
+const CACHE_NAME = 'nexora-pos-v3';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to pre-cache on install (app shell)
