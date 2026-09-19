@@ -4,11 +4,12 @@ import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
 import MobileHeader from '@/components/MobileHeader'
 import OfflineBanner from '@/components/OfflineBanner'
+import { ToastProvider } from '@/components/ToastProvider'
 
 interface Session {
   id: string
   username: string
-  fullName: string
+  fullName?: string
   role: string
 }
 
@@ -16,7 +17,8 @@ export default function DashboardLayout({ children, session }: { children: React
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <ToastProvider>
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* Offline/Sync status banner — fixed at top of screen */}
       <OfflineBanner />
 
@@ -34,5 +36,6 @@ export default function DashboardLayout({ children, session }: { children: React
         {children}
       </main>
     </div>
+    </ToastProvider>
   )
 }

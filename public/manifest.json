@@ -1,11 +1,11 @@
 {
-  "name": "NEXORA TECH PRO",
-  "short_name": "NEXORA TECH",
-  "description": "Intercity Transport & Digital Seat Ticketing Management — works offline",
+  "name": "MEBA TECH PRO POS",
+  "short_name": "MEBA TECH",
+  "description": "Point of Sale & Management System by MEBA TECH — works offline",
   "start_url": "/dashboard/tables",
   "display": "standalone",
-  "background_color": "#0B1120",
-  "theme_color": "#00E699",
+  "background_color": "#1A1408",
+  "theme_color": "#C9A84C",
   "orientation": "any",
   "icons": [
     {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { AlertTriangle, Plus, Minus, Pencil, Trash2, RefreshCw, Search } from 'lucide-react'
+import Portal from '@/components/Portal'
 
 interface Category { id: string; name: string; type: string }
 interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null }
@@ -743,7 +744,7 @@ export default function InventoryPage() {
 
       {/* Drink Stock Adjust Modal */}
       {adjustTarget && (
-        <div className="modal-overlay" onClick={() => setAdjustTarget(null)}>
+        <Portal><div className="modal-overlay" onClick={() => setAdjustTarget(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Update Store Stock</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>{adjustTarget.name} — Store: <b style={{ color: 'var(--gold)' }}>{adjustTarget.stockQuantity}</b></p>
@@ -785,12 +786,12 @@ export default function InventoryPage() {
               <button className="btn btn-ghost" onClick={() => setAdjustTarget(null)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Transfer to Bar Modal */}
       {transferTarget && (
-        <div className="modal-overlay" onClick={() => setTransferTarget(null)}>
+        <Portal><div className="modal-overlay" onClick={() => setTransferTarget(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Transfer to Bar</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
@@ -806,12 +807,12 @@ export default function InventoryPage() {
               <button className="btn btn-ghost" onClick={() => setTransferTarget(null)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Ingredient Add/Edit Modal */}
       {showIngForm && (
-        <div className="modal-overlay" onClick={() => setShowIngForm(false)}>
+        <Portal><div className="modal-overlay" onClick={() => setShowIngForm(false)}>
           <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>{editIng ? 'Edit Ingredient' : 'New Ingredient'}</h3>
             {ingError && (
@@ -842,7 +843,7 @@ export default function InventoryPage() {
               <button className="btn btn-ghost" onClick={() => setShowIngForm(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   )

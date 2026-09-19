@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Printer, CheckCircle } from 'lucide-react'
+import { toast } from '@/components/ToastProvider'
 
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
 interface Order { id: string; table: { number: string; id: string }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
@@ -39,11 +40,11 @@ export default function PaymentPage() {
           if (found) setSelectedOrder(found)
         }
       } else {
-        console.error('Failed to load orders:', ordRes.statusText)
+        toast.error('Failed to load open orders')
       }
       if (sessRes.ok) setSession(await sessRes.json())
-    } catch (err) {
-      console.error('Error loading payment page:', err)
+    } catch {
+      toast.error('Network error loading payments')
     }
   }, [orderId])
 
@@ -57,24 +58,44 @@ export default function PaymentPage() {
   const total = Math.max(0, subtotal - discountAmt)
 
   async function handlePay() {
-    if (!selectedOrder || !session) return
-    setLoading(true)
-    const res = await fetch('/api/payments', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes }),
-    })
-    if (res.ok) {
-      setLastPayment({ amount: total, method })
-      setPaid(true)
+    if (!selectedOrder) {
+      toast.warning('Please select an order to pay')
+      return
     }
-    setLoading(false)
+    if (!session) {
+      toast.error('User session expired. Please log in again.')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes }),
+      })
+      if (res.ok) {
+        setLastPayment({ amount: total, method })
+        setPaid(true)
+        toast.success(`Payment of ${total.toFixed(2)} ETB (${method}) processed successfully!`)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to process payment')
+      }
+    } catch {
+      toast.error('Network error processing payment')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function printReceipt() {
     if (!selectedOrder) return
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
     const win = window.open('', '_blank', 'width=400,height=700')
-    if (!win) return
+    if (!win) {
+      toast.warning('Please allow popups to print receipt')
+      return
+    }
     win.document.write(`<html>
       <head>
         <title>Receipt</title>
@@ -87,8 +108,8 @@ export default function PaymentPage() {
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:16px;letter-spacing:2px;">DIVA ADDIS LOUNGE</b><br/>
-        <span style="font-size:11px;">Addis Ababa, Ethiopia</span>
+        <b style="font-size:16px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
         <hr/>
         <b>RECEIPT</b>
       </div>
@@ -137,9 +158,9 @@ export default function PaymentPage() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="animate-fade-in mobile-col" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
       {/* Order Selection */}
-      <div style={{ flex: 1, minWidth: '280px' }}>
+      <div style={{ flex: 1, minWidth: '280px', width: '100%' }}>
         <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700', marginBottom: '24px' }}>
           <span className="gold-text">Process Payment</span>
         </h1>
@@ -151,7 +172,7 @@ export default function PaymentPage() {
               {orders.map(o => {
                 const t = o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
                 return (
-                  <div key={o.id} className="card card-hover" onClick={() => setSelectedOrder(o)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div key={o.id} className="card card-hover" onClick={() => setSelectedOrder(o)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
                     <div>
                       <div style={{ fontWeight: '600' }}>Table {o.table.number}</div>
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{o.waiter.fullName} · {o.orderItems.length} items</div>
@@ -184,7 +205,7 @@ export default function PaymentPage() {
 
       {/* Payment Panel */}
       {selectedOrder && (
-        <div style={{ width: '320px', flexShrink: 0 }}>
+        <div className="mobile-full-w" style={{ width: '340px', maxWidth: '100%', flexShrink: 0 }}>
           <div className="card">
             <h3 style={{ fontWeight: '600', marginBottom: '20px' }}>Payment Details</h3>
 

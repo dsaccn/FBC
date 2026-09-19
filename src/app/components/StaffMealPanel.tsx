@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Printer, Plus, Pencil, Trash2, UserPlus, ToggleLeft, ToggleRight, Loader2, Utensils, Calendar, Clock, User, Package } from 'lucide-react';
+import Portal from '@/components/Portal';
 
 interface StaffMember {
   id: string;
@@ -964,40 +965,41 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
 
       {/* 1. Add Meal Modal */}
       {showMealModal && (
-        <div className="modal-overlay" onClick={() => setShowMealModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>Log Staff Meal</h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="input-label">Staff Member</label>
-                <select 
-                  className="input" 
-                  value={mealForm.staffMemberId} 
-                  onChange={e => setMealForm(f => ({ ...f, staffMemberId: e.target.value }))}
-                >
-                  <option value="" disabled>Select staff member...</option>
-                  {staff.filter(s => s.active).map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-                  ))}
-                </select>
-                {staff.filter(s => s.active).length === 0 && (
-                  <p style={{ color: 'var(--danger-light)', fontSize: '12px', marginTop: '4px' }}>No active staff members found.</p>
-                )}
-              </div>
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowMealModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>Log Staff Meal</h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="input-label">Staff Member</label>
+                  <select 
+                    className="input" 
+                    value={mealForm.staffMemberId} 
+                    onChange={e => setMealForm(f => ({ ...f, staffMemberId: e.target.value }))}
+                  >
+                    <option value="" disabled>Select staff member...</option>
+                    {staff.filter(s => s.active).map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                    ))}
+                  </select>
+                  {staff.filter(s => s.active).length === 0 && (
+                    <p style={{ color: 'var(--danger-light)', fontSize: '12px', marginTop: '4px' }}>No active staff members found.</p>
+                  )}
+                </div>
 
-              <div>
-                <label className="input-label">Meal Type</label>
-                <select 
-                  className="input" 
-                  value={mealForm.mealType} 
-                  onChange={e => {
-                    const newType = e.target.value;
-                    const filtered = menuItems.filter(item => item.mealType === newType);
-                    const defaultItem = filtered.length > 0 ? filtered[0].id : '';
-                    setMealForm(f => ({ ...f, mealType: newType, staffMenuItemId: defaultItem }));
-                  }}
-                >
+                <div>
+                  <label className="input-label">Meal Type</label>
+                  <select 
+                    className="input" 
+                    value={mealForm.mealType} 
+                    onChange={e => {
+                      const newType = e.target.value;
+                      const filtered = menuItems.filter(item => item.mealType === newType);
+                      const defaultItem = filtered.length > 0 ? filtered[0].id : '';
+                      setMealForm(f => ({ ...f, mealType: newType, staffMenuItemId: defaultItem }));
+                    }}
+                  >
                   <option value="BREAKFAST">Breakfast</option>
                   <option value="LUNCH">Lunch</option>
                   <option value="DINNER">Dinner</option>
@@ -1045,172 +1047,179 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
             </div>
           </div>
         </div>
-      )}
+      </Portal>
+    )}
 
       {/* 2. Add/Edit Staff Modal */}
       {showStaffModal && (
-        <div className="modal-overlay" onClick={() => setShowStaffModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
-              {staffForm.id ? 'Edit Staff Member' : 'Add Staff Member'}
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="input-label">Full Name</label>
-                <input 
-                  className="input" 
-                  placeholder="e.g. Abebe Bekele"
-                  value={staffForm.name} 
-                  onChange={e => setStaffForm(f => ({ ...f, name: e.target.value }))} 
-                />
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowStaffModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
+                {staffForm.id ? 'Edit Staff Member' : 'Add Staff Member'}
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="input-label">Full Name</label>
+                  <input 
+                    className="input" 
+                    placeholder="e.g. Abebe Bekele"
+                    value={staffForm.name} 
+                    onChange={e => setStaffForm(f => ({ ...f, name: e.target.value }))} 
+                  />
+                </div>
+
+                <div>
+                  <label className="input-label">Role</label>
+                  <input 
+                    className="input" 
+                    placeholder="e.g. Waiter, Chef, Bartender, Cleaner"
+                    value={staffForm.role} 
+                    onChange={e => setStaffForm(f => ({ ...f, role: e.target.value }))} 
+                  />
+                </div>
+
+                <div>
+                  <label className="input-label">Shift</label>
+                  <select 
+                    className="input" 
+                    value={staffForm.shift} 
+                    onChange={e => setStaffForm(f => ({ ...f, shift: e.target.value }))}
+                  >
+                    <option value="Morning">Morning</option>
+                    <option value="Afternoon">Afternoon</option>
+                    <option value="Night">Night</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="input-label">Role</label>
-                <input 
-                  className="input" 
-                  placeholder="e.g. Waiter, Chef, Bartender, Cleaner"
-                  value={staffForm.role} 
-                  onChange={e => setStaffForm(f => ({ ...f, role: e.target.value }))} 
-                />
+              <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleStaffSubmit} disabled={savingStaff}>
+                  {savingStaff ? 'Saving...' : staffForm.id ? 'Save Changes' : 'Add Staff'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowStaffModal(false)}>Cancel</button>
               </div>
-
-              <div>
-                <label className="input-label">Shift</label>
-                <select 
-                  className="input" 
-                  value={staffForm.shift} 
-                  onChange={e => setStaffForm(f => ({ ...f, shift: e.target.value }))}
-                >
-                  <option value="Morning">Morning</option>
-                  <option value="Afternoon">Afternoon</option>
-                  <option value="Night">Night</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleStaffSubmit} disabled={savingStaff}>
-                {savingStaff ? 'Saving...' : staffForm.id ? 'Save Changes' : 'Add Staff'}
-              </button>
-              <button className="btn btn-ghost" onClick={() => setShowStaffModal(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {/* 3. Add/Edit Menu Item Modal */}
       {showMenuModal && (
-        <div className="modal-overlay" onClick={() => setShowMenuModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
-              {menuForm.id ? 'Edit Staff Menu Item' : 'Add Staff Menu Item'}
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="input-label">Item Name</label>
-                <input 
-                  className="input" 
-                  placeholder="e.g. Shakshuka"
-                  value={menuForm.name} 
-                  onChange={e => setMenuForm(f => ({ ...f, name: e.target.value }))} 
-                />
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowMenuModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
+                {menuForm.id ? 'Edit Staff Menu Item' : 'Add Staff Menu Item'}
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="input-label">Item Name</label>
+                  <input 
+                    className="input" 
+                    placeholder="e.g. Shakshuka"
+                    value={menuForm.name} 
+                    onChange={e => setMenuForm(f => ({ ...f, name: e.target.value }))} 
+                  />
+                </div>
+
+                <div>
+                  <label className="input-label">Meal Type Category</label>
+                  <select 
+                    className="input" 
+                    value={menuForm.mealType} 
+                    onChange={e => setMenuForm(f => ({ ...f, mealType: e.target.value }))}
+                  >
+                    <option value="BREAKFAST">Breakfast</option>
+                    <option value="LUNCH">Lunch</option>
+                    <option value="DINNER">Dinner</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="input-label">Meal Type Category</label>
-                <select 
-                  className="input" 
-                  value={menuForm.mealType} 
-                  onChange={e => setMenuForm(f => ({ ...f, mealType: e.target.value }))}
-                >
-                  <option value="BREAKFAST">Breakfast</option>
-                  <option value="LUNCH">Lunch</option>
-                  <option value="DINNER">Dinner</option>
-                </select>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleMenuSubmit} disabled={savingMenuBtn}>
+                  {savingMenuBtn ? 'Saving...' : menuForm.id ? 'Save Changes' : 'Add Menu Item'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowMenuModal(false)}>Cancel</button>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleMenuSubmit} disabled={savingMenuBtn}>
-                {savingMenuBtn ? 'Saving...' : menuForm.id ? 'Save Changes' : 'Add Menu Item'}
-              </button>
-              <button className="btn btn-ghost" onClick={() => setShowMenuModal(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {/* 4. Add/Edit Ingredient Modal */}
       {showIngredientModal && (
-        <div className="modal-overlay" onClick={() => setShowIngredientModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
-              {ingredientForm.id ? 'Edit Ingredient' : 'Add Staff Ingredient'}
-            </h3>
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowIngredientModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: 'var(--text-primary)' }}>
+                {ingredientForm.id ? 'Edit Ingredient' : 'Add Staff Ingredient'}
+              </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="input-label">Ingredient Name</label>
-                <input
-                  className="input"
-                  placeholder="e.g. Eggs, Rice, Cooking Oil"
-                  value={ingredientForm.name}
-                  onChange={e => setIngredientForm(f => ({ ...f, name: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="input-label">Unit</label>
-                <select
-                  className="input"
-                  value={ingredientForm.unit}
-                  onChange={e => setIngredientForm(f => ({ ...f, unit: e.target.value }))}
-                >
-                  <option value="pieces">pieces</option>
-                  <option value="grams">grams</option>
-                  <option value="kg">kg</option>
-                  <option value="ml">ml</option>
-                  <option value="liters">liters</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
-                  <label className="input-label">Current Quantity</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="input"
-                    value={ingredientForm.quantity}
-                    onChange={e => setIngredientForm(f => ({ ...f, quantity: e.target.value }))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="input-label">Ingredient Name</label>
+                  <input 
+                    className="input" 
+                    placeholder="e.g. Eggs, Rice, Cooking Oil" 
+                    value={ingredientForm.name} 
+                    onChange={e => setIngredientForm(f => ({ ...f, name: e.target.value }))} 
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label className="input-label">Low-stock at</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="input"
-                    value={ingredientForm.minThreshold}
-                    onChange={e => setIngredientForm(f => ({ ...f, minThreshold: e.target.value }))}
-                  />
+
+                <div>
+                  <label className="input-label">Unit</label>
+                  <select 
+                    className="input" 
+                    value={ingredientForm.unit} 
+                    onChange={e => setIngredientForm(f => ({ ...f, unit: e.target.value }))}
+                  >
+                    <option value="pieces">pieces</option>
+                    <option value="grams">grams</option>
+                    <option value="kg">kg</option>
+                    <option value="ml">ml</option>
+                    <option value="liters">liters</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="input-label">Current Quantity</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="any" 
+                      className="input" 
+                      value={ingredientForm.quantity} 
+                      onChange={e => setIngredientForm(f => ({ ...f, quantity: e.target.value }))} 
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="input-label">Low-stock at</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="any" 
+                      className="input" 
+                      value={ingredientForm.minThreshold} 
+                      onChange={e => setIngredientForm(f => ({ ...f, minThreshold: e.target.value }))} 
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleIngredientSubmit} disabled={savingIngredient}>
-                {savingIngredient ? 'Saving...' : ingredientForm.id ? 'Save Changes' : 'Add Ingredient'}
-              </button>
-              <button className="btn btn-ghost" onClick={() => setShowIngredientModal(false)}>Cancel</button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleIngredientSubmit} disabled={savingIngredient}>
+                  {savingIngredient ? 'Saving...' : ingredientForm.id ? 'Save Changes' : 'Add Ingredient'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowIngredientModal(false)}>Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

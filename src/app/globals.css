@@ -3,16 +3,16 @@
 @import "tailwindcss";
 
 :root {
-  --gold: #4338CA;
-  --gold-light: #6366F1;
-  --gold-dark: #312E81;
-  --black: #F1F5F9;
-  --black-card: #FFFFFF;
-  --black-hover: #E2E8F0;
-  --black-border: #CBD5E1;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #94A3B8;
+  --gold: #C9A84C;
+  --gold-light: #D4B95E;
+  --gold-dark: #8B7332;
+  --black: #1A1408;
+  --black-card: #241C0E;
+  --black-hover: #2E2413;
+  --black-border: #3D3118;
+  --text-primary: #F5F0E6;
+  --text-secondary: #BFB49A;
+  --text-muted: #7A7060;
   --success: #047857;
   --success-light: #10B981;
   --warning: #B45309;
@@ -69,7 +69,7 @@ html, body {
 .card-hover:hover {
   border-color: var(--gold);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(67, 56, 202, 0.12);
+  box-shadow: 0 8px 24px rgba(201, 168, 76, 0.15);
 }
 
 /* Buttons */
@@ -94,7 +94,7 @@ html, body {
   background: linear-gradient(135deg, var(--gold-light), var(--gold));
   color: white;
 }
-.btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(67, 56, 202, 0.25); }
+.btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201, 168, 76, 0.3); }
 .btn-gold:active { transform: translateY(0); }
 
 .btn-outline {
@@ -102,7 +102,7 @@ html, body {
   border: 1px solid var(--gold-dark);
   color: var(--gold);
 }
-.btn-outline:hover { background: rgba(67, 56, 202, 0.08); border-color: var(--gold); }
+.btn-outline:hover { background: rgba(201, 168, 76, 0.08); border-color: var(--gold); }
 
 .btn-danger {
   background: var(--danger);
@@ -174,7 +174,7 @@ html, body {
 .badge-free { background: rgba(16, 185, 129, 0.12); color: var(--success); }
 .badge-occupied { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
 .badge-waiting { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
-.badge-open { background: rgba(67, 56, 202, 0.12); color: var(--gold); }
+.badge-open { background: rgba(201, 168, 76, 0.12); color: var(--gold); }
 .badge-paid { background: rgba(16, 185, 129, 0.12); color: var(--success); }
 .badge-cancelled { background: rgba(90,80,64,0.2); color: var(--text-muted); }
 
@@ -236,7 +236,7 @@ html, body {
 }
 
 /* Animations */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
@@ -249,7 +249,7 @@ html, body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(10,8,3,0.85);
   backdrop-filter: blur(4px);
   z-index: 1000;
   display: flex;
@@ -265,6 +265,8 @@ html, body {
   padding: 32px;
   max-width: 500px;
   width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
   animation: fadeIn 0.2s ease;
 }
 
@@ -286,6 +288,22 @@ html, body {
 .toast-success { background: var(--success); color: white; border: 1px solid var(--success-light); }
 .toast-error { background: var(--danger); color: white; border: 1px solid var(--danger-light); }
 .toast-warning { background: var(--warning); color: white; border: 1px solid var(--warning-light); }
+
+/* Unified Toast System Animations */
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-container {
+  transition: all 0.25s ease;
+}
 
 /* Mobile Header */
 .mobile-header {
@@ -368,39 +386,50 @@ html, body {
     min-height: 100vh;
   }
 
-  /* Modals fit small screens */
-  .modal {
-    padding: 24px 20px;
-    border-radius: 12px;
-    max-height: 88vh;
-    overflow-y: auto;
-  }
+  /* Modals centered with comfortable padding on small screens */
   .modal-overlay {
-    padding: 12px;
-    align-items: flex-end;
+    padding: 16px;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal {
+    padding: 20px 16px 24px;
+    border-radius: 16px;
+    width: 100% !important;
+    max-width: min(520px, calc(100vw - 32px)) !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: auto;
   }
 
-  /* Toast rises above bottom */
-  .toast {
-    bottom: 16px;
-    right: 12px;
-    left: 12px;
-    font-size: 13px;
+  /* Toast floating nicely below mobile header */
+  .toast-container {
+    top: 70px !important;
+    right: 12px !important;
+    left: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
   }
 
   /* Cards less padding */
   .card {
-    padding: 16px;
+    padding: 14px;
+    border-radius: 12px;
   }
 
-  /* Buttons: slightly smaller on mobile */
+  /* Buttons touch-friendly on mobile */
   .btn {
-    font-size: 13px;
-    padding: 10px 18px;
+    font-size: 14px;
+    padding: 11px 18px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .btn-sm {
-    padding: 7px 12px;
-    font-size: 12px;
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 36px;
   }
 }
 
@@ -409,7 +438,8 @@ html, body {
   display: block;
 }
 .desktop-only-table {
-  display: table;
+  display: block;
+  width: 100%;
 }
 .mobile-only {
   display: none !important;
@@ -454,6 +484,25 @@ html, body {
   /* Prevent iOS Safari input text auto-zooming on focus by forcing 16px font-size */
   .input, select.input, input[type="date"].input {
     font-size: 16px !important;
+  }
+
+  /* Responsive layout helpers for POS screens */
+  .mobile-col {
+    flex-direction: column !important;
+  }
+  .mobile-full-w {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .mobile-h-auto {
+    height: auto !important;
+  }
+  .mobile-pb-safe {
+    padding-bottom: 80px !important;
+  }
+  .mobile-width-full {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
 

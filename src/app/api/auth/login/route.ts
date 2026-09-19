@@ -9,7 +9,8 @@ const limiter = rateLimit({ interval: 60_000, limit: 5 })
 export async function POST(req: NextRequest) {
   // Rate limit by IP
   const forwardedFor = req.headers.get('x-forwarded-for')
-  const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? req.ip ?? 'unknown'
+  const realIp = req.headers.get('x-real-ip')
+  const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
   const { success } = limiter.check(ip)
 
   if (!success) {

@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Printer, X, CheckCircle, AlertCircle, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from '@/components/ToastProvider'
+import Portal from '@/components/Portal'
 
 interface OrderItem {
   id: string
@@ -42,8 +44,8 @@ export default function OrderDetailPage() {
       const [orderRes, sessRes] = await Promise.all([fetch(`/api/orders/${id}`), fetch('/api/auth/me')])
       if (orderRes.ok) setOrder(await orderRes.json())
       if (sessRes.ok) setSession(await sessRes.json())
-    } catch (err) {
-      console.error('Error loading order:', err)
+    } catch {
+      toast.error('Failed to load order details')
     } finally {
       setLoading(false)
     }
@@ -53,7 +55,10 @@ export default function OrderDetailPage() {
 
   function printCancellationTicket(item: OrderItem, tableNumber: string, qty: number) {
     const win = window.open('', '_blank', 'width=350,height=500')
-    if (!win) return
+    if (!win) {
+      toast.warning('Please allow popups to print ticket')
+      return
+    }
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
     win.document.write(`<html>
       <head>
@@ -66,53 +71,64 @@ export default function OrderDetailPage() {
         </style>
       </head>
       <body>
-      <div style="text-align:center;">
-        <b style="font-size:15px;letter-spacing:2px;">DIVA ADDIS LOUNGE</b><br/>
+      <div style="text-align:center;margin-bottom:10px;">
+        <b style="font-size:15px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <span style="font-size:11px;">Kitchen / Bar Void Slip</span><br/>
         <hr/>
-        <b style="font-size:16px;border:2px solid red;padding:4px 12px;color:red;">⚠ CANCELLATION</b>
+        <span style="border: 2px solid #000; padding: 3px 8px; font-size: 14px;">CANCELLED ITEM</span>
       </div>
-      <div style="margin:12px 0;">
+      <div style="margin-bottom:10px;font-size:13px;">
         <b>Table:</b> ${tableNumber}<br/>
+        <b>Voided Qty:</b> ${qty}x ${item.menuItem.name}<br/>
+        <b>Reason:</b> ${cancelReason}<br/>
+        <b>Manager:</b> ${session?.fullName || 'Manager'}<br/>
         <b>Date:</b> ${now}
       </div>
       <hr/>
-      <div style="font-size:14px;"><b>CANCEL: ${qty}x ${item.menuItem.name}</b></div>
-      <div style="font-size:12px;margin-top:8px;color:#555;">Reason: ${cancelReason}</div>
-      <hr/>
-      <div style="text-align:center;font-size:11px;">— Diva Addis Lounge —</div>
-    </body></html>`)
+      <div style="text-align:center;font-size:11px;">— Item Voided —</div>
+      </body></html>`)
     win.document.close()
     setTimeout(() => win.print(), 300)
   }
 
   async function handleCancel() {
-    if (!cancelTarget || !cancelReason.trim() || !session) return
+    if (!cancelTarget || !cancelReason.trim() || !session) {
+      toast.warning('Please enter a cancellation reason')
+      return
+    }
     setCancelLoading(true)
     setCancelError('')
 
-    // Verify manager via login check
-    const verRes = await fetch('/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: session.username || '', password: managerPassword }),
-    })
-    if (!verRes.ok && !['ADMIN', 'MANAGER'].includes(session.role)) {
-      setCancelError('Manager approval required')
+    try {
+      // Verify manager via login check
+      const verRes = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: session.username || '', password: managerPassword }),
+      })
+      if (!verRes.ok && !['ADMIN', 'MANAGER'].includes(session.role)) {
+        setCancelError('Manager approval required')
+        toast.error('Manager authorization failed')
+        setCancelLoading(false)
+        return
+      }
+
+      await fetch('/api/cancellations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderItemId: cancelTarget.id, managerId: session.id, reason: cancelReason, cancelQuantity }),
+      })
+
+      printCancellationTicket(cancelTarget, order!.table.number, cancelQuantity)
+      toast.success(`Cancelled ${cancelQuantity}x ${cancelTarget.menuItem.name}`)
+      setCancelTarget(null)
+      setCancelQuantity(1)
+      setCancelReason('')
+      setMangerPassword('')
+      load()
+    } catch {
+      toast.error('Network error during cancellation')
+    } finally {
       setCancelLoading(false)
-      return
     }
-
-    await fetch('/api/cancellations', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderItemId: cancelTarget.id, managerId: session.id, reason: cancelReason, cancelQuantity }),
-    })
-
-    printCancellationTicket(cancelTarget, order!.table.number, cancelQuantity)
-    setCancelTarget(null)
-    setCancelQuantity(1)
-    setCancelReason('')
-    setMangerPassword('')
-    load()
-    setCancelLoading(false)
   }
 
   function setMangerPassword(v: string) { setManagerPassword(v) }
@@ -121,7 +137,10 @@ export default function OrderDetailPage() {
     if (!order) return
     const total = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
     const win = window.open('', '_blank', 'width=400,height=700')
-    if (!win) return
+    if (!win) {
+      toast.warning('Please allow popups to print receipt')
+      return
+    }
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
     win.document.write(`<html>
       <head>
@@ -135,8 +154,8 @@ export default function OrderDetailPage() {
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:16px;letter-spacing:2px;">DIVA ADDIS LOUNGE</b><br/>
-        <span style="font-size:11px;">Addis Ababa, Ethiopia</span><br/>
+        <b style="font-size:16px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
         <hr/>
         <b>RECEIPT</b>
       </div>
@@ -160,7 +179,7 @@ export default function OrderDetailPage() {
       </div>
       <div style="margin-top:8px;"><b>Payment:</b> ${order.payment?.method || '-'}</div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">Thank you for visiting Diva Addis Lounge!</div>
+      <div style="text-align:center;font-size:11px;">Thank you for visiting! MEBA TECH PRO</div>
     </body></html>`)
     win.document.close()
     setTimeout(() => win.print(), 300)
@@ -241,40 +260,42 @@ export default function OrderDetailPage() {
 
       {/* Cancel Modal */}
       {cancelTarget && (
-        <div className="modal-overlay" onClick={() => setCancelTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <AlertCircle size={20} color="var(--warning-light)" />
-              <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Cancel Item</h3>
-            </div>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Cancelling: <b style={{ color: 'var(--text-primary)' }}>{cancelQuantity}x {cancelTarget.menuItem.name}</b> (from total {cancelTarget.quantity}x)
-            </p>
-            {cancelTarget.status === 'PRINTED' && (
-              <div style={{ background: 'rgba(244,162,97,0.1)', border: '1px solid var(--warning-light)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: 'var(--warning-light)' }}>
-                ⚠ This item has already been printed. A cancellation ticket will be printed for the kitchen/bar.
+        <Portal>
+          <div className="modal-overlay" onClick={() => setCancelTarget(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <AlertCircle size={20} color="var(--warning-light)" />
+                <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Cancel Item</h3>
               </div>
-            )}
-            {cancelTarget.quantity > 1 && (
-              <>
-                <label className="input-label">Quantity to Cancel</label>
-                <input type="number" className="input" style={{ marginBottom: '12px' }} value={cancelQuantity} onChange={e => {
-                  const val = parseInt(e.target.value) || 1;
-                  setCancelQuantity(Math.min(Math.max(1, val), cancelTarget.quantity));
-                }} min={1} max={cancelTarget.quantity} />
-              </>
-            )}
-            <label className="input-label">Reason for Cancellation</label>
-            <input className="input" style={{ marginBottom: '12px' }} placeholder="e.g. Customer changed mind" value={cancelReason} onChange={e => setCancelReason(e.target.value)} autoFocus />
-            {cancelError && <div style={{ color: 'var(--danger-light)', fontSize: '13px', marginBottom: '12px' }}>{cancelError}</div>}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleCancel} disabled={cancelLoading}>
-                {cancelLoading ? 'Processing...' : 'Confirm Cancel & Print'}
-              </button>
-              <button className="btn btn-ghost" onClick={() => { setCancelTarget(null); setCancelError('') }}>Back</button>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Cancelling: <b style={{ color: 'var(--text-primary)' }}>{cancelQuantity}x {cancelTarget.menuItem.name}</b> (from total {cancelTarget.quantity}x)
+              </p>
+              {cancelTarget.status === 'PRINTED' && (
+                <div style={{ background: 'rgba(244,162,97,0.1)', border: '1px solid var(--warning-light)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: 'var(--warning-light)' }}>
+                  ⚠ This item has already been printed. A cancellation ticket will be printed for the kitchen/bar.
+                </div>
+              )}
+              {cancelTarget.quantity > 1 && (
+                <>
+                  <label className="input-label">Quantity to Cancel</label>
+                  <input type="number" className="input" style={{ marginBottom: '12px' }} value={cancelQuantity} onChange={e => {
+                    const val = parseInt(e.target.value) || 1;
+                    setCancelQuantity(Math.min(Math.max(1, val), cancelTarget.quantity));
+                  }} min={1} max={cancelTarget.quantity} />
+                </>
+              )}
+              <label className="input-label">Reason for Cancellation</label>
+              <input className="input" style={{ marginBottom: '12px' }} placeholder="e.g. Customer changed mind" value={cancelReason} onChange={e => setCancelReason(e.target.value)} autoFocus />
+              {cancelError && <div style={{ color: 'var(--danger-light)', fontSize: '13px', marginBottom: '12px' }}>{cancelError}</div>}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleCancel} disabled={cancelLoading}>
+                  {cancelLoading ? 'Processing...' : 'Confirm Cancel & Print'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => { setCancelTarget(null); setCancelError('') }}>Back</button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   )

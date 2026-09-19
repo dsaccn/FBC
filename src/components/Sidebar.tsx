@@ -31,7 +31,7 @@ const navItems: NavItem[] = [
 ]
 
 interface SidebarProps {
-  user: { id: string; username: string; fullName: string; role: string }
+  user: { id: string; username: string; fullName?: string; role: string }
   isOpen?: boolean
   onClose?: () => void
 }
@@ -106,7 +106,7 @@ export default function Sidebar({ user, isOpen = true, onClose }: SidebarProps) 
 
         {/* User info */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--black-border)' }}>
-          <div style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{user.fullName}</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{user.fullName || user.username}</div>
           <div style={{
             fontSize: '11px', marginTop: '4px', display: 'inline-flex',
             alignItems: 'center', gap: '4px', color: 'var(--gold)',

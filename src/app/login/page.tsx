@@ -14,21 +14,30 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    setError('')
+    if (!username.trim() || !password) {
+      setError('Please enter both username and password')
+      setLoading(false)
+      return
+    }
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
 
-    const data = await res.json()
-    setLoading(false)
+      const data = await res.json()
+      setLoading(false)
 
-    if (!res.ok) {
-      setError(data.error || 'Invalid username or password')
-    } else {
-      router.push('/dashboard')
+      if (!res.ok) {
+        setError(data.error || 'Invalid username or password')
+      } else {
+        router.push('/dashboard')
+      }
+    } catch {
+      setError('Network connection error. Please try again.')
+      setLoading(false)
     }
   }
 
@@ -51,7 +60,19 @@ export default function LoginPage() {
           position: 'absolute',
           inset: 0,
           backgroundImage:
-            'radial-gradient(ellipse at 30% 30%, rgba(0, 240, 255, 0.07) 0%, transparent 60%), radial-gradient(ellipse at 70% 70%, rgba(0, 230, 153, 0.05) 0%, transparent 60%)',
+            'radial-gradient(ellipse at 25% 25%, rgba(0, 229, 255, 0.06) 0%, transparent 55%), radial-gradient(ellipse at 75% 75%, rgba(0, 229, 255, 0.04) 0%, transparent 55%)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Animated grid lines (subtle) */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage:
+            'linear-gradient(rgba(0, 229, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 229, 255, 0.02) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
           pointerEvents: 'none',
         }}
       />
@@ -66,20 +87,21 @@ export default function LoginPage() {
         <div
           className="card shadow-2xl"
           style={{
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(0, 229, 255, 0.12)',
             borderRadius: '16px',
-            padding: '28px',
+            padding: '32px 28px',
           }}
         >
           <h2
             style={{
               fontSize: '18px',
               fontWeight: '600',
-              color: '#F8FAFC',
+              color: '#E2E8F0',
               marginBottom: '20px',
               textAlign: 'center',
+              letterSpacing: '0.02em',
             }}
           >
             System Authentication
@@ -88,8 +110,8 @@ export default function LoginPage() {
           {error && (
             <div
               style={{
-                background: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
                 borderRadius: '8px',
                 padding: '12px 16px',
                 color: '#FCA5A5',
@@ -106,7 +128,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin}>
             <div style={{ marginBottom: '16px' }}>
-              <label className="input-label" style={{ color: '#CBD5E1', fontSize: '12px', fontWeight: '500' }}>
+              <label className="input-label" style={{ color: '#94A3B8', fontSize: '12px', fontWeight: '500' }}>
                 Username / Agent ID
               </label>
               <input
@@ -114,8 +136,8 @@ export default function LoginPage() {
                 className="input"
                 style={{
                   background: 'rgba(2, 6, 23, 0.6)',
-                  borderColor: 'rgba(148, 163, 184, 0.2)',
-                  color: '#FFFFFF',
+                  borderColor: 'rgba(0, 229, 255, 0.15)',
+                  color: '#F0F4F8',
                 }}
                 placeholder="Enter your username"
                 value={username}
@@ -126,7 +148,7 @@ export default function LoginPage() {
             </div>
 
             <div style={{ marginBottom: '24px' }}>
-              <label className="input-label" style={{ color: '#CBD5E1', fontSize: '12px', fontWeight: '500' }}>
+              <label className="input-label" style={{ color: '#94A3B8', fontSize: '12px', fontWeight: '500' }}>
                 Password
               </label>
               <input
@@ -134,8 +156,8 @@ export default function LoginPage() {
                 className="input"
                 style={{
                   background: 'rgba(2, 6, 23, 0.6)',
-                  borderColor: 'rgba(148, 163, 184, 0.2)',
-                  color: '#FFFFFF',
+                  borderColor: 'rgba(0, 229, 255, 0.15)',
+                  color: '#F0F4F8',
                 }}
                 placeholder="Enter your password"
                 value={password}
@@ -150,13 +172,14 @@ export default function LoginPage() {
               style={{
                 width: '100%',
                 fontSize: '15px',
-                padding: '12px',
+                padding: '13px',
                 fontWeight: '600',
-                background: 'linear-gradient(135deg, #00E699 0%, #059669 100%)',
-                color: '#06281E',
+                background: 'linear-gradient(135deg, #00E5FF 0%, #0097A7 100%)',
+                color: '#0B1120',
                 borderRadius: '10px',
-                boxShadow: '0 4px 14px rgba(0, 230, 153, 0.3)',
+                boxShadow: '0 4px 18px rgba(0, 229, 255, 0.25)',
                 border: 'none',
+                letterSpacing: '0.02em',
               }}
               disabled={loading}
             >
@@ -171,8 +194,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', color: '#64748B', fontSize: '11px', marginTop: '24px', letterSpacing: '0.02em' }}>
-          NEXORA TECH · Intercity Transport & Digital Seat Ticketing
+        <p style={{ textAlign: 'center', color: '#4A5568', fontSize: '11px', marginTop: '24px', letterSpacing: '0.03em' }}>
+          MEBA TECH PRO · POS &amp; Management System
         </p>
       </div>
     </main>

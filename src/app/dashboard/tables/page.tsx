@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2 } from 'lucide-react'
+import { toast } from '@/components/ToastProvider'
+import Portal from '@/components/Portal'
 
 interface Table {
   id: string
@@ -34,9 +36,11 @@ export default function TablesPage() {
         setTables(await res.json())
       } else {
         console.error('Failed to load tables:', res.statusText)
+        toast.error('Failed to load floor tables')
       }
     } catch (err) {
       console.error('Error loading tables:', err)
+      toast.error('Network error loading tables')
     } finally {
       setLoading(false)
     }
@@ -52,25 +56,61 @@ export default function TablesPage() {
   }, [load])
 
   async function addTable() {
-    if (!newNumber.trim()) return
-    await fetch('/api/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: newNumber.trim() }) })
-    setNewNumber('')
-    setShowAdd(false)
-    load()
+    if (!newNumber.trim()) {
+      toast.warning('Please enter a table number')
+      return
+    }
+    try {
+      const res = await fetch('/api/tables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: newNumber.trim() }),
+      })
+      if (res.ok) {
+        toast.success(`Table ${newNumber.trim()} added successfully!`)
+        setNewNumber('')
+        setShowAdd(false)
+        load()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to add table')
+      }
+    } catch {
+      toast.error('Network error creating table')
+    }
   }
 
   async function updateStatus(id: string, status: string) {
-    await fetch(`/api/tables/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
-    load()
+    try {
+      const res = await fetch(`/api/tables/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (res.ok) {
+        toast.success(`Table status updated to ${status.replace('_', ' ')}`)
+        load()
+      } else {
+        toast.error('Failed to update table status')
+      }
+    } catch {
+      toast.error('Network error updating table status')
+    }
   }
 
-  async function deleteTable(id: string) {
-    if (!confirm('Delete this table?')) return
-    const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      alert('Cannot delete this table. It has order history associated with it. Please wipe the test orders first if this is a test table.')
+  async function deleteTable(id: string, number: string) {
+    if (!confirm(`Delete Table ${number}?`)) return
+    try {
+      const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        toast.error('Cannot delete this table. It has order history associated with it.')
+      } else {
+        toast.success(`Table ${number} deleted`)
+        load()
+      }
+    } catch {
+      toast.error('Network error deleting table')
     }
-    load()
   }
 
   function handleMergeClick(id: string) {
@@ -79,11 +119,23 @@ export default function TablesPage() {
 
   async function confirmMerge() {
     if (mergeSelected.length !== 2) return
-    await fetch(`/api/tables/${mergeSelected[0]}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mergedWithId: mergeSelected[1] })
-    })
-    setMergeMode(false); setMergeSelected([]); load()
+    try {
+      const res = await fetch(`/api/tables/${mergeSelected[0]}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mergedWithId: mergeSelected[1] }),
+      })
+      if (res.ok) {
+        toast.success('Tables merged successfully!')
+        setMergeMode(false)
+        setMergeSelected([])
+        load()
+      } else {
+        toast.error('Failed to merge tables')
+      }
+    } catch {
+      toast.error('Network error merging tables')
+    }
   }
 
   function handleTransferClick(id: string) {
@@ -93,18 +145,36 @@ export default function TablesPage() {
   async function confirmTransfer() {
     if (transferSelected.length !== 2) return
     const [fromId, toId] = transferSelected
-    // Get open order from source table
-    const res = await fetch(`/api/orders?tableId=${fromId}&status=OPEN`)
-    const orders = await res.json()
-    if (orders.length > 0) {
-      await fetch(`/api/orders/${orders[0].id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableId: toId })
-      })
-      await fetch(`/api/tables/${fromId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'FREE' }) })
-      await fetch(`/api/tables/${toId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'OCCUPIED' }) })
+    try {
+      // Get open order from source table
+      const res = await fetch(`/api/orders?tableId=${fromId}&status=OPEN`)
+      const orders = await res.json()
+      if (orders.length > 0) {
+        await fetch(`/api/orders/${orders[0].id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tableId: toId }),
+        })
+        await fetch(`/api/tables/${fromId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'FREE' }),
+        })
+        await fetch(`/api/tables/${toId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'OCCUPIED' }),
+        })
+        toast.success('Order transferred to new table!')
+      } else {
+        toast.warning('No open order found on source table to transfer')
+      }
+      setTransferMode(false)
+      setTransferSelected([])
+      load()
+    } catch {
+      toast.error('Failed to transfer table order')
     }
-    setTransferMode(false); setTransferSelected([]); load()
   }
 
   return (
@@ -158,7 +228,7 @@ export default function TablesPage() {
           <p>No tables yet. Add your first table!</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
           {tables.map(table => {
             const colors = STATUS_COLORS[table.status]
             const isMergeSelected = mergeSelected.includes(table.id)
@@ -178,7 +248,7 @@ export default function TablesPage() {
                   background: isSelected ? 'rgba(201,168,76,0.12)' : colors.bg,
                   border: `2px solid ${isSelected ? 'var(--gold)' : colors.border}`,
                   borderRadius: '12px',
-                  padding: '20px 16px',
+                  padding: '16px 12px',
                   textAlign: 'center',
                   position: 'relative',
                   cursor: 'pointer',
@@ -188,17 +258,17 @@ export default function TablesPage() {
                 {isSelected && (
                   <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'var(--gold)', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'var(--black)', fontWeight: '700' }}>✓</div>
                 )}
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '4px' }}>TABLE</div>
-                <div style={{ fontSize: '32px', fontWeight: '700', fontFamily: 'Cinzel, serif', color: 'var(--text-primary)', marginBottom: '10px' }}>{table.number}</div>
-                <span className={`badge ${colors.badge}`} style={{ fontSize: '11px' }}>{colors.label}</span>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '2px' }}>TABLE</div>
+                <div style={{ fontSize: '26px', fontWeight: '700', fontFamily: 'Cinzel, serif', color: 'var(--text-primary)', marginBottom: '8px' }}>{table.number}</div>
+                <span className={`badge ${colors.badge}`} style={{ fontSize: '10px', padding: '3px 8px' }}>{colors.label}</span>
                 {!mergeMode && !transferMode && (
-                  <div style={{ marginTop: '12px', display: 'flex', gap: '6px', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '6px', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
                     {table.status !== 'FREE' && (
                       <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => updateStatus(table.id, 'WAITING_PAYMENT')}>
                         Pay
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(table.id)}>
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(table.id, table.number)}>
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -211,7 +281,7 @@ export default function TablesPage() {
 
       {/* Add Table Modal */}
       {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+        <Portal><div className="modal-overlay" onClick={() => setShowAdd(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Add New Table</h3>
             <label className="input-label">Table Number</label>
@@ -221,7 +291,7 @@ export default function TablesPage() {
               <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   )

@@ -10,21 +10,55 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Fetch current item so we can compare quantities
     const before = await prisma.menuItem.findUnique({ where: { id } })
+    if (!before) {
+      return NextResponse.json({ error: 'Menu item not found' }, { status: 404 })
+    }
+
+    // Sanitize and validate category foreign key
+    let categoryId = body.categoryId !== undefined
+      ? (body.categoryId && typeof body.categoryId === 'string' && body.categoryId.trim() ? body.categoryId.trim() : null)
+      : undefined
+    if (categoryId) {
+      const catExists = await prisma.category.findUnique({ where: { id: categoryId } })
+      if (!catExists) categoryId = null
+    }
+
+    // Sanitize and validate parentItem foreign key (must exist and cannot reference itself)
+    let parentItemId = body.parentItemId !== undefined
+      ? (body.parentItemId && typeof body.parentItemId === 'string' && body.parentItemId.trim() && body.parentItemId.trim() !== id ? body.parentItemId.trim() : null)
+      : undefined
+    if (parentItemId) {
+      const parentExists = await prisma.menuItem.findUnique({ where: { id: parentItemId } })
+      if (!parentExists) parentItemId = null
+    }
+
+    // Sanitize and validate recipe ingredients
+    let recipeUpdate: any = undefined
+    if (recipes !== undefined && Array.isArray(recipes)) {
+      const validIngredientIds = new Set(
+        (await prisma.ingredient.findMany({ select: { id: true } })).map(i => i.id)
+      )
+      const validRecipes = recipes
+        .filter((r: any) => r && r.ingredientId && validIngredientIds.has(r.ingredientId))
+        .map((r: any) => ({
+          ingredientId: r.ingredientId,
+          quantity: Number(r.quantity) || 0
+        }))
+      recipeUpdate = {
+        deleteMany: {},
+        create: validRecipes
+      }
+    }
+
+    const updateData: any = { ...body }
+    if (categoryId !== undefined) updateData.categoryId = categoryId
+    if (parentItemId !== undefined) updateData.parentItemId = parentItemId
+    if (recipeUpdate !== undefined) updateData.recipes = recipeUpdate
+    else delete updateData.recipes
 
     const item = await prisma.menuItem.update({
       where: { id },
-      data: {
-        ...body,
-        ...(recipes !== undefined ? {
-          recipes: {
-            deleteMany: {},
-            create: recipes.map((r: any) => ({
-              ingredientId: r.ingredientId,
-              quantity: r.quantity
-            }))
-          }
-        } : {})
-      },
+      data: updateData,
       include: { recipes: true }
     })
 

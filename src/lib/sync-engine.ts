@@ -124,15 +124,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudUsers } = await pg.query(
         `SELECT id, username, "passwordHash", "fullName", role, phone, active, "createdAt" FROM "User"`
       )
-      const userIds = cloudUsers.map(u => u.id)
-
-      try {
-        await prisma.user.deleteMany({
-          where: { id: { notIn: userIds } }
-        })
-      } catch (e) {
-        console.warn('[Pull static] User delete warning:', String(e))
-      }
 
       for (const u of cloudUsers) {
         await prisma.user.upsert({
@@ -162,15 +153,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudCats } = await pg.query(
         `SELECT id, name, type, "createdAt" FROM "Category"`
       )
-      const catIds = cloudCats.map(c => c.id)
-      
-      try {
-        await prisma.category.deleteMany({
-          where: { id: { notIn: catIds } }
-        })
-      } catch (e) {
-        console.warn('[Pull static] Category delete warning:', String(e))
-      }
 
       for (const c of cloudCats) {
         await prisma.category.upsert({
@@ -184,15 +166,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudIngs } = await pg.query(
         `SELECT id, name, unit, quantity, "minThreshold", "createdAt" FROM "Ingredient"`
       )
-      const ingIds = cloudIngs.map(i => i.id)
-
-      try {
-        await prisma.ingredient.deleteMany({
-          where: { id: { notIn: ingIds } }
-        })
-      } catch (e) {
-        console.warn('[Pull static] Ingredient delete warning:', String(e))
-      }
 
       for (const i of cloudIngs) {
         await prisma.ingredient.upsert({
@@ -219,15 +192,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudItems } = await pg.query(
         `SELECT id, "categoryId", name, description, price, available, "stockQuantity", "barQuantity", "costPrice", "lowStockThreshold", "parentItemId", "unitMultiplier", "createdAt" FROM "MenuItem"`
       )
-      const itemIds = cloudItems.map(item => item.id)
-
-      try {
-        await prisma.menuItem.deleteMany({
-          where: { id: { notIn: itemIds } }
-        })
-      } catch (e) {
-        console.warn('[Pull static] MenuItem delete warning:', String(e))
-      }
 
       // First pass: upsert with parentItemId = null to avoid self-referential foreign key constraint issues
       for (const item of cloudItems) {
@@ -279,15 +243,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudRecipes } = await pg.query(
         `SELECT id, "menuItemId", "ingredientId", quantity FROM "Recipe"`
       )
-      const recipeIds = cloudRecipes.map(r => r.id)
-
-      try {
-        await prisma.recipe.deleteMany({
-          where: { id: { notIn: recipeIds } }
-        })
-      } catch (e) {
-        console.warn('[Pull static] Recipe delete warning:', String(e))
-      }
 
       for (const r of cloudRecipes) {
         await prisma.recipe.upsert({
@@ -310,15 +265,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudTables } = await pg.query(
         `SELECT id, number, status, "mergedWithId", "createdAt" FROM "Table"`
       )
-      const tableIds = cloudTables.map(t => t.id)
-
-      try {
-        await prisma.table.deleteMany({
-          where: { id: { notIn: tableIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] Table delete warning:', String(e))
-      }
 
       for (const t of cloudTables) {
         const localT = await prisma.table.findUnique({ where: { id: t.id } })
@@ -348,18 +294,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffMembers } = await pg.query(
         `SELECT id, name, role, shift, active, "createdAt" FROM "StaffMember"`
       )
-      const staffMemberIds = cloudStaffMembers.map(sm => sm.id)
-
-      try {
-        // Only delete rows that have already been synced to the cloud and are now
-        // absent there. Locally-created rows (pendingSync: true) are preserved so a
-        // pull never wipes staff data the user just added but hasn't pushed yet.
-        await prisma.staffMember.deleteMany({
-          where: { id: { notIn: staffMemberIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffMember delete warning:', String(e))
-      }
 
       for (const sm of cloudStaffMembers) {
         // Don't clobber a local row that has unpushed edits.
@@ -391,17 +325,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffMenuItems } = await pg.query(
         `SELECT id, name, "mealType", "linkedMenuItemId", "createdAt" FROM "StaffMenuItem"`
       )
-      const staffMenuItemIds = cloudStaffMenuItems.map(smi => smi.id)
-
-      try {
-        // Preserve locally-created items (pendingSync: true); only prune rows that
-        // were previously synced and have since been deleted on the cloud.
-        await prisma.staffMenuItem.deleteMany({
-          where: { id: { notIn: staffMenuItemIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffMenuItem delete warning:', String(e))
-      }
 
       for (const smi of cloudStaffMenuItems) {
         const localSmi = await prisma.staffMenuItem.findUnique({ where: { id: smi.id } })
@@ -430,16 +353,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffIngredients } = await pg.query(
         `SELECT id, name, unit, quantity, "minThreshold", "createdAt" FROM "StaffIngredient"`
       )
-      const staffIngredientIds = cloudStaffIngredients.map(si => si.id)
-
-      try {
-        // Preserve locally-created/edited rows (pendingSync: true).
-        await prisma.staffIngredient.deleteMany({
-          where: { id: { notIn: staffIngredientIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffIngredient delete warning:', String(e))
-      }
 
       for (const si of cloudStaffIngredients) {
         const localSi = await prisma.staffIngredient.findUnique({ where: { id: si.id } })
@@ -470,15 +383,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffRecipes } = await pg.query(
         `SELECT id, "staffMenuItemId", "staffIngredientId", quantity FROM "StaffRecipe"`
       )
-      const staffRecipeIds = cloudStaffRecipes.map(sr => sr.id)
-
-      try {
-        await prisma.staffRecipe.deleteMany({
-          where: { id: { notIn: staffRecipeIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffRecipe delete warning:', String(e))
-      }
 
       for (const sr of cloudStaffRecipes) {
         const localSr = await prisma.staffRecipe.findUnique({ where: { id: sr.id } })
@@ -505,15 +409,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffMeals } = await pg.query(
         `SELECT id, "staffMemberId", "mealType", "servedAt", "createdAt" FROM "StaffMeal"`
       )
-      const staffMealIds = cloudStaffMeals.map(sm => sm.id)
-
-      try {
-        await prisma.staffMeal.deleteMany({
-          where: { id: { notIn: staffMealIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffMeal delete warning:', String(e))
-      }
 
       for (const sm of cloudStaffMeals) {
         const localSm = await prisma.staffMeal.findUnique({ where: { id: sm.id } })
@@ -542,15 +437,6 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const { rows: cloudStaffMealItems } = await pg.query(
         `SELECT id, "staffMealId", "staffMenuItemId", quantity FROM "StaffMealItem"`
       )
-      const staffMealItemIds = cloudStaffMealItems.map(smi => smi.id)
-
-      try {
-        await prisma.staffMealItem.deleteMany({
-          where: { id: { notIn: staffMealItemIds }, pendingSync: false }
-        })
-      } catch (e) {
-        console.warn('[Pull static] StaffMealItem delete warning:', String(e))
-      }
 
       for (const smi of cloudStaffMealItems) {
         const localSmi = await prisma.staffMealItem.findUnique({ where: { id: smi.id } })
@@ -859,10 +745,52 @@ export async function syncToCloud(): Promise<SyncResult> {
     const pullResult = await pullFromCloud()
     errors.push(...pullResult.errors)
 
+    // ── Tables (must push BEFORE Orders so foreign keys exist in cloud) ──────
+    const allLocalTables = await prisma.table.findMany()
+    for (const t of allLocalTables) {
+      try {
+        await pg.query(
+          `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (id) DO UPDATE SET
+             number           = EXCLUDED.number,
+             "mergedWithId"   = EXCLUDED."mergedWithId"`,
+          [t.id, t.number, t.status, t.mergedWithId, t.createdAt]
+        )
+        if (t.pendingSync) {
+          await prisma.table.update({
+            where: { id: t.id },
+            data: { pendingSync: false },
+          })
+          synced.tables = (synced.tables ?? 0) + 1
+        }
+      } catch (e) {
+        errors.push(`Table ${t.id}: ${String(e)}`)
+      }
+    }
+
     // ── Orders ────────────────────────────────────────────────────────────────
     const pendingOrders = await prisma.order.findMany({ where: { pendingSync: true } })
     for (const o of pendingOrders) {
       try {
+        // Ensure the order's table exists on cloud before inserting the order
+        const orderTable = await prisma.table.findUnique({ where: { id: o.tableId } })
+        if (orderTable) {
+          await pg.query(
+            `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (id) DO NOTHING`,
+            [orderTable.id, orderTable.number, orderTable.status, orderTable.mergedWithId, orderTable.createdAt]
+          )
+        } else {
+          // If table was deleted locally, create placeholder table in cloud so FK doesn't fail
+          await pg.query(
+            `INSERT INTO "Table" (id, number, status, "createdAt")
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [o.tableId, 'Archived', 'FREE']
+          )
+        }
         await pg.query(
           `INSERT INTO "Order" (id, "tableId", "waiterId", status, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6)
@@ -982,28 +910,6 @@ export async function syncToCloud(): Promise<SyncResult> {
       }
     }
 
-    // ── Tables ────────────────────────────────────────────────────────────────
-    // Push new/renamed tables so they appear on every terminal.
-    const pendingTables = await prisma.table.findMany({ where: { pendingSync: true } })
-    for (const t of pendingTables) {
-      try {
-        await pg.query(
-          `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO UPDATE SET
-             number           = EXCLUDED.number,
-             "mergedWithId"   = EXCLUDED."mergedWithId"`,
-          [t.id, t.number, t.status, t.mergedWithId, t.createdAt]
-        )
-        await prisma.table.update({
-          where: { id: t.id },
-          data: { pendingSync: false },
-        })
-        synced.tables = (synced.tables ?? 0) + 1
-      } catch (e) {
-        errors.push(`Table ${t.id}: ${String(e)}`)
-      }
-    }
 
     // ── StaffMembers ──────────────────────────────────────────────────────────
     // Must push before StaffMeals so the cloud FK target exists.

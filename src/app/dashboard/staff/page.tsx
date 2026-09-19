@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, Pencil, UserX, UserCheck } from 'lucide-react'
+import { toast } from '@/components/ToastProvider'
+import Portal from '@/components/Portal'
 
 interface Staff { id: string; username: string; fullName: string; role: string; phone?: string; active: boolean }
 
@@ -11,6 +13,7 @@ const EMPTY = { username: '', fullName: '', password: '', role: 'WAITER', phone:
 export default function StaffPage() {
   const [staff, setStaff] = useState<Staff[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editStaff, setEditStaff] = useState<Staff | null>(null)
   const [form, setForm] = useState(EMPTY)
@@ -18,15 +21,18 @@ export default function StaffPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await fetch('/api/staff')
       if (res.ok) {
         setStaff(await res.json())
       } else {
-        console.error('Failed to load staff:', res.statusText)
+        setLoadError(`Failed to load staff (${res.status})`)
+        toast.error('Failed to load staff members')
       }
-    } catch (err) {
-      console.error('Error loading staff:', err)
+    } catch {
+      setLoadError('Unable to connect to server. Please check your connection.')
+      toast.error('Network error loading staff')
     } finally {
       setLoading(false)
     }
@@ -38,18 +44,66 @@ export default function StaffPage() {
   function openEdit(s: Staff) { setEditStaff(s); setForm({ username: s.username, fullName: s.fullName, password: '', role: s.role, phone: s.phone || '' }); setShowForm(true) }
 
   async function save() {
-    setSaving(true)
-    if (editStaff) {
-      await fetch(`/api/staff/${editStaff.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
-    } else {
-      await fetch('/api/staff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+    if (!form.fullName.trim() || !form.username.trim()) {
+      toast.warning('Full name and username are required')
+      return
     }
-    setShowForm(false); load(); setSaving(false)
+    if (!editStaff && !form.password.trim()) {
+      toast.warning('Password is required for new staff accounts')
+      return
+    }
+
+    setSaving(true)
+    try {
+      let res;
+      if (editStaff) {
+        res = await fetch(`/api/staff/${editStaff.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        })
+      } else {
+        res = await fetch('/api/staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        })
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to save staff member')
+        setSaving(false)
+        return
+      }
+
+      toast.success(editStaff ? 'Staff member details updated!' : 'Staff member created successfully!')
+      setShowForm(false)
+      load()
+    } catch {
+      toast.error('Network error saving staff')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function toggleActive(s: Staff) {
-    await fetch(`/api/staff/${s.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !s.active }) })
-    load()
+    try {
+      const nextActive = !s.active
+      const res = await fetch(`/api/staff/${s.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: nextActive })
+      })
+      if (res.ok) {
+        toast.info(`Staff member ${nextActive ? 'activated' : 'deactivated'}`)
+        load()
+      } else {
+        toast.error('Failed to change staff status')
+      }
+    } catch {
+      toast.error('Network error updating staff status')
+    }
   }
 
   const roleColors: Record<string, string> = { ADMIN: 'var(--gold)', MANAGER: 'var(--warning-light)', CASHIER: 'var(--success-light)', WAITER: 'var(--text-secondary)' }
@@ -63,6 +117,13 @@ export default function StaffPage() {
         </div>
         <button className="btn btn-gold btn-sm" onClick={openNew}><Plus size={14} /> Add Staff</button>
       </div>
+
+      {loadError && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{loadError}</span>
+          <button className="btn btn-sm btn-ghost" style={{ color: 'inherit' }} onClick={load}>Retry</button>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
         {loading ? (
@@ -96,10 +157,10 @@ export default function StaffPage() {
 
       {/* Staff Form Modal */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+        <Portal><div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>{editStaff ? 'Edit Staff' : 'Add New Staff'}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label className="input-label">Full Name</label>
                 <input className="input" value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} placeholder="e.g. Abebe Bekele" autoFocus />
@@ -128,7 +189,7 @@ export default function StaffPage() {
               <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   )

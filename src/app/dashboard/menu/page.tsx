@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Eye, EyeOff, Search } from 'lucide-react'
+import { toast } from '@/components/ToastProvider'
+import Portal from '@/components/Portal'
 
 interface Category { id: string; name: string; type: string }
 interface Ingredient { id: string; name: string; unit: string; currentStock: number }
@@ -28,16 +30,12 @@ export default function MenuPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [itemsRes, catsRes, ingsRes] = await Promise.all([
-        fetch('/api/menu-items'),
-        fetch('/api/categories'),
-        fetch('/api/ingredients')
-      ])
-      if (itemsRes.ok) setItems(await itemsRes.json())
-      if (catsRes.ok) setCategories(await catsRes.json())
-      if (ingsRes.ok) setIngredients(await ingsRes.json())
-    } catch (err) {
-      console.error('Error loading menu data:', err)
+      const [iRes, cRes, ingRes] = await Promise.all([fetch('/api/menu-items'), fetch('/api/categories'), fetch('/api/ingredients')])
+      if (iRes.ok) setItems(await iRes.json())
+      if (cRes.ok) setCategories(await cRes.json())
+      if (ingRes.ok) setIngredients(await ingRes.json())
+    } catch {
+      toast.error('Failed to load menu items')
     } finally {
       setLoading(false)
     }
@@ -45,88 +43,148 @@ export default function MenuPage() {
 
   useEffect(() => { load() }, [load])
 
+  function openNew() { setEditItem(null); setForm(EMPTY_FORM); setFormRecipes([]); setErrorMsg(''); setShowForm(true) }
   function openEdit(item: MenuItem) {
     setEditItem(item)
-    setForm({ name: item.name, description: item.description || '', price: String(item.price), categoryId: item.category?.id || '', available: item.available, stockQuantity: String(item.stockQuantity), lowStockThreshold: String(item.lowStockThreshold), parentItemId: item.parentItemId || '', unitMultiplier: String(item.unitMultiplier ?? 1) })
-    setFormRecipes(item.recipes?.map((r: any) => ({ ingredientId: r.ingredientId, quantity: String(r.quantity) })) || [])
+    setForm({
+      name: item.name,
+      description: item.description || '',
+      price: item.price.toString(),
+      categoryId: item.category?.id || '',
+      available: item.available,
+      stockQuantity: item.stockQuantity.toString(),
+      lowStockThreshold: item.lowStockThreshold.toString(),
+      parentItemId: item.parentItemId || '',
+      unitMultiplier: (item.unitMultiplier || 1).toString()
+    })
+    setFormRecipes(item.recipes ? item.recipes.map(r => ({ ingredientId: r.ingredientId, quantity: r.quantity.toString() })) : [])
+    setErrorMsg('')
     setShowForm(true)
   }
-
-  function openNew() { setEditItem(null); setForm(EMPTY_FORM); setFormRecipes([]); setShowForm(true) }
 
   async function saveItem() {
     setSaving(true)
     setErrorMsg('')
-    const data = { 
-      ...form, 
-      price: parseFloat(form.price), 
-      stockQuantity: parseInt(form.stockQuantity), 
-      lowStockThreshold: parseInt(form.lowStockThreshold),
-      parentItemId: form.parentItemId || null,
+    const data = {
+      name: form.name,
+      description: form.description,
+      price: parseFloat(form.price) || 0,
+      available: form.available,
+      stockQuantity: parseInt(form.stockQuantity) || 0,
+      lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
+      categoryId: form.categoryId?.trim() ? form.categoryId.trim() : null,
+      parentItemId: form.parentItemId?.trim() ? form.parentItemId.trim() : null,
       unitMultiplier: parseFloat(form.unitMultiplier) || 1,
-      recipes: formRecipes.filter(r => r.ingredientId).map(r => ({ ingredientId: r.ingredientId, quantity: parseFloat(r.quantity) }))
+      recipes: formRecipes.filter(r => r.ingredientId).map(r => ({ ingredientId: r.ingredientId, quantity: parseFloat(r.quantity) || 0 }))
     }
     
-    let res;
-    if (editItem) {
-      res = await fetch(`/api/menu-items/${editItem.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    } else {
-      res = await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    }
-    
-    if (!res.ok) {
-      const { error } = await res.json()
-      setErrorMsg(error || 'Failed to save item')
-      setSaving(false)
-      return
-    }
+    try {
+      let res;
+      if (editItem) {
+        res = await fetch(`/api/menu-items/${editItem.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      } else {
+        res = await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      }
+      
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        const msg = error || 'Failed to save item'
+        setErrorMsg(msg)
+        toast.error(msg)
+        setSaving(false)
+        return
+      }
 
-    setShowForm(false); load(); setSaving(false)
+      toast.success(editItem ? 'Menu item updated!' : 'Menu item created!')
+      setShowForm(false)
+      load()
+    } catch {
+      toast.error('Network error saving menu item')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  async function deleteItem(id: string) {
-    if (!confirm('Delete this menu item?')) return
+  async function deleteItem(id: string, name?: string) {
+    if (!confirm(`Delete ${name || 'this menu item'}?`)) return
     setErrorMsg('')
-    const res = await fetch(`/api/menu-items/${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const { error } = await res.json()
-      setErrorMsg(error || 'Failed to delete item')
-      return
+    try {
+      const res = await fetch(`/api/menu-items/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        const msg = error || 'Failed to delete item'
+        setErrorMsg(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success('Menu item deleted')
+      load()
+    } catch {
+      toast.error('Network error deleting item')
     }
-    load()
   }
 
   async function toggleAvailable(item: MenuItem) {
-    await fetch(`/api/menu-items/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ available: !item.available }) })
-    load()
+    try {
+      const nextAvailable = !item.available
+      const res = await fetch(`/api/menu-items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available: nextAvailable })
+      })
+      if (res.ok) {
+        toast.info(`${item.name} marked ${nextAvailable ? 'Available' : 'Unavailable'}`)
+        load()
+      } else {
+        toast.error('Failed to update item availability')
+      }
+    } catch {
+      toast.error('Network error updating item')
+    }
   }
 
   async function addCategory() {
     setErrorMsg('')
-    let res;
-    if (catForm.id) {
-      res = await fetch(`/api/categories/${catForm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
-    } else {
-      res = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
+    try {
+      let res;
+      if (catForm.id) {
+        res = await fetch(`/api/categories/${catForm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
+      } else {
+        res = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
+      }
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        const msg = error || 'Failed to save category'
+        setErrorMsg(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success(catForm.id ? 'Category updated!' : 'Category created!')
+      setCatForm({ id: '', name: '', type: 'FOOD' })
+      setShowCatForm(false)
+      load()
+    } catch {
+      toast.error('Network error saving category')
     }
-    if (!res.ok) {
-      const { error } = await res.json()
-      setErrorMsg(error || 'Failed to save category')
-      return
-    }
-    setCatForm({ id: '', name: '', type: 'FOOD' }); load()
   }
 
   async function deleteCategory(id: string) {
     if (!confirm('Delete this category?')) return
     setErrorMsg('')
-    const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const { error } = await res.json()
-      setErrorMsg(error || 'Failed to delete category')
-      return
+    try {
+      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        const msg = error || 'Failed to delete category'
+        setErrorMsg(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success('Category deleted')
+      load()
+    } catch {
+      toast.error('Network error deleting category')
     }
-    load()
   }
 
   const filtered = items.filter(i => {
@@ -177,8 +235,8 @@ export default function MenuPage() {
         </div>
       </div>
 
-      {/* Items Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Items Table — Desktop */}
+      <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -219,7 +277,7 @@ export default function MenuPage() {
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEdit(item)}><Pencil size={13} /></button>
-                      <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={() => deleteItem(item.id)}><Trash2 size={13} /></button>
+                      <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={() => deleteItem(item.id, item.name)}><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -229,9 +287,85 @@ export default function MenuPage() {
         </div>
       </div>
 
+      {/* Items Cards — Mobile */}
+      <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+        {loading ? (
+          <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</div>
+        ) : filtered.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No items found.</div>
+        ) : filtered.map(item => {
+          const isLowStock = item.stockQuantity <= item.lowStockThreshold
+          return (
+            <div
+              key={item.id}
+              className="card"
+              style={{
+                background: 'var(--black-card)',
+                border: isLowStock ? '1px solid var(--danger-light)' : '1px solid var(--black-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}
+            >
+              {/* Top row: name + status */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</div>
+                  {item.description && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>}
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    {item.category?.type === 'FOOD' ? '🍽' : '🍹'} {item.category?.name || '—'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleAvailable(item)}
+                  style={{
+                    background: item.available ? 'rgba(16,185,129,0.1)' : 'rgba(122,112,96,0.15)',
+                    border: 'none', cursor: 'pointer', borderRadius: '8px',
+                    padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px',
+                    color: item.available ? 'var(--success-light)' : 'var(--text-muted)',
+                    fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap', flexShrink: 0
+                  }}
+                >
+                  {item.available ? <Eye size={12} /> : <EyeOff size={12} />}
+                  {item.available ? 'Available' : 'Hidden'}
+                </button>
+              </div>
+
+              {/* Info grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '13px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Price</span>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--gold)' }}>{item.price.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Stock</span>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: isLowStock ? 'var(--danger-light)' : 'var(--text-primary)' }}>
+                    {item.stockQuantity} {isLowStock && '⚠'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Alert At</span>
+                  <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{item.lowStockThreshold}</span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => openEdit(item)}>
+                  <Pencil size={14} /> Edit
+                </button>
+                <button className="btn btn-danger btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => deleteItem(item.id, item.name)}>
+                  <Trash2 size={14} /> Delete
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
       {/* Item Form Modal */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <Portal><div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>{editItem ? 'Edit Item' : 'New Menu Item'}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -316,12 +450,12 @@ export default function MenuPage() {
               <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Category Form Modal */}
       {showCatForm && (
-        <div className="modal-overlay" onClick={() => setShowCatForm(false)}>
+        <Portal><div className="modal-overlay" onClick={() => setShowCatForm(false)}>
           <div className="modal" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Manage Categories</h3>
             
@@ -367,7 +501,7 @@ export default function MenuPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   )
