@@ -319,6 +319,37 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
     }
   };
 
+  const handleDeleteStaffMember = async (member: StaffMember) => {
+    if (!confirm(`Permanently delete "${member.name}"? This will remove them from the roster.`)) return;
+    try {
+      const res = await fetch(`/api/staff-members/${member.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast(`${member.name} deleted from roster`);
+        fetchStaff();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to delete staff member', 'error');
+      }
+    } catch {
+      showToast('Network error deleting staff member', 'error');
+    }
+  };
+
+  const handleClearAllLogs = async () => {
+    if (!confirm('Clear ALL staff meal logs? This cannot be undone.')) return;
+    try {
+      const res = await fetch('/api/staff-meals/clear-all', { method: 'DELETE' });
+      if (res.ok) {
+        showToast('All meal logs cleared');
+        fetchMeals();
+      } else {
+        showToast('Failed to clear meal logs', 'error');
+      }
+    } catch {
+      showToast('Network error clearing logs', 'error');
+    }
+  };
+
   // Food Menu CRUD Operations
   const openAddMenu = () => {
     setMenuForm({ id: '', name: '', mealType: 'BREAKFAST' });
@@ -598,9 +629,21 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
         </div>
         <div>
           {activeTab === 'logs' && canAddMeal && (
-            <button className="btn btn-gold btn-sm" onClick={openAddMeal}>
-              <Plus size={14} /> Log Meal
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn btn-gold btn-sm" onClick={openAddMeal}>
+                <Plus size={14} /> Log Meal
+              </button>
+              {(role === 'ADMIN' || role === 'MANAGER') && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--danger-light)', borderColor: 'rgba(239,68,68,0.3)' }}
+                  onClick={handleClearAllLogs}
+                  title="Clear all meal logs"
+                >
+                  <Trash2 size={14} /> Clear Logs
+                </button>
+              )}
+            </div>
           )}
           {activeTab === 'roster' && canAccessRoster && (
             <button className="btn btn-gold btn-sm" onClick={openAddStaff}>
@@ -766,6 +809,14 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
                           title={s.active ? 'Deactivate Member' : 'Activate Member'}
                         >
                           {s.active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '6px', color: 'var(--danger-light)' }}
+                          onClick={() => handleDeleteStaffMember(s)}
+                          title="Delete staff member"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>

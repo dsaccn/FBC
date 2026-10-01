@@ -9,7 +9,7 @@ import ReceiptVerifier from '@/components/ReceiptVerifier'
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
 interface Order { id: string; table: { number: string; id: string }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
 
-const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE', 'Abyssinia']
+const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
 
 export default function PaymentPage() {
   const searchParams = useSearchParams()
@@ -22,6 +22,7 @@ export default function PaymentPage() {
   const [method, setMethod] = useState('Cash')
   const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed')
   const [discountValue, setDiscountValue] = useState('')
+  const [tipAmount, setTipAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [paid, setPaid] = useState(false)
@@ -56,7 +57,9 @@ export default function PaymentPage() {
   const discountAmt = discountValue
     ? discountType === 'percentage' ? (subtotal * parseFloat(discountValue)) / 100 : parseFloat(discountValue)
     : 0
-  const total = Math.max(0, subtotal - discountAmt)
+  const tipAmt = parseFloat(tipAmount) || 0
+  const isDigitalPayment = method === 'Telebirr' || method === 'CBE'
+  const total = Math.max(0, subtotal - discountAmt + (isDigitalPayment ? tipAmt : 0))
 
   async function handlePay() {
     if (!selectedOrder) {
@@ -69,10 +72,11 @@ export default function PaymentPage() {
     }
     setLoading(true)
     try {
+      const notesWithTip = tipAmt > 0 ? (notes ? `${notes} [Tip: ${tipAmt.toFixed(2)} ETB]` : `[Tip: ${tipAmt.toFixed(2)} ETB]`) : notes
       const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes }),
+        body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes: notesWithTip }),
       })
       if (res.ok) {
         setLastPayment({ amount: total, method })
@@ -232,6 +236,22 @@ export default function PaymentPage() {
               }}
             />
 
+            {/* Tip for digital payments */}
+            {isDigitalPayment && (
+              <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                <label className="input-label" style={{ color: 'var(--gold)', marginBottom: '6px' }}>💝 Tip (Optional)</label>
+                <input
+                  className="input"
+                  type="number"
+                  placeholder="0.00 ETB"
+                  value={tipAmount}
+                  onChange={e => setTipAmount(e.target.value)}
+                  min="0"
+                  step="5"
+                />
+              </div>
+            )}
+
             {/* Discount */}
             {(session?.role === 'ADMIN' || session?.role === 'MANAGER') && (
               <div style={{ marginBottom: '16px' }}>
@@ -260,6 +280,12 @@ export default function PaymentPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ color: 'var(--warning-light)' }}>Discount</span>
                 <span style={{ color: 'var(--warning-light)' }}>-{discountAmt.toFixed(2)} ETB</span>
+              </div>
+            )}
+            {tipAmt > 0 && isDigitalPayment && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ color: 'var(--gold)' }}>💝 Tip</span>
+                <span style={{ color: 'var(--gold)' }}>+{tipAmt.toFixed(2)} ETB</span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>

@@ -70,6 +70,15 @@ export default function DeliveryPage() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'DELIVERY' | 'TAKEAWAY'>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Date filter — default to yesterday
+  const yesterdayStr = (() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  })()
+  const [dateFrom, setDateFrom] = useState(yesterdayStr)
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0])
+
   // Modals
   const [showNewModal, setShowNewModal] = useState(false)
   const [newOrderType, setNewOrderType] = useState<'DELIVERY' | 'TAKEAWAY'>('DELIVERY')
@@ -93,6 +102,7 @@ export default function DeliveryPage() {
   // Payment form fields
   const [payMethod, setPayMethod] = useState('Cash')
   const [discountValue, setDiscountValue] = useState('')
+  const [tipValue, setTipValue] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [paying, setPaying] = useState(false)
 
@@ -103,7 +113,10 @@ export default function DeliveryPage() {
   const loadOrders = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
-      const res = await fetch('/api/delivery-orders')
+      const params = new URLSearchParams()
+      if (dateFrom) params.set('from', dateFrom)
+      if (dateTo) params.set('to', dateTo)
+      const res = await fetch(`/api/delivery-orders?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setOrders(data)
@@ -115,7 +128,7 @@ export default function DeliveryPage() {
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [])
+  }, [dateFrom, dateTo])
 
   // Load menu items & categories for ordering
   const loadMenuData = useCallback(async () => {
@@ -318,7 +331,12 @@ export default function DeliveryPage() {
     const activeItems = orderToPay.orderItems.filter(i => i.status !== 'CANCELLED')
     const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
     const discount = parseFloat(discountValue) || 0
-    const finalAmount = Math.max(0, subtotal - discount)
+    const tip = parseFloat(tipValue) || 0
+    const isTransfer = payMethod === 'CBE' || payMethod === 'Telebirr'
+    const finalAmount = Math.max(0, subtotal - discount + (isTransfer ? tip : 0))
+    const notesWithTip = tip > 0 && isTransfer
+      ? (payNotes ? `${payNotes} [Tip: ${tip.toFixed(2)} ETB]` : `[Tip: ${tip.toFixed(2)} ETB]`)
+      : payNotes
 
     setPaying(true)
     try {
@@ -332,7 +350,7 @@ export default function DeliveryPage() {
           method: payMethod,
           discount,
           discountType: 'fixed',
-          notes: payNotes.trim() || undefined,
+          notes: notesWithTip.trim() || undefined,
         }),
       })
 
@@ -340,6 +358,7 @@ export default function DeliveryPage() {
         toast.success(`Payment settled (${payMethod}: ${finalAmount.toFixed(2)} ETB)`)
         setOrderToPay(null)
         setDiscountValue('')
+        setTipValue('')
         setPayNotes('')
         await loadOrders(false)
       } else {
@@ -626,6 +645,35 @@ export default function DeliveryPage() {
 
       {/* ── Filters & Search Bar ─────────────────────────────────────────────── */}
       <div className="card" style={{ padding: '14px 18px', marginBottom: '20px' }}>
+        {/* Date Range Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--black-border)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+            📅 Date
+          </span>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '120px', maxWidth: '160px' }}
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+          />
+          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '120px', maxWidth: '160px' }}
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+          />
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: '11px', padding: '4px 10px', height: '32px' }}
+            onClick={() => { setDateFrom(yesterdayStr); setDateTo(new Date().toISOString().split('T')[0]) }}
+          >
+            Reset
+          </button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
           {/* Status Tabs */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1522,8 +1570,8 @@ export default function DeliveryPage() {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>
                   Payment Method
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                  {['Cash', 'Telebirr', 'CBE Birr', 'Bank Transfer'].map(m => (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+                  {['Cash', 'Telebirr', 'CBE'].map(m => (
                     <button
                       key={m}
                       type="button"
@@ -1536,6 +1584,25 @@ export default function DeliveryPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Tip for digital payments */}
+              {(payMethod === 'Telebirr' || payMethod === 'CBE') && (
+                <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: 'var(--gold)' }}>
+                    💝 Tip (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.00 ETB"
+                    value={tipValue}
+                    onChange={e => setTipValue(e.target.value)}
+                    className="input"
+                    style={{ width: '100%' }}
+                    min="0"
+                    step="5"
+                  />
+                </div>
+              )}
 
               {/* Official Receipt Verifier */}
               {(() => {
@@ -1597,18 +1664,34 @@ export default function DeliveryPage() {
                   .filter(i => i.status !== 'CANCELLED')
                   .reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
                 const disc = parseFloat(discountValue) || 0
-                const finalAmt = Math.max(0, sub - disc)
+                const tip = parseFloat(tipValue) || 0
+                const isTransfer = payMethod === 'CBE' || payMethod === 'Telebirr'
+                const finalAmt = Math.max(0, sub - disc + (isTransfer ? tip : 0))
 
                 return (
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '12px', background: 'var(--black-surface)', borderRadius: '8px',
-                    marginBottom: '16px'
-                  }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600' }}>Amount to Pay:</span>
-                    <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gold)' }}>
-                      {finalAmt.toFixed(2)} ETB
-                    </span>
+                  <div style={{ padding: '12px', background: 'var(--black-surface)', borderRadius: '8px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
+                      <span>{sub.toFixed(2)} ETB</span>
+                    </div>
+                    {disc > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--warning-light)' }}>Discount</span>
+                        <span style={{ color: 'var(--warning-light)' }}>-{disc.toFixed(2)} ETB</span>
+                      </div>
+                    )}
+                    {tip > 0 && isTransfer && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--gold)' }}>💝 Tip</span>
+                        <span style={{ color: 'var(--gold)' }}>+{tip.toFixed(2)} ETB</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--black-border)' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '600' }}>Amount to Pay:</span>
+                      <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gold)' }}>
+                        {finalAmt.toFixed(2)} ETB
+                      </span>
+                    </div>
                   </div>
                 )
               })()}

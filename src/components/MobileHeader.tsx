@@ -11,12 +11,7 @@ interface MobileHeaderProps {
 export default function MobileHeader({ isOpen, onToggle }: MobileHeaderProps) {
   return (
     <header className="mobile-header" suppressHydrationWarning>
-      {/* Logo */}
-      <div className="mobile-header-logo" suppressHydrationWarning>
-        <NexoraLogo size="sm" showSubtitle={false} />
-      </div>
-
-      {/* Hamburger / Close */}
+      {/* Hamburger on the left */}
       <button
         className="hamburger-btn"
         onClick={onToggle}
@@ -24,6 +19,11 @@ export default function MobileHeader({ isOpen, onToggle }: MobileHeaderProps) {
       >
         {isOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
+
+      {/* Logo centered / right */}
+      <div className="mobile-header-logo" suppressHydrationWarning>
+        <NexoraLogo size="sm" showSubtitle={false} />
+      </div>
     </header>
   )
 }
