@@ -38,8 +38,8 @@ function getPool(): PgPool {
     _pool = new PgPool({
       connectionString: url,
       max: 3,
-      // 3 s — fail-fast when offline so the app never hangs waiting for Neon
-      connectionTimeoutMillis: 3000,
+      // 8 s — give Neon a bit more time to wake up from cold start
+      connectionTimeoutMillis: 8000,
       idleTimeoutMillis: 30000,
       ssl: { rejectUnauthorized: false },
     })
@@ -58,6 +58,21 @@ function resetPool() {
   if (_pool) {
     _pool.end().catch(() => {})
     _pool = null
+  }
+}
+
+/**
+ * Run arbitrary DELETE/UPDATE SQL against Neon immediately.
+ * Silently swallows errors (offline, pool not ready, etc.) — the sync engine's
+ * push-diff will finish the job on the next successful sync.
+ */
+export async function deleteFromCloud(sql: string, params: unknown[]): Promise<void> {
+  if (process.env.VERCEL) return // Vercel writes directly to Neon, no extra step needed
+  try {
+    const pg = getPool()
+    await pg.query(sql, params)
+  } catch {
+    // Offline or pool error — sync engine will reconcile on next push
   }
 }
 
@@ -126,6 +141,9 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       )
 
       for (const u of cloudUsers) {
+        // Match existing users by username. The `update` branch intentionally
+        // does NOT change `id` — this preserves local ids embedded in active
+        // JWT session tokens. Only brand-new cloud-created staff get the cloud id.
         await prisma.user.upsert({
           where: { username: u.username },
           update: {
@@ -161,6 +179,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           create: { id: c.id, name: c.name, type: c.type, createdAt: new Date(c.createdAt) },
         })
       }
+      // Delete local categories that were deleted on cloud
+      const cloudCatIds = new Set(cloudCats.map(c => c.id))
+      const localCats = await prisma.category.findMany({ select: { id: true } })
+      for (const cat of localCats) {
+        if (!cloudCatIds.has(cat.id)) {
+          await prisma.menuItem.updateMany({ where: { categoryId: cat.id }, data: { categoryId: null } })
+          await prisma.category.delete({ where: { id: cat.id } }).catch(() => {})
+        }
+      }
 
       // 2. Ingredients
       const { rows: cloudIngs } = await pg.query(
@@ -186,6 +213,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             createdAt: new Date(i.createdAt) 
           },
         })
+      }
+      // Delete local ingredients that were deleted on cloud
+      const cloudIngIds = new Set(cloudIngs.map(i => i.id))
+      const localIngs = await prisma.ingredient.findMany({ select: { id: true } })
+      for (const ing of localIngs) {
+        if (!cloudIngIds.has(ing.id)) {
+          await prisma.recipe.deleteMany({ where: { ingredientId: ing.id } })
+          await prisma.ingredient.delete({ where: { id: ing.id } }).catch(() => {})
+        }
       }
 
       // 3. MenuItems
@@ -239,6 +275,20 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         }
       }
 
+      // Delete local menu items that were deleted on cloud
+      const cloudItemIds = new Set(cloudItems.map(i => i.id))
+      const localItems = await prisma.menuItem.findMany({ select: { id: true } })
+      for (const item of localItems) {
+        if (!cloudItemIds.has(item.id)) {
+          await prisma.menuItem.updateMany({ where: { parentItemId: item.id }, data: { parentItemId: null } })
+          await prisma.staffMenuItem.updateMany({ where: { linkedMenuItemId: item.id }, data: { linkedMenuItemId: null } })
+          await prisma.cancellation.deleteMany({ where: { orderItem: { menuItemId: item.id } } })
+          await prisma.orderItem.deleteMany({ where: { menuItemId: item.id } })
+          await prisma.recipe.deleteMany({ where: { menuItemId: item.id } })
+          await prisma.menuItem.delete({ where: { id: item.id } }).catch(() => {})
+        }
+      }
+
       // 4. Recipes
       const { rows: cloudRecipes } = await pg.query(
         `SELECT id, "menuItemId", "ingredientId", quantity FROM "Recipe"`
@@ -259,6 +309,14 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             quantity: Number(r.quantity),
           },
         })
+      }
+      // Delete local recipes that were deleted on cloud
+      const cloudRecipeIds = new Set(cloudRecipes.map(r => r.id))
+      const localRecipes = await prisma.recipe.findMany({ select: { id: true } })
+      for (const r of localRecipes) {
+        if (!cloudRecipeIds.has(r.id)) {
+          await prisma.recipe.delete({ where: { id: r.id } }).catch(() => {})
+        }
       }
 
       // 5. Tables
@@ -289,7 +347,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         })
       }
 
-      
+      // Delete local tables that were deleted on cloud (and not pending push)
+      const cloudTableIds = new Set(cloudTables.map(t => t.id))
+      const localTables = await prisma.table.findMany({ select: { id: true, pendingSync: true } })
+      for (const t of localTables) {
+        if (!t.pendingSync && !cloudTableIds.has(t.id)) {
+          await prisma.table.delete({ where: { id: t.id } }).catch(() => {})
+        }
+      }
+
       // 6. StaffMembers
       const { rows: cloudStaffMembers } = await pg.query(
         `SELECT id, name, role, shift, active, "createdAt" FROM "StaffMember"`
@@ -320,6 +386,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           },
         })
       }
+      const cloudStaffMemberIds = new Set(cloudStaffMembers.map(sm => sm.id))
+      const localStaffMembers = await prisma.staffMember.findMany({ select: { id: true, pendingSync: true } })
+      for (const sm of localStaffMembers) {
+        if (!sm.pendingSync && !cloudStaffMemberIds.has(sm.id)) {
+          await prisma.staffMember.delete({ where: { id: sm.id } }).catch(() => {})
+        }
+      }
 
       // 7. StaffMenuItems
       const { rows: cloudStaffMenuItems } = await pg.query(
@@ -347,6 +420,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             pendingSync: false,
           },
         })
+      }
+      const cloudStaffMenuItemIds = new Set(cloudStaffMenuItems.map(smi => smi.id))
+      const localStaffMenuItems = await prisma.staffMenuItem.findMany({ select: { id: true, pendingSync: true } })
+      for (const smi of localStaffMenuItems) {
+        if (!smi.pendingSync && !cloudStaffMenuItemIds.has(smi.id)) {
+          await prisma.staffMealItem.deleteMany({ where: { staffMenuItemId: smi.id } })
+          await prisma.staffRecipe.deleteMany({ where: { staffMenuItemId: smi.id } })
+          await prisma.staffMenuItem.delete({ where: { id: smi.id } }).catch(() => {})
+        }
       }
 
       // 8. StaffIngredients (staff-kitchen raw inventory)
@@ -378,6 +460,14 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           },
         })
       }
+      const cloudStaffIngredientIds = new Set(cloudStaffIngredients.map(si => si.id))
+      const localStaffIngredients = await prisma.staffIngredient.findMany({ select: { id: true, pendingSync: true } })
+      for (const si of localStaffIngredients) {
+        if (!si.pendingSync && !cloudStaffIngredientIds.has(si.id)) {
+          await prisma.staffRecipe.deleteMany({ where: { staffIngredientId: si.id } })
+          await prisma.staffIngredient.delete({ where: { id: si.id } }).catch(() => {})
+        }
+      }
 
       // 9. StaffRecipes (food → ingredient consumption map)
       const { rows: cloudStaffRecipes } = await pg.query(
@@ -403,6 +493,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             pendingSync: false,
           },
         })
+      }
+      const cloudStaffRecipeIds = new Set(cloudStaffRecipes.map(sr => sr.id))
+      const localStaffRecipes = await prisma.staffRecipe.findMany({ select: { id: true, pendingSync: true } })
+      for (const sr of localStaffRecipes) {
+        if (!sr.pendingSync && !cloudStaffRecipeIds.has(sr.id)) {
+          await prisma.staffRecipe.delete({ where: { id: sr.id } }).catch(() => {})
+        }
       }
 
       // 10. StaffMeals
@@ -476,13 +573,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     // Fetch from Neon:
     // - All OPEN orders (created on other devices)
     // - Any orders currently OPEN locally (to check if they became PAID/CANCELLED)
-    // - Any orders updated in the last 7 days (to catch orders closed while offline)
+    // - Any orders updated in the last 60 days (to catch orders and reports data)
     const { rows: cloudOrders } = await pg.query(
       `SELECT id, "tableId", "waiterId", status, "createdAt", "updatedAt"
        FROM "Order"
        WHERE status = 'OPEN'
           OR id = ANY($1)
-          OR "updatedAt" > NOW() - INTERVAL '7 days'
+          OR "updatedAt" > NOW() - INTERVAL '60 days'
        ORDER BY "createdAt" DESC`,
       [localOpenOrderIds]
     )
@@ -697,6 +794,83 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       }
     }
 
+    // ── Pull Cancellations from Cloud ──────────────────────────────────────────
+    try {
+      const { rows: cloudCancellations } = await pg.query(
+        `SELECT id, "orderItemId", "managerId", reason, "createdAt" FROM "Cancellation"`
+      )
+      for (const cc of cloudCancellations) {
+        const localC = await prisma.cancellation.findUnique({ where: { id: cc.id } })
+        if (localC?.pendingSync) continue
+        const orderItemExists = await prisma.orderItem.findUnique({ where: { id: cc.orderItemId } })
+        const managerExists = await prisma.user.findUnique({ where: { id: cc.managerId } })
+        if (orderItemExists && managerExists) {
+          await prisma.cancellation.upsert({
+            where: { id: cc.id },
+            update: {
+              orderItemId: cc.orderItemId,
+              managerId: cc.managerId,
+              reason: cc.reason,
+              createdAt: new Date(cc.createdAt),
+              pendingSync: false,
+            },
+            create: {
+              id: cc.id,
+              orderItemId: cc.orderItemId,
+              managerId: cc.managerId,
+              reason: cc.reason,
+              createdAt: new Date(cc.createdAt),
+              pendingSync: false,
+            },
+          })
+        }
+      }
+    } catch (e) {
+      console.warn('[Pull cancellations warning]', String(e))
+      errors.push(`Pull cancellations warning: ${String(e)}`)
+    }
+
+    // ── Pull InventoryLogs from Cloud ──────────────────────────────────────────
+    try {
+      const { rows: cloudInventoryLogs } = await pg.query(
+        `SELECT id, "itemName", type, action, quantity, "prevQty", "newQty", "userName", "createdAt"
+         FROM "InventoryLog" ORDER BY "createdAt" DESC LIMIT 1000`
+      )
+      for (const log of cloudInventoryLogs) {
+        const localLog = await prisma.inventoryLog.findUnique({ where: { id: log.id } })
+        if (localLog?.pendingSync) continue
+        await prisma.inventoryLog.upsert({
+          where: { id: log.id },
+          update: {
+            itemName: log.itemName,
+            type: log.type,
+            action: log.action,
+            quantity: Number(log.quantity),
+            prevQty: Number(log.prevQty),
+            newQty: Number(log.newQty),
+            userName: log.userName,
+            createdAt: new Date(log.createdAt),
+            pendingSync: false,
+          },
+          create: {
+            id: log.id,
+            itemName: log.itemName,
+            type: log.type,
+            action: log.action,
+            quantity: Number(log.quantity),
+            prevQty: Number(log.prevQty),
+            newQty: Number(log.newQty),
+            userName: log.userName,
+            createdAt: new Date(log.createdAt),
+            pendingSync: false,
+          },
+        })
+      }
+    } catch (e) {
+      console.warn('[Pull inventory logs warning]', String(e))
+      errors.push(`Pull inventory logs warning: ${String(e)}`)
+    }
+
     return { pulled, errors }
   } catch (e) {
     // Network/connection failed — reset pool so next attempt starts fresh
@@ -738,12 +912,190 @@ export async function syncToCloud(): Promise<SyncResult> {
   const synced = { orders: 0, orderItems: 0, payments: 0, cancellations: 0, inventoryLogs: 0, tables: 0, staffMembers: 0, staffMenuItems: 0, staffIngredients: 0, staffRecipes: 0, staffMeals: 0, staffMealItems: 0 }
 
   try {
-    const pg = getPool()
-
     // ── Pull cloud-native records first ───────────────────────────────────────
-    // (runs inside the isSyncing lock so we don't double-connect)
+    // Pull runs before we grab the push pool. If pull hits a timeout it calls
+    // resetPool() — we must call getPool() AFTER pull completes so the push
+    // phase always gets a fresh, live connection.
     const pullResult = await pullFromCloud()
     errors.push(...pullResult.errors)
+
+    // Get (or re-create) the pool AFTER pull so we never use a terminated pool.
+    // If pull indicated a fatal network error, skip push entirely — the network
+    // is down and any pg.query call will just generate more noise in the logs.
+    const isFatalPull = pullResult.errors.some(e => e.startsWith('Fatal pull error'))
+    if (isFatalPull) {
+      return {
+        success: false,
+        synced,
+        pulled: pullResult.pulled,
+        errors: pullResult.errors,
+        lastSyncedAt: null,
+      }
+    }
+
+    const pg = getPool()
+    // ── Users (must push BEFORE Orders/Cancellations so FK targets exist) ─────
+    const allLocalUsers = await prisma.user.findMany()
+    for (const u of allLocalUsers) {
+      try {
+        // Try to insert/update by primary key (id)
+        await pg.query(
+          `INSERT INTO "User" (id, username, "passwordHash", "fullName", role, phone, active, "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO UPDATE SET
+             "fullName"     = EXCLUDED."fullName",
+             role           = EXCLUDED.role,
+             phone          = EXCLUDED.phone,
+             active         = EXCLUDED.active`,
+          [u.id, u.username, u.passwordHash, u.fullName, u.role, u.phone, u.active, u.createdAt]
+        )
+      } catch (e: any) {
+        // If the INSERT failed due to a username uniqueness conflict (same username,
+        // different id — can happen when cloud was seeded independently), update by username.
+        if (e.code === '23505' && e.constraint?.includes('username')) {
+          try {
+            await pg.query(
+              `UPDATE "User" SET id=$1, "passwordHash"=$3, "fullName"=$4, role=$5, phone=$6, active=$7
+               WHERE username=$2`,
+              [u.id, u.username, u.passwordHash, u.fullName, u.role, u.phone, u.active]
+            )
+          } catch (e2) {
+            errors.push(`User ${u.id} (username fallback): ${String(e2)}`)
+          }
+        } else {
+          errors.push(`User ${u.id}: ${String(e)}`)
+        }
+      }
+    }
+
+    // ── Categories (FK target for MenuItem — must push before items) ──────────
+    const allLocalCategories = await prisma.category.findMany()
+    for (const c of allLocalCategories) {
+      try {
+        await pg.query(
+          `INSERT INTO "Category" (id, name, type, "createdAt")
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             type = EXCLUDED.type`,
+          [c.id, c.name, c.type, c.createdAt]
+        )
+      } catch (e) {
+        errors.push(`Category ${c.id}: ${String(e)}`)
+      }
+    }
+
+    // ── Ingredients (FK target for Recipe — must push before recipes) ─────────
+    const allLocalIngredients = await prisma.ingredient.findMany()
+    for (const i of allLocalIngredients) {
+      try {
+        await pg.query(
+          `INSERT INTO "Ingredient" (id, name, unit, quantity, "minThreshold", "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (id) DO UPDATE SET
+             name           = EXCLUDED.name,
+             unit           = EXCLUDED.unit,
+             quantity       = EXCLUDED.quantity,
+             "minThreshold" = EXCLUDED."minThreshold"`,
+          [i.id, i.name, i.unit, i.quantity, i.minThreshold, i.createdAt]
+        )
+      } catch (e) {
+        errors.push(`Ingredient ${i.id}: ${String(e)}`)
+      }
+    }
+
+    // ── MenuItems — two-pass to handle self-referential parentItemId FK ────────
+    const allLocalMenuItems = await prisma.menuItem.findMany()
+    // Pass 1: upsert with parentItemId = null so no FK violation on first insert
+    for (const item of allLocalMenuItems) {
+      try {
+        await pg.query(
+          `INSERT INTO "MenuItem" (id, "categoryId", name, description, price, available,
+             "stockQuantity", "barQuantity", "costPrice", "lowStockThreshold",
+             "parentItemId", "unitMultiplier", "createdAt")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12)
+           ON CONFLICT (id) DO UPDATE SET
+             "categoryId"       = EXCLUDED."categoryId",
+             name               = EXCLUDED.name,
+             description        = EXCLUDED.description,
+             price              = EXCLUDED.price,
+             available          = EXCLUDED.available,
+             "stockQuantity"    = EXCLUDED."stockQuantity",
+             "barQuantity"      = EXCLUDED."barQuantity",
+             "costPrice"        = EXCLUDED."costPrice",
+             "lowStockThreshold"= EXCLUDED."lowStockThreshold",
+             "unitMultiplier"   = EXCLUDED."unitMultiplier"`,
+          [item.id, item.categoryId, item.name, item.description, item.price,
+           item.available, item.stockQuantity, item.barQuantity, item.costPrice,
+           item.lowStockThreshold, item.unitMultiplier, item.createdAt]
+        )
+      } catch (e) {
+        errors.push(`MenuItem ${item.id}: ${String(e)}`)
+      }
+    }
+    // Pass 2: set parentItemId links now that all items exist
+    for (const item of allLocalMenuItems) {
+      if (item.parentItemId) {
+        try {
+          await pg.query(
+            `UPDATE "MenuItem" SET "parentItemId" = $1 WHERE id = $2`,
+            [item.parentItemId, item.id]
+          )
+        } catch (e) {
+          errors.push(`MenuItem parentLink ${item.id}: ${String(e)}`)
+        }
+      }
+    }
+
+    // ── Recipes (push AFTER both MenuItem + Ingredient exist in cloud) ─────────
+    const allLocalRecipes = await prisma.recipe.findMany()
+    for (const r of allLocalRecipes) {
+      try {
+        await pg.query(
+          `INSERT INTO "Recipe" (id, "menuItemId", "ingredientId", quantity)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+          [r.id, r.menuItemId, r.ingredientId, r.quantity]
+        )
+      } catch (e) {
+        errors.push(`Recipe ${r.id}: ${String(e)}`)
+      }
+    }
+
+    // ── Push-diff deletions ────────────────────────────────────────────────────
+    // Items deleted locally while offline won't be caught by the DELETE route's
+    // immediate Neon call. Compare local id sets with cloud and delete orphans.
+    try {
+      const localMenuItemIds = new Set(allLocalMenuItems.map(i => i.id))
+      const { rows: cloudMenuItems } = await pg.query(`SELECT id FROM "MenuItem"`)
+      const orphanMenuItemIds = cloudMenuItems.map(r => r.id).filter(id => !localMenuItemIds.has(id))
+      for (const id of orphanMenuItemIds) {
+        await pg.query(`UPDATE "MenuItem" SET "parentItemId" = NULL WHERE "parentItemId" = $1`, [id]).catch(() => {})
+        await pg.query(`UPDATE "StaffMenuItem" SET "linkedMenuItemId" = NULL WHERE "linkedMenuItemId" = $1`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "menuItemId" = $1)`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "OrderItem" WHERE "menuItemId" = $1`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "Recipe" WHERE "menuItemId" = $1`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "MenuItem" WHERE id = $1`, [id]).catch(() => {})
+      }
+
+      const localIngredientIds = new Set(allLocalIngredients.map(i => i.id))
+      const { rows: cloudIngredients } = await pg.query(`SELECT id FROM "Ingredient"`)
+      const orphanIngredientIds = cloudIngredients.map(r => r.id).filter(id => !localIngredientIds.has(id))
+      for (const id of orphanIngredientIds) {
+        await pg.query(`DELETE FROM "Recipe" WHERE "ingredientId" = $1`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "Ingredient" WHERE id = $1`, [id]).catch(() => {})
+      }
+
+      const localCategoryIds = new Set(allLocalCategories.map(c => c.id))
+      const { rows: cloudCategories } = await pg.query(`SELECT id FROM "Category"`)
+      const orphanCategoryIds = cloudCategories.map(r => r.id).filter(id => !localCategoryIds.has(id))
+      for (const id of orphanCategoryIds) {
+        await pg.query(`UPDATE "MenuItem" SET "categoryId" = NULL WHERE "categoryId" = $1`, [id]).catch(() => {})
+        await pg.query(`DELETE FROM "Category" WHERE id = $1`, [id]).catch(() => {})
+      }
+    } catch (e) {
+      errors.push(`Push-diff cleanup: ${String(e)}`)
+    }
 
     // ── Tables (must push BEFORE Orders so foreign keys exist in cloud) ──────
     const allLocalTables = await prisma.table.findMany()
@@ -813,8 +1165,16 @@ export async function syncToCloud(): Promise<SyncResult> {
     }
 
     // ── OrderItems ────────────────────────────────────────────────────────────
-    const pendingItems = await prisma.orderItem.findMany({ where: { pendingSync: true } })
+    const pendingItems = await prisma.orderItem.findMany({
+      where: { pendingSync: true },
+      include: { order: { select: { pendingSync: true } } },
+    })
     for (const oi of pendingItems) {
+      // Skip if the parent Order hasn't been synced yet — the cloud FK would fail
+      if (oi.order?.pendingSync) {
+        errors.push(`OrderItem ${oi.id}: skipped — parent order not yet synced`)
+        continue
+      }
       try {
         await pg.query(
           `INSERT INTO "OrderItem" (id, "orderId", "menuItemId", quantity, notes, status, "printedAt", "createdAt")
@@ -871,9 +1231,32 @@ export async function syncToCloud(): Promise<SyncResult> {
     }
 
     // ── Cancellations ─────────────────────────────────────────────────────────
-    const pendingCancellations = await prisma.cancellation.findMany({ where: { pendingSync: true } })
+    const pendingCancellations = await prisma.cancellation.findMany({
+      where: { pendingSync: true },
+      include: {
+        manager: true,
+        orderItem: { select: { pendingSync: true } },
+      },
+    })
     for (const c of pendingCancellations) {
+      // Skip if the referenced OrderItem hasn't been synced yet
+      if (c.orderItem?.pendingSync) {
+        errors.push(`Cancellation ${c.id}: skipped — orderItem not yet synced`)
+        continue
+      }
       try {
+        // Ensure the manager User exists on Neon before inserting the Cancellation
+        if (c.manager) {
+          await pg.query(
+            `INSERT INTO "User" (id, username, "passwordHash", "fullName", role, phone, active, "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE SET
+               "fullName" = EXCLUDED."fullName",
+               role       = EXCLUDED.role`,
+            [c.manager.id, c.manager.username, c.manager.passwordHash, c.manager.fullName,
+             c.manager.role, c.manager.phone, c.manager.active, c.manager.createdAt]
+          )
+        }
         await pg.query(
           `INSERT INTO "Cancellation" (id, "orderItemId", "managerId", reason, "createdAt")
            VALUES ($1, $2, $3, $4, $5)

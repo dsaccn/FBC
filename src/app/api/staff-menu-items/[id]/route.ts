@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
+import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -49,9 +50,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       )
     }
 
+    await prisma.staffRecipe.deleteMany({ where: { staffMenuItemId: id } })
     await prisma.staffMenuItem.delete({
       where: { id }
     })
+    await deleteFromCloud(`DELETE FROM "StaffRecipe" WHERE "staffMenuItemId" = $1`, [id])
+    await deleteFromCloud(`DELETE FROM "StaffMenuItem" WHERE id = $1`, [id])
+    backgroundSync()
     return NextResponse.json({ success: true, message: 'Deleted staff menu item' })
   } catch (err) {
     console.error('[DELETE /api/staff-menu-items/[id]]', err)

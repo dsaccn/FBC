@@ -3,6 +3,7 @@ import { verifyToken } from '@/lib/session'
 
 const ROLE_ROUTES: Record<string, string[]> = {
   // UI Dashboard Routes
+  '/dashboard/delivery':    ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/staff-meals': ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/staff':       ['ADMIN'],
   '/dashboard/menu':        ['ADMIN'],
@@ -15,6 +16,8 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/dashboard':             ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
 
   // API Routes
+  '/api/verify-receipt':    ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
+  '/api/delivery-orders':   ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/staff-members':     ['ADMIN', 'MANAGER'],
   '/api/staff-menu-items':  ['ADMIN', 'MANAGER'],
   '/api/staff-ingredients': ['ADMIN', 'MANAGER'],

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Pencil, UserX, UserCheck } from 'lucide-react'
+import { Plus, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 
@@ -84,6 +84,23 @@ export default function StaffPage() {
       toast.error('Network error saving staff')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteStaff(s: Staff) {
+    if (!confirm(`Permanently delete "${s.fullName}" (${s.username})? This cannot be undone and will remove all their orders and records.`)) return
+    try {
+      const res = await fetch(`/api/staff/${s.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to delete staff member')
+        return
+      }
+      toast.success(`${s.fullName} deleted permanently`)
+      setShowForm(false)
+      load()
+    } catch {
+      toast.error('Network error deleting staff member')
     }
   }
 
@@ -188,6 +205,17 @@ export default function StaffPage() {
               <button className="btn btn-gold" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving...' : editStaff ? 'Save Changes' : 'Add Staff'}</button>
               <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
+            {editStaff && (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--black-border)' }}>
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => deleteStaff(editStaff)}
+                >
+                  <Trash2 size={14} /> Delete User Permanently
+                </button>
+              </div>
+            )}
           </div>
         </div></Portal>
       )}

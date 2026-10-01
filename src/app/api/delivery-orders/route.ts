@@ -1,0 +1,163 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { backgroundSync } from '@/lib/sync-engine'
+import { getSession } from '@/lib/session'
+
+// Helper: deduct ingredient stock for a list of ordered items
+async function deductIngredients(items: { menuItemId: string; quantity: number }[]) {
+  for (const item of items) {
+    const recipes = await prisma.recipe.findMany({
+      where: { menuItemId: item.menuItemId },
+      include: { ingredient: true },
+    })
+    for (const recipe of recipes) {
+      const needed = recipe.quantity * item.quantity
+      const newQty = Math.max(0, recipe.ingredient.quantity - needed)
+      await prisma.ingredient.update({
+        where: { id: recipe.ingredientId },
+        data: { quantity: newQty },
+      })
+    }
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const status = searchParams.get('status')
+    const type = searchParams.get('type') // 'DELIVERY' | 'TAKEAWAY' | null
+
+    const allOrders = await prisma.order.findMany({
+      where: {
+        ...(status ? { status } : {}),
+      },
+      include: {
+        table: true,
+        waiter: { select: { id: true, fullName: true, username: true } },
+        orderItems: {
+          include: { menuItem: { include: { category: true } }, cancellation: true },
+        },
+        payment: {
+          include: { cashier: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    // Filter to only Delivery and Takeaway orders based on table number
+    const deliveryOrders = allOrders.filter(o => {
+      const num = o.table?.number || ''
+      const isDlv = num.startsWith('Delivery:') || num.startsWith('DELIVERY')
+      const isTak = num.startsWith('Takeaway:') || num.startsWith('TAKEAWAY')
+      
+      if (!isDlv && !isTak) return false
+      if (type === 'DELIVERY') return isDlv
+      if (type === 'TAKEAWAY') return isTak
+      return true
+    })
+
+    return NextResponse.json(deliveryOrders)
+  } catch (err) {
+    console.error('[GET /api/delivery-orders]', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json()
+    const { orderType, orderName, phone, address, deliveryNotes, items } = body
+
+    if (!orderName || !orderName.trim()) {
+      return NextResponse.json({ error: 'Order name / customer name is required' }, { status: 400 })
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'At least one item must be ordered' }, { status: 400 })
+    }
+
+    // Resolve waiter / server from session
+    const session = await getSession()
+    let waiterId = body.waiterId || session?.id
+
+    let waiter = waiterId ? await prisma.user.findUnique({ where: { id: waiterId } }) : null
+    if (!waiter && session?.username) {
+      waiter = await prisma.user.findUnique({ where: { username: session.username } })
+    }
+
+    if (!waiter) {
+      // Fallback: pick any active user so the order can still be taken
+      waiter = await prisma.user.findFirst({ where: { active: true } })
+    }
+
+    if (!waiter) {
+      return NextResponse.json({ error: 'No active staff user found to assign order' }, { status: 400 })
+    }
+
+    const typePrefix = (orderType || 'DELIVERY').toUpperCase() === 'TAKEAWAY' ? 'Takeaway' : 'Delivery'
+    const cleanName = orderName.trim()
+    const cleanPhone = phone ? phone.trim() : ''
+    const shortSeq = Math.floor(100 + Math.random() * 900) // e.g. 482
+    const timeCode = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }).replace(':', '')
+
+    // Unique table number representing this delivery order
+    const tableNumber = `${typePrefix}: ${cleanName}${cleanPhone ? ` (${cleanPhone})` : ''} #${timeCode}-${shortSeq}`
+
+    // Create the virtual delivery table
+    const table = await prisma.table.create({
+      data: {
+        number: tableNumber,
+        status: 'OCCUPIED',
+        pendingSync: true,
+      },
+    })
+
+    // Prepare metadata note if address or delivery notes are present
+    const metaPrefix = [
+      address?.trim() ? `📍 ${address.trim()}` : '',
+      deliveryNotes?.trim() ? `📝 ${deliveryNotes.trim()}` : '',
+    ].filter(Boolean).join(' | ')
+
+    // Create the order with all items
+    const order = await prisma.order.create({
+      data: {
+        tableId: table.id,
+        waiterId: waiter.id,
+        pendingSync: true,
+        orderItems: {
+          create: items.map((item: { menuItemId: string; quantity: number; notes?: string }, idx: number) => {
+            let combinedNote = item.notes ? item.notes.trim() : ''
+            // Attach address/delivery notes to the first item for persistent storage
+            if (idx === 0 && metaPrefix) {
+              combinedNote = combinedNote ? `[${metaPrefix}] ${combinedNote}` : `[${metaPrefix}]`
+            }
+            return {
+              menuItemId: item.menuItemId,
+              quantity: item.quantity,
+              notes: combinedNote || null,
+              pendingSync: true,
+            }
+          }),
+        },
+      },
+      include: {
+        table: true,
+        waiter: { select: { id: true, fullName: true, username: true } },
+        orderItems: {
+          include: { menuItem: { include: { category: true } } },
+        },
+      },
+    })
+
+    // Deduct stock for recipes
+    await deductIngredients(items)
+
+    // Trigger background sync to Neon
+    backgroundSync()
+
+    return NextResponse.json(order, { status: 201 })
+  } catch (err) {
+    console.error('[POST /api/delivery-orders]', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}

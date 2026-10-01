@@ -36,12 +36,33 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  // Prevent third-party Chrome extensions from triggering Next.js dev error overlay
+                  function isExtensionNoise(msg, filename, stack) {
+                    var text = (msg || '') + ' ' + (filename || '') + ' ' + (stack || '');
+                    return (
+                      text.indexOf('chrome-extension://') !== -1 ||
+                      text.indexOf('eppiocemhmnlbhjplcgkofciiegomcon') !== -1 ||
+                      text.indexOf('M_ID') !== -1 ||
+                      text.indexOf('bis_') !== -1 ||
+                      text.indexOf('bis_skin_checked') !== -1
+                    );
+                  }
+
+                  // Intercept window errors during capture phase before Next.js overlay
                   window.addEventListener('error', function(e) {
-                    if (
-                      (e.filename && e.filename.indexOf('chrome-extension://') !== -1) ||
-                      (e.message && (e.message.indexOf('M_ID') !== -1 || e.message.indexOf('bis_') !== -1))
-                    ) {
+                    var stack = (e.error && e.error.stack) || '';
+                    if (isExtensionNoise(e.message, e.filename, stack)) {
+                      e.stopImmediatePropagation();
+                      e.preventDefault();
+                      return true;
+                    }
+                  }, true);
+
+                  // Intercept unhandled promise rejections from extensions
+                  window.addEventListener('unhandledrejection', function(e) {
+                    var reason = e.reason;
+                    var stack = (reason && reason.stack) || '';
+                    var message = (reason && (reason.message || String(reason))) || '';
+                    if (isExtensionNoise(message, '', stack)) {
                       e.stopImmediatePropagation();
                       e.preventDefault();
                       return true;
@@ -62,16 +83,10 @@ export default function RootLayout({
                           } else if (arg && (arg.message || arg.stack)) {
                             str += ' ' + (arg.message || '') + ' ' + (arg.stack || '');
                           } else {
-                            try { str += ' ' + JSON.stringify(arg); } catch(e) {}
+                            try { str += ' ' + JSON.stringify(arg); } catch(err) {}
                           }
                         }
-                        if (
-                          str.indexOf('bis_skin_checked') !== -1 ||
-                          str.indexOf('bis_register') !== -1 ||
-                          str.indexOf('__processed_') !== -1 ||
-                          str.indexOf('chrome-extension://') !== -1 ||
-                          str.indexOf('M_ID') !== -1
-                        ) {
+                        if (isExtensionNoise(str, '', '')) {
                           return;
                         }
                         return currentError.apply(console, arguments);

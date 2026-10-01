@@ -506,6 +506,69 @@ html, body {
   }
 }
 
+/* ── Delivery / Takeaway Order Modal Dialog ────────────────────────── */
+.delivery-order-dialog {
+  background: var(--black-card);
+  border: 1px solid var(--black-border);
+  border-radius: 16px;
+  width: min(1080px, 96vw);
+  height: min(780px, 92vh);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.9), 0 0 30px rgba(201, 168, 76, 0.12);
+  animation: fadeIn 0.2s ease;
+  position: relative;
+}
+
+/* Desktop layout: Side-by-side 2 columns */
+@media (min-width: 861px) {
+  .delivery-modal-body {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.3fr) minmax(360px, 1fr) !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .delivery-col-menu {
+    display: flex !important;
+    border-right: 1px solid var(--black-border);
+  }
+  .delivery-col-cart {
+    display: flex !important;
+  }
+  .delivery-mobile-tabs {
+    display: none !important;
+  }
+  .delivery-mobile-bottom-bar {
+    display: none !important;
+  }
+}
+
+/* Mobile & Tablet layout: Full-width tabbed experience, zero squeezing */
+@media (max-width: 860px) {
+  .delivery-order-dialog {
+    width: 100% !important;
+    max-width: calc(100vw - 20px) !important;
+    height: 94vh !important;
+    max-height: 94vh !important;
+    border-radius: 14px;
+    margin: auto;
+  }
+  .delivery-modal-body {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .delivery-mobile-tabs {
+    display: flex !important;
+    flex-shrink: 0;
+  }
+}
+
 
 /* OfflineBanner animations */
 @keyframes ob-spin {

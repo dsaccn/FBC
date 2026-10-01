@@ -9,7 +9,7 @@ import Portal from '@/components/Portal'
 
 interface OrderItem {
   id: string
-  menuItem: { id: string; name: string; price: number; category: { name: string; type: string } }
+  menuItem: { id: string; name: string; price: number; category?: { name: string; type: string } | null }
   quantity: number
   notes?: string
   status: string
@@ -222,7 +222,9 @@ export default function OrderDetailPage() {
                 <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '8px', background: item.status === 'PRINTED' ? 'rgba(82,183,136,0.15)' : item.status === 'CANCELLED' ? 'rgba(90,80,64,0.2)' : 'rgba(201,168,76,0.1)', color: item.status === 'PRINTED' ? 'var(--success-light)' : item.status === 'CANCELLED' ? 'var(--text-muted)' : 'var(--gold)' }}>
                   {item.status}
                 </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.menuItem.category.type === 'FOOD' ? '🍳' : '🍹'}</span>
+                {item.menuItem.category?.type && (
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.menuItem.category.type === 'FOOD' ? '🍳' : '🍹'}</span>
+                )}
               </div>
               {item.notes && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Note: {item.notes}</div>}
               {item.cancellation && <div style={{ fontSize: '12px', color: 'var(--danger-light)', marginTop: '2px' }}>Cancelled: {item.cancellation.reason} (by {item.cancellation.manager.fullName})</div>}

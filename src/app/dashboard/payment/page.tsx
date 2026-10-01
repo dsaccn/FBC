@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Printer, CheckCircle } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
+import ReceiptVerifier from '@/components/ReceiptVerifier'
 
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
 interface Order { id: string; table: { number: string; id: string }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
@@ -211,11 +212,25 @@ export default function PaymentPage() {
 
             {/* Method */}
             <label className="input-label">Payment Method</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
               {PAYMENT_METHODS.map(m => (
                 <button key={m} className={`btn btn-sm ${method === m ? 'btn-gold' : 'btn-outline'}`} onClick={() => setMethod(m)}>{m}</button>
               ))}
             </div>
+
+            {/* Official Digital Receipt Verifier (Telebirr, CBE, etc.) */}
+            <ReceiptVerifier
+              method={method}
+              expectedAmount={total}
+              onVerified={(receipt) => {
+                const verifiedTag = `[Verified ${receipt.provider} | Ref: ${receipt.reference}${receipt.payerName ? ` | Payer: ${receipt.payerName}` : ''}]`
+                setNotes(prev => prev ? `${prev} ${verifiedTag}` : verifiedTag)
+                toast.success(`Verified official ${receipt.provider} slip: ${receipt.amount ? `${receipt.amount.toFixed(2)} ETB` : 'Confirmed'}`)
+              }}
+              onClear={() => {
+                setNotes(prev => prev.replace(/\[Verified[^\]]+\]/g, '').trim())
+              }}
+            />
 
             {/* Discount */}
             {(session?.role === 'ADMIN' || session?.role === 'MANAGER') && (

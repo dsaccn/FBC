@@ -13,10 +13,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
+import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     await prisma.recipe.delete({ where: { id } })
+    await deleteFromCloud(`DELETE FROM "Recipe" WHERE id = $1`, [id])
+    backgroundSync()
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[DELETE /api/recipes/[id]]', err)

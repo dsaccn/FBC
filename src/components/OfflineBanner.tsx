@@ -45,13 +45,16 @@ export default function OfflineBanner() {
       const newOrders = data.pulled?.orders ?? 0
       const newItems = data.pulled?.orderItems ?? 0
       const total = newOrders + newItems
+
+      // Always notify pages to refresh after a successful pull so table statuses
+      // stay in sync even when no new orders arrived (e.g. a table became free).
+      window.dispatchEvent(new CustomEvent('cloud-pull-complete', { detail: { newOrders } }))
+
       if (total > 0) {
         setPulledCount(total)
         setLastPulled(new Date().toLocaleTimeString())
         setVisible(true)
         if (hideTimer.current) clearTimeout(hideTimer.current)
-        // Notify pages (floor map, orders list) to refresh
-        window.dispatchEvent(new CustomEvent('cloud-pull-complete', { detail: { newOrders } }))
         scheduleHide()
       }
     } catch {

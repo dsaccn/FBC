@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -14,6 +14,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   await prisma.table.delete({ where: { id } })
+  await deleteFromCloud(`DELETE FROM "Table" WHERE id = $1`, [id])
   backgroundSync()
   return NextResponse.json({ success: true })
 }

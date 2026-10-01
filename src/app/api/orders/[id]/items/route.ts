@@ -27,7 +27,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { itemIds } = await req.json()
     await prisma.orderItem.updateMany({
       where: { id: { in: itemIds } },
-      data: { status: 'PRINTED', printedAt: new Date() },
+      // Mark as pendingSync so print status is pushed to cloud on next sync
+      data: { status: 'PRINTED', printedAt: new Date(), pendingSync: true },
     })
 
     // Trigger background sync to Neon
@@ -53,14 +54,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const order = await prisma.order.findUnique({ where: { id } })
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    // Create new order items
+    // Create new order items — mark as pendingSync so they're pushed to Neon
     await prisma.orderItem.createMany({
       data: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
         orderId: id,
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         notes: item.notes || null,
+        pendingSync: true,
       })),
+    })
+
+    // Re-flag the parent order as pendingSync so the sync engine re-pushes
+    // its updated state (status, updatedAt) and discovers the new items.
+    await prisma.order.update({
+      where: { id },
+      data: { pendingSync: true },
     })
 
     // Deduct drink bottle stock

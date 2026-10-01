@@ -28,6 +28,7 @@ export async function POST(req: Request) {
         quantity: qtyToCancel,
         notes: orderItem.notes,
         status: 'CANCELLED',
+        pendingSync: true,  // push this split item to cloud
       }
     })
     cancelledItemId = newCancelledItem.id
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
 
   // Log cancellation
   const cancellation = await prisma.cancellation.create({
-    data: { orderItemId: cancelledItemId, managerId, reason },
+    data: { orderItemId: cancelledItemId, managerId, reason, pendingSync: true },
     include: {
       orderItem: { include: { menuItem: true } },
       manager: { select: { fullName: true } },

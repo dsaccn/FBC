@@ -33,7 +33,8 @@ export default function TablesPage() {
     try {
       const res = await fetch('/api/tables')
       if (res.ok) {
-        setTables(await res.json())
+        const allTables: Table[] = await res.json()
+        setTables(allTables.filter(t => !t.number.startsWith('Delivery:') && !t.number.startsWith('Takeaway:') && !t.number.startsWith('DLV-') && !t.number.startsWith('DELIVERY') && !t.number.startsWith('TAKEAWAY')))
       } else {
         console.error('Failed to load tables:', res.statusText)
         toast.error('Failed to load floor tables')
@@ -48,11 +49,21 @@ export default function TablesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Auto-refresh when OfflineBanner pulls new cloud orders
+  // Auto-refresh when OfflineBanner pulls new cloud orders or completes any sync
   useEffect(() => {
     const handleCloudPull = () => load()
+    const handleSyncComplete = () => load()
     window.addEventListener('cloud-pull-complete', handleCloudPull)
-    return () => window.removeEventListener('cloud-pull-complete', handleCloudPull)
+    window.addEventListener('sync-complete', handleSyncComplete)
+
+    // Poll every 30s so table status stays live across terminals
+    const interval = setInterval(load, 30_000)
+
+    return () => {
+      window.removeEventListener('cloud-pull-complete', handleCloudPull)
+      window.removeEventListener('sync-complete', handleSyncComplete)
+      clearInterval(interval)
+    }
   }, [load])
 
   async function addTable() {

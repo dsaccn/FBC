@@ -53,13 +53,14 @@ interface ReportData {
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [activeTab, setActiveTab] = useState('summary')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     try {
       const params = new URLSearchParams()
       if (from) params.set('from', from)
@@ -73,11 +74,37 @@ export default function ReportsPage() {
     } catch (err) {
       console.error('Error loading reports:', err)
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [from, to])
 
-  useEffect(() => { load() }, [load])
+  const triggerSyncAndRefresh = async () => {
+    setSyncing(true)
+    try {
+      await fetch('/api/sync', { method: 'POST' })
+    } catch (err) {
+      console.warn('[Reports] Sync trigger error:', err)
+    } finally {
+      await load(false)
+      setSyncing(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // Poll reports data every 30s to keep reports live
+    const interval = setInterval(() => load(false), 30000)
+
+    const handleSyncComplete = () => load(false)
+    window.addEventListener('sync-complete', handleSyncComplete)
+    window.addEventListener('cloud-pull-complete', handleSyncComplete)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('sync-complete', handleSyncComplete)
+      window.removeEventListener('cloud-pull-complete', handleSyncComplete)
+    }
+  }, [load])
 
   function printReport() { window.print() }
 
@@ -269,7 +296,17 @@ export default function ReportsPage() {
           </div>
           <div style={{ width: '1px', height: '24px', background: 'var(--black-border)', margin: '0 4px' }} className="desktop-only" />
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button className="btn btn-ghost btn-sm" onClick={load} title="Refresh"><RefreshCw size={16} /></button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={triggerSyncAndRefresh}
+              disabled={syncing || loading}
+              title="Sync & Refresh Data"
+            >
+              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+              <span className="desktop-only" style={{ marginLeft: '4px', fontSize: '13px' }}>
+                {syncing ? 'Syncing...' : 'Sync'}
+              </span>
+            </button>
             <button className="btn btn-gold btn-sm" onClick={printReport}><Printer size={16} /> Print</button>
           </div>
         </div>

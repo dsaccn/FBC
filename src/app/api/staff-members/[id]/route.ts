@@ -29,6 +29,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
+import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -49,12 +51,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         where: { id },
         data: { active: false }
       })
+      await deleteFromCloud(`UPDATE "StaffMember" SET active = false WHERE id = $1`, [id])
+      backgroundSync()
       return NextResponse.json({ success: true, message: 'Deactivated staff member (meals exist)', staff })
     } else {
       // Hard delete if no meals logged yet
       await prisma.staffMember.delete({
         where: { id }
       })
+      await deleteFromCloud(`DELETE FROM "StaffMember" WHERE id = $1`, [id])
+      backgroundSync()
       return NextResponse.json({ success: true, message: 'Deleted staff member' })
     }
   } catch (err) {

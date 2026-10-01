@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,16 +14,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    await prisma.menuItem.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: null },
+    })
     await prisma.category.delete({ where: { id } })
+    await deleteFromCloud(`UPDATE "MenuItem" SET "categoryId" = NULL WHERE "categoryId" = $1`, [id])
+    await deleteFromCloud(`DELETE FROM "Category" WHERE id = $1`, [id])
+    backgroundSync()
     return NextResponse.json({ success: true })
   } catch (err: any) {
     console.error('[DELETE /api/categories/[id]]', err)
-    if (err.code === 'P2003') {
-      return NextResponse.json({ error: 'Cannot delete category because it has menu items attached to it. Please delete or reassign the menu items first.' }, { status: 400 })
-    }
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

@@ -50,22 +50,49 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { tableId, waiterId, items } = await req.json()
+    const { tableId, waiterId: clientWaiterId, items } = await req.json()
 
-    if (!tableId || !waiterId || !items?.length) {
+    if (!tableId || !clientWaiterId || !items?.length) {
       return NextResponse.json({ error: 'Missing tableId, waiterId, or items' }, { status: 400 })
     }
 
-    // Create order with items
+    // Resolve the waiter from local DB — the client sends session.id (from JWT),
+    // but if a sync replaced the local user record the JWT id may be stale.
+    // We look up by id first, then fall back to session username, so we always
+    // get the canonical local id before creating the order.
+    let waiter = await prisma.user.findUnique({ where: { id: clientWaiterId } })
+
+    if (!waiter) {
+      // JWT id is stale — look up by username from the session cookie
+      const { getSession } = await import('@/lib/session')
+      const session = await getSession()
+      if (session?.username) {
+        waiter = await prisma.user.findUnique({ where: { username: session.username } })
+      }
+    }
+
+    if (!waiter) {
+      return NextResponse.json(
+        { error: 'Your login session is outdated. Please log out and log in again.' },
+        { status: 401 }
+      )
+    }
+
+    const waiterId = waiter.id   // always use the authoritative local id
+
+    // Create order with items — mark both order + items as pendingSync so
+    // they are pushed to Neon on the next background sync cycle.
     const order = await prisma.order.create({
       data: {
         tableId,
         waiterId,
+        pendingSync: true,
         orderItems: {
           create: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
             notes: item.notes || null,
+            pendingSync: true,
           })),
         },
       },

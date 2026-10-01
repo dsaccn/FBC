@@ -7,7 +7,7 @@ export async function POST(req: Request) {
 
   // Create payment
   const payment = await prisma.payment.create({
-    data: { orderId, cashierId, amount, method, discount: discount || 0, discountType: discountType || 'fixed', isComplimentary: isComplimentary || false, notes },
+    data: { orderId, cashierId, amount, method, discount: discount || 0, discountType: discountType || 'fixed', isComplimentary: isComplimentary || false, notes, pendingSync: true },
     include: { order: { include: { table: true } } },
   })
 

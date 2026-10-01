@@ -1,0 +1,334 @@
+/**
+ * Ethiopian Bank & Mobile Money Digital Receipt Verifier
+ * Inspired by ethiobank-receipts
+ * Supports Telebirr, Commercial Bank of Ethiopia (CBE), and general receipt URL links.
+ */
+
+export const DEFAULT_CBE_ACCOUNT = '1000545397618'
+
+export interface VerifiedReceipt {
+  success: boolean
+  provider: 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA' | 'UNKNOWN'
+  reference: string
+  payerName?: string
+  payerAccountOrPhone?: string
+  receiverName?: string
+  receiverAccount?: string
+  isReceiverMatched?: boolean // True if receiver account matches our lounge account (1000545397618)
+  amount?: number
+  currency: string
+  dateTime?: string
+  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN'
+  rawText?: string
+  errorMessage?: string
+}
+
+export interface VerifyReceiptParams {
+  provider?: 'TELEBIRR' | 'CBE' | 'AUTO'
+  referenceOrUrl: string
+  accountDigits?: string // Used for CBE (last 8 digits of account, defaults to 1000545397618)
+  expectedAmount?: number
+}
+
+/**
+ * Clean and normalize transaction ID / reference string
+ */
+export function cleanReference(raw: string): string {
+  return (raw || '').trim().replace(/\s+/g, '')
+}
+
+/**
+ * Verify Telebirr receipt by transaction ID or URL
+ * Official endpoint: https://transactioninfo.ethiotelecom.et/receipt/{id}
+ */
+export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedReceipt> {
+  const clean = cleanReference(idOrUrl)
+  if (!clean) {
+    return {
+      success: false,
+      provider: 'TELEBIRR',
+      reference: '',
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: 'Telebirr transaction ID or receipt URL is required',
+    }
+  }
+
+  // Extract ID if full URL is passed
+  let transactionId = clean
+  let fetchUrl = clean
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    fetchUrl = clean
+    const match = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
+    if (match) transactionId = match[1]
+  } else {
+    transactionId = clean.toUpperCase()
+    fetchUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionId}`
+  }
+
+  try {
+    const res = await fetch(fetchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (!res.ok) {
+      return {
+        success: false,
+        provider: 'TELEBIRR',
+        reference: transactionId,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: `Telebirr server returned HTTP ${res.status}`,
+      }
+    }
+
+    const html = await res.text()
+
+    if (html.includes('This request is not correct') || html.includes('not found') || html.length < 400) {
+      return {
+        success: false,
+        provider: 'TELEBIRR',
+        reference: transactionId,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: 'Invalid or expired Telebirr transaction receipt. Please check the code.',
+      }
+    }
+
+    // Helper regex to extract label -> value pairs in HTML table
+    const extractField = (pattern: RegExp): string | undefined => {
+      const match = html.match(pattern)
+      return match ? match[1].replace(/<[^>]+>/g, '').trim() : undefined
+    }
+
+    const payerName = extractField(/Payer\s*Name[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const payerPhone = extractField(/Payer\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const receiverName = extractField(/Credited\s*Party\s*name[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const receiverPhone = extractField(/Credited\s*party\s*account\s*no[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i) || 'Completed'
+    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const rawDate = extractField(/Payment\s*date[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+
+    let parsedAmount: number | undefined
+    if (rawAmount) {
+      const numMatch = rawAmount.replace(/,/g, '').match(/[\d.]+/)
+      if (numMatch) parsedAmount = parseFloat(numMatch[0])
+    }
+
+    const isSuccess = /completed|success|approved/i.test(rawStatus)
+
+    return {
+      success: isSuccess,
+      provider: 'TELEBIRR',
+      reference: transactionId,
+      payerName: payerName || undefined,
+      payerAccountOrPhone: payerPhone || undefined,
+      receiverName: receiverName || undefined,
+      receiverAccount: receiverPhone || undefined,
+      amount: parsedAmount,
+      currency: 'ETB',
+      dateTime: rawDate || undefined,
+      status: isSuccess ? 'COMPLETED' : 'FAILED',
+      rawText: `${payerName || ''} -> ${receiverName || ''} (${parsedAmount || 0} ETB)`,
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      provider: 'TELEBIRR',
+      reference: transactionId,
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: err.name === 'TimeoutError' || err.message?.includes('timeout')
+        ? 'Telebirr network request timed out. Please check your internet connection.'
+        : `Verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
+ * Verify Commercial Bank of Ethiopia (CBE) receipt
+ * Official endpoint: https://apps.cbe.com.et:100/?id={ft}{last8}
+ */
+export async function verifyCbeReceipt(
+  ftNumberOrUrl: string,
+  accountDigits?: string
+): Promise<VerifiedReceipt> {
+  const clean = cleanReference(ftNumberOrUrl)
+  if (!clean) {
+    return {
+      success: false,
+      provider: 'CBE',
+      reference: '',
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: 'CBE FT reference or slip URL is required',
+    }
+  }
+
+  let fetchUrl = clean
+  let ftCode = clean.toUpperCase()
+
+  // Use provided account digits or fallback to default CBE account (1000545397618)
+  const targetAcc = (accountDigits && accountDigits.trim().length > 0)
+    ? accountDigits.trim()
+    : DEFAULT_CBE_ACCOUNT
+
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    fetchUrl = clean
+    const match = clean.match(/[?&]id=([A-Za-z0-9]+)/i)
+    if (match) ftCode = match[1].slice(0, 12).toUpperCase()
+  } else {
+    // Construct CBE URL: FT code + last 8 digits of account
+    const cleanFt = clean.toUpperCase()
+    const cleanAcc = targetAcc.replace(/\D/g, '')
+
+    if (cleanFt.length > 12 && !accountDigits) {
+      // User passed full id (FT code + account digits combined)
+      fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}`
+      ftCode = cleanFt.slice(0, 12)
+    } else if (cleanAcc.length >= 8) {
+      const last8 = cleanAcc.slice(-8)
+      fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}${last8}`
+      ftCode = cleanFt
+    } else {
+      // Fallback to default CBE account last 8 digits (45397618)
+      const last8 = DEFAULT_CBE_ACCOUNT.slice(-8)
+      fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}${last8}`
+      ftCode = cleanFt
+    }
+  }
+
+  try {
+    const res = await fetch(fetchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (!res.ok) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: ftCode,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: `CBE verification server returned HTTP ${res.status}`,
+      }
+    }
+
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('pdf')) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: ftCode,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: 'Invalid CBE reference. No transaction PDF found.',
+      }
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer())
+
+    // Parse PDF text using pdf-parse/lib/pdf-parse.js
+    const pdfParse = require('pdf-parse/lib/pdf-parse.js')
+    const pdfData = await pdfParse(buf)
+    const text = pdfData?.text || ''
+
+    const payerMatch = text.match(/Payer\s*:?\s*([^\n]+)/i)
+    const payerAccMatch = text.match(/Payer\s*:?\s*[^\n]+\nAccount\s*:?\s*([^\n]+)/i)
+    const receiverMatch = text.match(/Receiver\s*:?\s*([^\n]+)/i)
+    const receiverAccMatch = text.match(/Receiver\s*:?\s*[^\n]+\nAccount\s*:?\s*([^\n]+)/i)
+    const dateMatch = text.match(/Payment Date & Time\s*:?\s*([^\n]+)/i)
+    const refMatch = text.match(/Reference No.*?(FT[A-Z0-9]+)/i)
+    const amountMatch =
+      text.match(/Transferred Amount\s*:?\s*([\d,.]+)\s*(?:ETB)?/i) ||
+      text.match(/Total amount debited.*?\s*([\d,.]+)\s*(?:ETB)?/i)
+
+    const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : undefined
+    const extractedRef = refMatch ? refMatch[1].trim() : ftCode
+
+    const parsedReceiverAcc = receiverAccMatch ? receiverAccMatch[1].trim() : ''
+    const defaultLast8 = DEFAULT_CBE_ACCOUNT.slice(-8)
+    const isReceiverMatched =
+      parsedReceiverAcc.includes(DEFAULT_CBE_ACCOUNT) ||
+      parsedReceiverAcc.includes(defaultLast8) ||
+      parsedReceiverAcc.replace(/\D/g, '').endsWith(defaultLast8)
+
+    return {
+      success: true,
+      provider: 'CBE',
+      reference: extractedRef,
+      payerName: payerMatch ? payerMatch[1].trim() : undefined,
+      payerAccountOrPhone: payerAccMatch ? payerAccMatch[1].trim() : undefined,
+      receiverName: receiverMatch ? receiverMatch[1].trim() : undefined,
+      receiverAccount: parsedReceiverAcc || undefined,
+      isReceiverMatched,
+      amount,
+      currency: 'ETB',
+      dateTime: dateMatch ? dateMatch[1].trim() : undefined,
+      status: 'COMPLETED',
+      rawText: text.slice(0, 300),
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      provider: 'CBE',
+      reference: ftCode,
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: err.name === 'TimeoutError' || err.message?.includes('timeout')
+        ? 'CBE server timed out. Please check your internet connection or verify manually.'
+        : `CBE verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
+ * Universal Receipt Verifier
+ * Auto-detects whether the input is a Telebirr code/link, CBE code/link, etc.
+ */
+export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<VerifiedReceipt> {
+  const { provider, referenceOrUrl, accountDigits } = params
+  const clean = cleanReference(referenceOrUrl)
+
+  if (!clean) {
+    return {
+      success: false,
+      provider: 'UNKNOWN',
+      reference: '',
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: 'Transaction reference or receipt link is required',
+    }
+  }
+
+  // Detect based on explicit provider or pattern
+  const isCbe =
+    provider === 'CBE' ||
+    clean.toUpperCase().startsWith('FT') ||
+    clean.includes('cbe.com.et')
+
+  const isTelebirr =
+    provider === 'TELEBIRR' ||
+    clean.includes('ethiotelecom.et') ||
+    clean.includes('telebirr') ||
+    (!isCbe && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
+
+  if (isCbe) {
+    return verifyCbeReceipt(clean, accountDigits)
+  }
+
+  if (isTelebirr) {
+    return verifyTelebirrReceipt(clean)
+  }
+
+  // Fallback to Telebirr attempt
+  return verifyTelebirrReceipt(clean)
+}

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutGrid, UtensilsCrossed, CreditCard, Users,
   Package, BarChart2, LogOut, ClipboardList,
-  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich
+  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich, Bike
 } from 'lucide-react'
 
 interface NavItem {
@@ -20,6 +20,7 @@ import NexoraLogo from '@/components/NexoraLogo'
 
 const navItems: NavItem[] = [
   { label: 'Tables', href: '/dashboard/tables', icon: <LayoutGrid size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
+  { label: 'Delivery', href: '/dashboard/delivery', icon: <Bike size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Orders', href: '/dashboard/orders', icon: <ClipboardList size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Payments', href: '/dashboard/payment', icon: <CreditCard size={18} />, roles: ['ADMIN', 'MANAGER', 'CASHIER'] },
   { label: 'Menu', href: '/dashboard/menu', icon: <UtensilsCrossed size={18} />, roles: ['ADMIN'] },
