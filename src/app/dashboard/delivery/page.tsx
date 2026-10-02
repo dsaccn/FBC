@@ -70,14 +70,10 @@ export default function DeliveryPage() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'DELIVERY' | 'TAKEAWAY'>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Date filter — default to yesterday
-  const yesterdayStr = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 1)
-    return d.toISOString().split('T')[0]
-  })()
-  const [dateFrom, setDateFrom] = useState(yesterdayStr)
-  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0])
+  // Date filter — default to present day only
+  const todayStr = new Date().toISOString().split('T')[0]
+  const [dateFrom, setDateFrom] = useState(todayStr)
+  const [dateTo, setDateTo] = useState(todayStr)
 
   // Modals
   const [showNewModal, setShowNewModal] = useState(false)
@@ -613,6 +609,33 @@ export default function DeliveryPage() {
           </div>
         </div>
 
+        {/* Date Filter: Clean pair on top */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid var(--black-border)',
+          borderRadius: '10px',
+          padding: '4px 10px',
+        }}>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+          />
+          <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+          />
+        </div>
+
         {/* Header Action Buttons */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
@@ -645,34 +668,6 @@ export default function DeliveryPage() {
 
       {/* ── Filters & Search Bar ─────────────────────────────────────────────── */}
       <div className="card" style={{ padding: '14px 18px', marginBottom: '20px' }}>
-        {/* Date Range Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--black-border)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-            📅 Date
-          </span>
-          <input
-            type="date"
-            className="input"
-            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '120px', maxWidth: '160px' }}
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-          />
-          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
-          <input
-            type="date"
-            className="input"
-            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '120px', maxWidth: '160px' }}
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-          />
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: '11px', padding: '4px 10px', height: '32px' }}
-            onClick={() => { setDateFrom(yesterdayStr); setDateTo(new Date().toISOString().split('T')[0]) }}
-          >
-            Reset
-          </button>
-        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
           {/* Status Tabs */}

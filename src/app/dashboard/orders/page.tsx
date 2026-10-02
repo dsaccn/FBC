@@ -30,14 +30,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('OPEN')
 
-  // Date filter — default to yesterday
-  const yesterdayStr = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 1)
-    return d.toISOString().split('T')[0]
-  })()
+  // Date filter — default to present day only
   const todayStr = new Date().toISOString().split('T')[0]
-  const [dateFrom, setDateFrom] = useState(yesterdayStr)
+  const [dateFrom, setDateFrom] = useState(todayStr)
   const [dateTo, setDateTo] = useState(todayStr)
 
   const load = useCallback(async () => {
@@ -110,12 +105,40 @@ export default function OrdersPage() {
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '32px' }}>
-      {/* Page Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+      {/* Page Header with Top Date Range Picker */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
         <div>
           <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700' }}><span className="gold-text">Orders</span></h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>{orders.length} orders found</p>
         </div>
+
+        {/* Date Filter: Clean pair on top */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid var(--black-border)',
+          borderRadius: '10px',
+          padding: '4px 10px',
+        }}>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+          />
+          <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+          <input
+            type="date"
+            className="input"
+            style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+          />
+        </div>
+
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
           <Link href={`/dashboard/orders/new${tableId ? `?tableId=${tableId}` : ''}`} className="btn btn-gold btn-sm">
@@ -124,68 +147,13 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Filter Card with Date Range & Status */}
-      <div className="card" style={{ padding: '14px 18px', marginBottom: '20px' }}>
-        {/* Date Filter Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid var(--black-border)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-            <Calendar size={14} /> Date
-          </span>
-          <input
-            type="date"
-            className="input"
-            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '125px', maxWidth: '160px' }}
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-          />
-          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
-          <input
-            type="date"
-            className="input"
-            style={{ fontSize: '13px', padding: '4px 10px', height: '32px', flex: '1', minWidth: '125px', maxWidth: '160px' }}
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px', height: '32px' }}
-              onClick={() => { setDateFrom(yesterdayStr); setDateTo(yesterdayStr) }}
-            >
-              Yesterday
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px', height: '32px' }}
-              onClick={() => { setDateFrom(todayStr); setDateTo(todayStr) }}
-            >
-              Today
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px', height: '32px' }}
-              onClick={() => { setDateFrom(yesterdayStr); setDateTo(todayStr) }}
-            >
-              Default
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px', height: '32px' }}
-              onClick={() => { setDateFrom(''); setDateTo('') }}
-            >
-              All Time
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Tabs */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {['OPEN', 'PAID', 'CANCELLED', ''].map(s => (
-            <button key={s} className={`btn btn-sm ${filter === s ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilter(s)}>
-              {s || 'All'}
-            </button>
-          ))}
-        </div>
+      {/* Filter Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        {['OPEN', 'PAID', 'CANCELLED', ''].map(s => (
+          <button key={s} className={`btn btn-sm ${filter === s ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilter(s)}>
+            {s || 'All'}
+          </button>
+        ))}
       </div>
 
       {loading ? (
