@@ -11,17 +11,17 @@ interface MobileHeaderProps {
 export default function MobileHeader({ isOpen, onToggle }: MobileHeaderProps) {
   return (
     <header className="mobile-header" suppressHydrationWarning>
-      {/* Logo on the right via CSS order */}
-      <div className="mobile-header-logo" suppressHydrationWarning style={{ order: 2 }}>
+      {/* Logo placed second via CSS order in globals.css */}
+      <div className="mobile-header-logo" suppressHydrationWarning>
         <NexoraLogo size="sm" showSubtitle={false} />
       </div>
 
-      {/* Hamburger on the left via CSS order */}
+      {/* Hamburger placed first (left) via CSS order in globals.css */}
       <button
         className="hamburger-btn"
         onClick={onToggle}
         aria-label={isOpen ? 'Close menu' : 'Open menu'}
-        style={{ order: 1 }}
+        suppressHydrationWarning
       >
         {isOpen ? <X size={20} /> : <Menu size={20} />}
       </button>

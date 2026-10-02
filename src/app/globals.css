@@ -327,6 +327,14 @@ html, body {
   gap: 10px;
 }
 
+.mobile-header .hamburger-btn {
+  order: 1;
+}
+
+.mobile-header .mobile-header-logo {
+  order: 2;
+}
+
 .hamburger-btn {
   background: transparent;
   border: 1px solid var(--black-border);
