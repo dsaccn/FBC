@@ -31,7 +31,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        <script
+      </head>
+      <body suppressHydrationWarning>
+        {/* Filter browser-extension noise before Next.js error overlay runs */}
+        <Script
+          id="extension-noise-filter"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -47,7 +52,6 @@ export default function RootLayout({
                     );
                   }
 
-                  // Intercept window errors during capture phase before Next.js overlay
                   window.addEventListener('error', function(e) {
                     var stack = (e.error && e.error.stack) || '';
                     if (isExtensionNoise(e.message, e.filename, stack)) {
@@ -57,7 +61,6 @@ export default function RootLayout({
                     }
                   }, true);
 
-                  // Intercept unhandled promise rejections from extensions
                   window.addEventListener('unhandledrejection', function(e) {
                     var reason = e.reason;
                     var stack = (reason && reason.stack) || '';
@@ -101,8 +104,6 @@ export default function RootLayout({
             `,
           }}
         />
-      </head>
-      <body suppressHydrationWarning>
         {children}
         {/* Register service worker for offline support */}
         <Script
