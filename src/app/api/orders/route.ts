@@ -25,11 +25,18 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const tableId = searchParams.get('tableId')
     const status = searchParams.get('status')
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+
+    const dateWhere: Record<string, Date> = {}
+    if (from) dateWhere.gte = new Date(from + 'T00:00:00')
+    if (to) dateWhere.lte = new Date(to + 'T23:59:59.999')
 
     const orders = await prisma.order.findMany({
       where: {
         ...(tableId && { tableId }),
         ...(status && { status }),
+        ...(from || to ? { createdAt: dateWhere } : {}),
       },
       include: {
         table: true,
