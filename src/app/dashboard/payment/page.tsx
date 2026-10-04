@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, CheckCircle } from 'lucide-react'
+import { Printer, CheckCircle, Bike, ShoppingBag } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
@@ -62,6 +62,42 @@ export default function PaymentPage() {
   const isDigitalPayment = method === 'Telebirr' || method === 'CBE'
   const total = Math.max(0, subtotal - discountAmt + (isDigitalPayment ? tipAmt : 0))
 
+  // Helper: parse delivery/takeaway or standard table
+  const parseOrderInfo = (tableNumber: string) => {
+    const lower = tableNumber.toLowerCase()
+    const isDelivery = lower.startsWith('delivery:')
+    const isTakeaway = lower.startsWith('takeaway:')
+
+    if (!isDelivery && !isTakeaway) {
+      return {
+        isSpecial: false,
+        type: 'TABLE' as const,
+        title: `Table ${tableNumber}`,
+        boxLabel: tableNumber,
+        phone: null,
+      }
+    }
+
+    const type = isDelivery ? 'DELIVERY' : 'TAKEAWAY'
+    let cleanName = tableNumber.replace(/^(Delivery:|Takeaway:)\s*/i, '').replace(/#.*$/, '').trim()
+    let extractedPhone = ''
+    const phoneMatch = cleanName.match(/\(([^)]+)\)/)
+    if (phoneMatch) {
+      extractedPhone = phoneMatch[1]
+      cleanName = cleanName.replace(/\([^)]+\)/, '').trim()
+    }
+
+    return {
+      isSpecial: true,
+      type,
+      title: cleanName || (isDelivery ? 'Delivery Order' : 'Takeaway Order'),
+      boxLabel: isDelivery ? '🛵' : '🥡',
+      phone: extractedPhone,
+    }
+  }
+
+  const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table.number) : null
+
   async function handlePay() {
     if (!selectedOrder) {
       toast.warning('Please select an order to pay')
@@ -97,6 +133,7 @@ export default function PaymentPage() {
   function printReceipt() {
     if (!selectedOrder) return
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
+    const info = parseOrderInfo(selectedOrder.table.number)
     const html = `<html>
       <head>
         <title>Receipt</title>
@@ -115,7 +152,8 @@ export default function PaymentPage() {
         <b>RECEIPT</b>
       </div>
       <div style="margin-bottom:10px;font-size:13px;">
-        <b>Table:</b> ${selectedOrder.table.number}<br/>
+        <b>${info.isSpecial ? (info.type === 'DELIVERY' ? 'Delivery:' : 'Takeaway:') : 'Table:'}</b> ${info.isSpecial ? info.title : selectedOrder.table.number}<br/>
+        ${info.phone ? `<b>Phone:</b> ${info.phone}<br/>` : ''}
         <b>Waiter:</b> ${selectedOrder.waiter.fullName}<br/>
         <b>Cashier:</b> ${session?.fullName || '-'}<br/>
         <b>Date:</b> ${now}
@@ -150,10 +188,14 @@ export default function PaymentPage() {
         <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
           {lastPayment?.amount.toFixed(2)} ETB received via {lastPayment?.method}
         </p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '32px' }}>Table is now marked as Free.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '32px' }}>
+          {selectedInfo?.isSpecial ? 'Order marked as Paid & Complete.' : 'Table is now marked as Free.'}
+        </p>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <button className="btn btn-outline" onClick={printReceipt}><Printer size={16} /> Print Receipt</button>
-          <button className="btn btn-gold" onClick={() => window.location.href = '/dashboard/tables'}>Back to Tables</button>
+          <button className="btn btn-gold" onClick={() => window.location.href = selectedInfo?.isSpecial ? '/dashboard/delivery' : '/dashboard/tables'}>
+            {selectedInfo?.isSpecial ? 'Back to Delivery' : 'Back to Tables'}
+          </button>
         </div>
       </div>
     )
@@ -170,16 +212,79 @@ export default function PaymentPage() {
         {!selectedOrder ? (
           <div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>Select an open order to process payment:</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {orders.map(o => {
                 const t = o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+                const info = parseOrderInfo(o.table.number)
                 return (
-                  <div key={o.id} className="card card-hover" onClick={() => setSelectedOrder(o)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                    <div>
-                      <div style={{ fontWeight: '600' }}>Table {o.table.number}</div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{o.waiter.fullName} · {o.orderItems.length} items</div>
+                  <div
+                    key={o.id}
+                    className="card card-hover"
+                    onClick={() => setSelectedOrder(o)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      gap: '14px',
+                      padding: '14px 16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                      {/* Visual Identifier Box */}
+                      <div style={{
+                        width: '46px',
+                        height: '46px',
+                        background: info.isSpecial
+                          ? (info.type === 'DELIVERY' ? 'rgba(59,130,246,0.1)' : 'rgba(234,88,12,0.1)')
+                          : 'rgba(201,168,76,0.08)',
+                        border: info.isSpecial
+                          ? (info.type === 'DELIVERY' ? '1px solid rgba(59,130,246,0.4)' : '1px solid rgba(234,88,12,0.4)')
+                          : '1px solid var(--gold-dark)',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontFamily: 'Cinzel,serif',
+                        fontWeight: '700',
+                        fontSize: info.isSpecial ? '20px' : '16px',
+                        color: 'var(--gold)',
+                        flexShrink: 0
+                      }}>
+                        {info.boxLabel}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: '600', fontSize: '15px' }}>{info.title}</span>
+                          {info.isSpecial && (
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              background: info.type === 'DELIVERY' ? 'rgba(59,130,246,0.15)' : 'rgba(234,88,12,0.15)',
+                              color: info.type === 'DELIVERY' ? '#60a5fa' : '#fb923c',
+                              border: `1px solid ${info.type === 'DELIVERY' ? 'rgba(59,130,246,0.3)' : 'rgba(234,88,12,0.3)'}`,
+                              fontWeight: '600',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              {info.type === 'DELIVERY' ? <Bike size={11} /> : <ShoppingBag size={11} />}
+                              {info.type === 'DELIVERY' ? 'Delivery' : 'Takeaway'}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          {info.phone ? <span style={{ color: 'var(--gold)', marginRight: '6px' }}>📞 {info.phone} ·</span> : null}
+                          {o.waiter.fullName} · {o.orderItems.length} items
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--gold)' }}>{t.toFixed(2)} ETB</div>
+
+                    <div style={{ fontSize: '17px', fontWeight: '700', color: 'var(--gold)', flexShrink: 0, marginLeft: '12px' }}>
+                      {t.toFixed(2)} ETB
+                    </div>
                   </div>
                 )
               })}
@@ -188,8 +293,55 @@ export default function PaymentPage() {
           </div>
         ) : (
           <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h3 style={{ fontWeight: '600' }}>Table {selectedOrder.table.number} — Bill</h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  background: selectedInfo?.isSpecial
+                    ? (selectedInfo.type === 'DELIVERY' ? 'rgba(59,130,246,0.1)' : 'rgba(234,88,12,0.1)')
+                    : 'rgba(201,168,76,0.08)',
+                  border: selectedInfo?.isSpecial
+                    ? (selectedInfo.type === 'DELIVERY' ? '1px solid rgba(59,130,246,0.4)' : '1px solid rgba(234,88,12,0.4)')
+                    : '1px solid var(--gold-dark)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: selectedInfo?.isSpecial ? '18px' : '15px',
+                  fontWeight: '700',
+                  color: 'var(--gold)',
+                }}>
+                  {selectedInfo?.boxLabel}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h3 style={{ fontWeight: '600', fontSize: '16px', margin: 0 }}>{selectedInfo?.title} — Bill</h3>
+                    {selectedInfo?.isSpecial && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: selectedInfo.type === 'DELIVERY' ? 'rgba(59,130,246,0.15)' : 'rgba(234,88,12,0.15)',
+                        color: selectedInfo.type === 'DELIVERY' ? '#60a5fa' : '#fb923c',
+                        border: `1px solid ${selectedInfo.type === 'DELIVERY' ? 'rgba(59,130,246,0.3)' : 'rgba(234,88,12,0.3)'}`,
+                        fontWeight: '600',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        {selectedInfo.type === 'DELIVERY' ? <Bike size={11} /> : <ShoppingBag size={11} />}
+                        {selectedInfo.type === 'DELIVERY' ? 'Delivery' : 'Takeaway'}
+                      </span>
+                    )}
+                  </div>
+                  {selectedInfo?.phone && (
+                    <div style={{ fontSize: '12px', color: 'var(--gold)', marginTop: '2px' }}>
+                      📞 {selectedInfo.phone}
+                    </div>
+                  )}
+                </div>
+              </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setSelectedOrder(null)}>Change</button>
             </div>
             {activeItems.map(i => (
