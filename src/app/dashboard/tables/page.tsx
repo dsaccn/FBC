@@ -110,11 +110,12 @@ export default function TablesPage() {
   }
 
   async function deleteTable(id: string, number: string) {
-    if (!confirm(`Delete Table ${number}?`)) return
+    if (!confirm(`Delete Table ${number}? Any past order history will be safely preserved.`)) return
     try {
       const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        toast.error('Cannot delete this table. It has order history associated with it.')
+        toast.error(data.error || 'Failed to delete table')
       } else {
         toast.success(`Table ${number} deleted`)
         load()

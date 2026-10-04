@@ -3,7 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 
 export async function GET() {
-  const tables = await prisma.table.findMany()
+  const tables = await prisma.table.findMany({
+    where: {
+      id: { not: '__archived_orders_table__' },
+      number: { not: 'Archived' },
+      status: { not: 'ARCHIVED' },
+    },
+  })
   
   // Self-heal: check if table status is out of sync with actual open orders
   for (const table of tables) {

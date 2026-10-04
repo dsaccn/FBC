@@ -351,7 +351,17 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const cloudTableIds = new Set(cloudTables.map(t => t.id))
       const localTables = await prisma.table.findMany({ select: { id: true, pendingSync: true } })
       for (const t of localTables) {
+        if (t.id === '__archived_orders_table__') continue
         if (!t.pendingSync && !cloudTableIds.has(t.id)) {
+          // Reassign any local orders to archived table so foreign key constraint does not fail
+          await prisma.order.updateMany({
+            where: { tableId: t.id },
+            data: { tableId: '__archived_orders_table__' },
+          }).catch(() => {})
+          await prisma.table.updateMany({
+            where: { mergedWithId: t.id },
+            data: { mergedWithId: null },
+          }).catch(() => {})
           await prisma.table.delete({ where: { id: t.id } }).catch(() => {})
         }
       }
