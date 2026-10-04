@@ -25,10 +25,10 @@ const navItems: NavItem[] = [
   { label: 'Payments', href: '/dashboard/payment', icon: <CreditCard size={18} />, roles: ['ADMIN', 'MANAGER', 'CASHIER'] },
   { label: 'Menu', href: '/dashboard/menu', icon: <UtensilsCrossed size={18} />, roles: ['ADMIN'] },
   { label: 'Inventory', href: '/dashboard/inventory', icon: <Package size={18} />, roles: ['ADMIN', 'MANAGER'] },
-  { label: 'Recipes', href: '/dashboard/recipes', icon: <ChefHat size={18} />, roles: ['ADMIN', 'MANAGER'] },
+  { label: 'Recipes', href: '/dashboard/recipes', icon: <ChefHat size={18} />, roles: ['ADMIN'] },
   { label: 'Staff', href: '/dashboard/staff', icon: <Users size={18} />, roles: ['ADMIN'] },
-  { label: 'Reports', href: '/dashboard/reports', icon: <BarChart2 size={18} />, roles: ['ADMIN', 'MANAGER'] },
-  { label: 'Staff Meals', href: '/dashboard/staff-meals', icon: <Sandwich size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
+  { label: 'Reports', href: '/dashboard/reports', icon: <BarChart2 size={18} />, roles: ['ADMIN'] },
+  { label: 'Staff Meals', href: '/dashboard/staff-meals', icon: <Sandwich size={18} />, roles: ['ADMIN'] },
 ]
 
 interface SidebarProps {
