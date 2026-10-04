@@ -1,13 +1,14 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 
-const secretStr = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || ''
-
-if (!secretStr || secretStr.length < 64) {
-  throw new Error('JWT_SECRET must be at least 64 characters')
+/** Lazily resolve the JWT secret so the build doesn't crash when env vars aren't available yet */
+function getJwtSecret(): Uint8Array {
+  const secretStr = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || ''
+  if (!secretStr || secretStr.length < 64) {
+    throw new Error('JWT_SECRET must be at least 64 characters')
+  }
+  return new TextEncoder().encode(secretStr)
 }
-
-const JWT_SECRET = new TextEncoder().encode(secretStr)
 
 export interface SessionUser {
   id: string
@@ -24,12 +25,12 @@ export async function signToken(payload: object): Promise<string> {
     .setIssuedAt()
     .setExpirationTime('12h')
     .setJti(jti) // prevent token replay
-    .sign(JWT_SECRET)
+    .sign(getJwtSecret())
 }
 
 export async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       algorithms: ['HS256'],
     })
     return payload as Record<string, unknown>
