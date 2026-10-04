@@ -71,10 +71,17 @@ export default function DeliveryPage() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'DELIVERY' | 'TAKEAWAY'>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Date filter — default to present day only
-  const todayStr = new Date().toISOString().split('T')[0]
-  const [dateFrom, setDateFrom] = useState(todayStr)
-  const [dateTo, setDateTo] = useState(todayStr)
+  // Helper to format date in local timezone YYYY-MM-DD
+  const getLocalDateStr = (d = new Date()) => {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Date filter — default to present local day
+  const [dateFrom, setDateFrom] = useState(() => getLocalDateStr())
+  const [dateTo, setDateTo] = useState(() => getLocalDateStr())
 
   // Modals
   const [showNewModal, setShowNewModal] = useState(false)

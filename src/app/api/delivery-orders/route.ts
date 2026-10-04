@@ -30,13 +30,21 @@ export async function GET(req: Request) {
     const to = searchParams.get('to')
 
     const dateWhere: Record<string, Date> = {}
-    if (from) dateWhere.gte = new Date(from + 'T00:00:00')
-    if (to) dateWhere.lte = new Date(to + 'T23:59:59.999')
+    if (from) {
+      const d = new Date(from + 'T00:00:00')
+      dateWhere.gte = isNaN(d.getTime()) ? new Date(from) : d
+    }
+    if (to) {
+      const d = new Date(to + 'T23:59:59.999')
+      dateWhere.lte = isNaN(d.getTime()) ? new Date(to) : d
+    }
+
+    const applyDate = (from || to) && status !== 'OPEN'
 
     const allOrders = await prisma.order.findMany({
       where: {
         ...(status ? { status } : {}),
-        ...(from || to ? { createdAt: dateWhere } : {}),
+        ...(applyDate ? { createdAt: dateWhere } : {}),
       },
       include: {
         table: true,

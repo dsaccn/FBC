@@ -30,10 +30,17 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('OPEN')
 
-  // Date filter — default to present day only
-  const todayStr = new Date().toISOString().split('T')[0]
-  const [dateFrom, setDateFrom] = useState(todayStr)
-  const [dateTo, setDateTo] = useState(todayStr)
+  // Helper to format date in local timezone YYYY-MM-DD
+  const getLocalDateStr = (d = new Date()) => {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Date filter — default to present local day
+  const [dateFrom, setDateFrom] = useState(() => getLocalDateStr())
+  const [dateTo, setDateTo] = useState(() => getLocalDateStr())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -41,8 +48,11 @@ export default function OrdersPage() {
       const params = new URLSearchParams()
       if (tableId) params.set('tableId', tableId)
       if (filter) params.set('status', filter)
-      if (dateFrom) params.set('from', dateFrom)
-      if (dateTo) params.set('to', dateTo)
+      // Only apply date range filter when viewing non-OPEN orders (PAID, CANCELLED, All)
+      if (filter !== 'OPEN') {
+        if (dateFrom) params.set('from', dateFrom)
+        if (dateTo) params.set('to', dateTo)
+      }
       const res = await fetch(`/api/orders?${params.toString()}`)
       if (res.ok) {
         setOrders(await res.json())
@@ -58,13 +68,20 @@ export default function OrdersPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Auto-refresh when OfflineBanner pulls new orders from cloud
+  // Auto-refresh when OfflineBanner pulls new orders or periodically every 10s
   const loadRef = useRef(load)
   useEffect(() => { loadRef.current = load }, [load])
   useEffect(() => {
     const handleCloudPull = () => loadRef.current()
+    const handleSyncComplete = () => loadRef.current()
     window.addEventListener('cloud-pull-complete', handleCloudPull)
-    return () => window.removeEventListener('cloud-pull-complete', handleCloudPull)
+    window.addEventListener('sync-complete', handleSyncComplete)
+    const interval = setInterval(() => loadRef.current(), 10000)
+    return () => {
+      window.removeEventListener('cloud-pull-complete', handleCloudPull)
+      window.removeEventListener('sync-complete', handleSyncComplete)
+      clearInterval(interval)
+    }
   }, [])
 
   const statusColors: Record<string, string> = { OPEN: 'badge-open', PAID: 'badge-paid', CANCELLED: 'badge-cancelled' }
