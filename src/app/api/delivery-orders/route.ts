@@ -103,7 +103,7 @@ export async function POST(req: Request) {
 
     // Resolve waiter / server from session
     const session = await getSession()
-    let waiterId = body.waiterId || session?.id
+    const waiterId = body.waiterId || session?.id
 
     let waiter = waiterId ? await prisma.user.findUnique({ where: { id: waiterId } }) : null
     if (!waiter && session?.username) {

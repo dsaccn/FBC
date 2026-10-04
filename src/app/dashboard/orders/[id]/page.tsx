@@ -189,7 +189,7 @@ export default function OrderDetailPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700' }}><span className="gold-text">Order — Table {order.table.number}</span></h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-ET')}</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })}</p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {order.status === 'PAID' && <button className="btn btn-outline btn-sm" onClick={printReceipt}><Printer size={14} /> Print Receipt</button>}

@@ -15,7 +15,22 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { Pool as PgPool } from 'pg'
+import { Pool as PgPool, types as pgTypes } from 'pg'
+
+// Crucial: In PostgreSQL, createdAt/updatedAt are 'timestamp without time zone' (OID 1114).
+// By default, node-postgres parses OID 1114 into local machine time, which offsets
+// timestamps by +03:00 on Windows/Addis Ababa and corrupts sync between local & cloud.
+// We force pg to treat all timestamps from Postgres strictly as UTC.
+pgTypes.setTypeParser(1114, (str: string) => {
+  return str.includes('Z') || str.includes('+') ? new Date(str) : new Date(str.replace(' ', 'T') + 'Z')
+})
+pgTypes.setTypeParser(1184, (str: string) => new Date(str))
+
+export const toUtcIso = (d: any): string | null => {
+  if (!d) return null
+  const date = d instanceof Date ? d : new Date(d)
+  return isNaN(date.getTime()) ? null : date.toISOString()
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1117,7 +1132,7 @@ export async function syncToCloud(): Promise<SyncResult> {
            ON CONFLICT (id) DO UPDATE SET
              number           = EXCLUDED.number,
              "mergedWithId"   = EXCLUDED."mergedWithId"`,
-          [t.id, t.number, t.status, t.mergedWithId, t.createdAt]
+          [t.id, t.number, t.status, t.mergedWithId, toUtcIso(t.createdAt)]
         )
         if (t.pendingSync) {
           await prisma.table.update({
@@ -1142,7 +1157,7 @@ export async function syncToCloud(): Promise<SyncResult> {
             `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
              VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (id) DO NOTHING`,
-            [orderTable.id, orderTable.number, orderTable.status, orderTable.mergedWithId, orderTable.createdAt]
+            [orderTable.id, orderTable.number, orderTable.status, orderTable.mergedWithId, toUtcIso(orderTable.createdAt)]
           )
         } else {
           // If table was deleted locally, create placeholder table in cloud so FK doesn't fail
@@ -1159,7 +1174,7 @@ export async function syncToCloud(): Promise<SyncResult> {
            ON CONFLICT (id) DO UPDATE SET
              status      = EXCLUDED.status,
              "updatedAt" = EXCLUDED."updatedAt"`,
-          [o.id, o.tableId, o.waiterId, o.status, o.createdAt, o.updatedAt]
+          [o.id, o.tableId, o.waiterId, o.status, toUtcIso(o.createdAt), toUtcIso(o.updatedAt)]
         )
         const tableStatus = o.status === 'OPEN' ? 'OCCUPIED' : 'FREE'
         await pg.query('UPDATE "Table" SET status = $1 WHERE id = $2', [tableStatus, o.tableId])
@@ -1194,7 +1209,7 @@ export async function syncToCloud(): Promise<SyncResult> {
              quantity    = EXCLUDED.quantity,
              notes       = EXCLUDED.notes,
              "printedAt" = EXCLUDED."printedAt"`,
-          [oi.id, oi.orderId, oi.menuItemId, oi.quantity, oi.notes, oi.status, oi.printedAt, oi.createdAt]
+          [oi.id, oi.orderId, oi.menuItemId, oi.quantity, oi.notes, oi.status, toUtcIso(oi.printedAt), toUtcIso(oi.createdAt)]
         )
         await prisma.orderItem.update({
           where: { id: oi.id },
@@ -1224,7 +1239,7 @@ export async function syncToCloud(): Promise<SyncResult> {
           [
             pay.id, pay.orderId, pay.cashierId,
             pay.amount, pay.method, pay.discount,
-            pay.discountType, pay.isComplimentary, pay.notes, pay.createdAt,
+            pay.discountType, pay.isComplimentary, pay.notes, toUtcIso(pay.createdAt),
           ]
         )
         if (pay.order) {
@@ -1264,14 +1279,14 @@ export async function syncToCloud(): Promise<SyncResult> {
                "fullName" = EXCLUDED."fullName",
                role       = EXCLUDED.role`,
             [c.manager.id, c.manager.username, c.manager.passwordHash, c.manager.fullName,
-             c.manager.role, c.manager.phone, c.manager.active, c.manager.createdAt]
+             c.manager.role, c.manager.phone, c.manager.active, toUtcIso(c.manager.createdAt)]
           )
         }
         await pg.query(
           `INSERT INTO "Cancellation" (id, "orderItemId", "managerId", reason, "createdAt")
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT ("orderItemId") DO UPDATE SET reason = EXCLUDED.reason`,
-          [c.id, c.orderItemId, c.managerId, c.reason, c.createdAt]
+          [c.id, c.orderItemId, c.managerId, c.reason, toUtcIso(c.createdAt)]
         )
         await prisma.cancellation.update({
           where: { id: c.id },
@@ -1291,7 +1306,7 @@ export async function syncToCloud(): Promise<SyncResult> {
           `INSERT INTO "InventoryLog" (id, "itemName", type, action, quantity, "prevQty", "newQty", "userName", "createdAt")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (id) DO NOTHING`,
-          [log.id, log.itemName, log.type, log.action, log.quantity, log.prevQty, log.newQty, log.userName, log.createdAt]
+          [log.id, log.itemName, log.type, log.action, log.quantity, log.prevQty, log.newQty, log.userName, toUtcIso(log.createdAt)]
         )
         await prisma.inventoryLog.update({
           where: { id: log.id },
@@ -1317,7 +1332,7 @@ export async function syncToCloud(): Promise<SyncResult> {
              role   = EXCLUDED.role,
              shift  = EXCLUDED.shift,
              active = EXCLUDED.active`,
-          [sm.id, sm.name, sm.role, sm.shift, sm.active, sm.createdAt]
+          [sm.id, sm.name, sm.role, sm.shift, sm.active, toUtcIso(sm.createdAt)]
         )
         await prisma.staffMember.update({
           where: { id: sm.id },
@@ -1340,7 +1355,7 @@ export async function syncToCloud(): Promise<SyncResult> {
              name               = EXCLUDED.name,
              "mealType"         = EXCLUDED."mealType",
              "linkedMenuItemId" = EXCLUDED."linkedMenuItemId"`,
-          [smi.id, smi.name, smi.mealType, smi.linkedMenuItemId, smi.createdAt]
+          [smi.id, smi.name, smi.mealType, smi.linkedMenuItemId, toUtcIso(smi.createdAt)]
         )
         await prisma.staffMenuItem.update({
           where: { id: smi.id },
@@ -1364,7 +1379,7 @@ export async function syncToCloud(): Promise<SyncResult> {
              unit           = EXCLUDED.unit,
              quantity       = EXCLUDED.quantity,
              "minThreshold" = EXCLUDED."minThreshold"`,
-          [si.id, si.name, si.unit, si.quantity, si.minThreshold, si.createdAt]
+          [si.id, si.name, si.unit, si.quantity, si.minThreshold, toUtcIso(si.createdAt)]
         )
         await prisma.staffIngredient.update({
           where: { id: si.id },
@@ -1409,7 +1424,7 @@ export async function syncToCloud(): Promise<SyncResult> {
              "mealType" = EXCLUDED."mealType",
              "servedAt" = EXCLUDED."servedAt",
              "pendingSync" = EXCLUDED."pendingSync"`,
-          [sm.id, sm.staffMemberId, sm.mealType, sm.servedAt, sm.createdAt, false]
+          [sm.id, sm.staffMemberId, sm.mealType, toUtcIso(sm.servedAt), toUtcIso(sm.createdAt), false]
         )
         await prisma.staffMeal.update({
           where: { id: sm.id },
