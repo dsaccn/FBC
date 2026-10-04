@@ -246,7 +246,16 @@ export default function OrdersPage() {
                   </div>
 
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })}
+                    Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                      timeZone: 'Africa/Addis_Ababa'
+                    })}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     {order.orderItems.length} items {food.length > 0 && `· 🍳 ${food.length} food`} {drinks.length > 0 && `· 🍹 ${drinks.length} drinks`}
