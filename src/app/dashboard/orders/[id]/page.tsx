@@ -69,7 +69,7 @@ export default function OrderDetailPage() {
       <body>
       <div style="text-align:center;margin-bottom:10px;">
         <b style="font-size:17px;letter-spacing:2px;">Kogna Coffee</b><br/>
-        <span style="font-size:11px;">Kitchen / Bar Void Slip</span><br/>
+        <span style="font-size:11px;">Addis Ababa, Ethiopia</span><br/>
         <hr/>
         <span style="border: 2px solid #000; padding: 3px 8px; font-size: 14px;">CANCELLED ITEM</span>
       </div>
@@ -148,7 +148,7 @@ export default function OrderDetailPage() {
       <body>
       <div style="text-align:center;margin-bottom:10px;">
         <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
-        <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
+        <span style="font-size:11px;">Addis Ababa, Ethiopia</span><br/>
         <hr/>
         <b>RECEIPT</b>
       </div>

@@ -435,7 +435,7 @@ export default function DeliveryPage() {
       <body>
         <div class="center">
           <div class="title">Kogna Coffee</div>
-          <div style="font-size: 11px; margin-top: 2px;">Coffee &amp; Lounge</div>
+          <div style="font-size: 11px; margin-top: 2px;">Addis Ababa, Ethiopia</div>
           <div class="type-badge">${meta.type === 'DELIVERY' ? '🛵 DELIVERY ORDER' : '🥡 TAKEAWAY ORDER'}</div>
         </div>
 
@@ -525,6 +525,7 @@ export default function DeliveryPage() {
       <body>
         <div class="center">
           <div style="font-size: 18px; font-weight: 900; letter-spacing: 1.5px;">Kogna Coffee</div>
+          <div style="font-size: 11px; margin-top: 2px;">Addis Ababa, Ethiopia</div>
           <div style="font-size: 14px; letter-spacing: 1px; margin: 4px 0;">🍳 KITCHEN PREP TICKET</div>
           <div style="border: 2px solid #000; display: inline-block; padding: 4px 12px; margin: 6px 0; font-size: 15px;">
             ${meta.type === 'DELIVERY' ? '🛵 DELIVERY' : '🥡 TAKEAWAY'}

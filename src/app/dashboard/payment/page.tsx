@@ -110,7 +110,7 @@ export default function PaymentPage() {
       <body>
       <div style="text-align:center;margin-bottom:10px;">
         <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
-        <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
+        <span style="font-size:11px;">Addis Ababa, Ethiopia</span><br/>
         <hr/>
         <b>RECEIPT</b>
       </div>
