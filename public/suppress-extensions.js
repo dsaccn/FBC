@@ -28,13 +28,61 @@
     }
   } catch (e) {}
 
-  // 3. Filter extension-induced hydration noise from console.error in dev mode
+  // 3. Intercept unhandled runtime errors thrown by browser extensions (e.g. Urban VPN, Bitdefender)
+  try {
+    window.addEventListener(
+      'error',
+      function (event) {
+        var file = (event && event.filename) || '';
+        var msg = (event && event.message) || '';
+        var stack = (event && event.error && event.error.stack) || '';
+        if (
+          file.indexOf('chrome-extension://') !== -1 ||
+          file.indexOf('moz-extension://') !== -1 ||
+          file.indexOf('safari-web-extension://') !== -1 ||
+          stack.indexOf('chrome-extension://') !== -1 ||
+          msg.indexOf('M_ID') !== -1 ||
+          msg.indexOf('bis_skin_checked') !== -1
+        ) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+          return true;
+        }
+      },
+      true // Capture phase before Next.js error overlay
+    );
+
+    window.addEventListener(
+      'unhandledrejection',
+      function (event) {
+        var reason = String((event && event.reason && (event.reason.stack || event.reason.message)) || event.reason || '');
+        if (
+          reason.indexOf('chrome-extension://') !== -1 ||
+          reason.indexOf('moz-extension://') !== -1 ||
+          reason.indexOf('safari-web-extension://') !== -1 ||
+          reason.indexOf('M_ID') !== -1
+        ) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+          return true;
+        }
+      },
+      true
+    );
+  } catch (e) {}
+
+  // 4. Filter extension-induced errors from console.error in dev mode
   try {
     var origError = console.error;
     console.error = function () {
       var args = Array.prototype.slice.call(arguments);
       var text = args.map(function (a) { return String(a || ''); }).join(' ');
-      if (text.indexOf('bis_skin_checked') !== -1 || text.indexOf('bis_register') !== -1) {
+      if (
+        text.indexOf('bis_skin_checked') !== -1 ||
+        text.indexOf('bis_register') !== -1 ||
+        text.indexOf('chrome-extension://') !== -1 ||
+        text.indexOf('M_ID') !== -1
+      ) {
         return;
       }
       return origError.apply(console, arguments);
