@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Printer, Plus, Pencil, Trash2, UserPlus, ToggleLeft, ToggleRight, Loader2, Utensils, Calendar, Clock, User, Package } from 'lucide-react';
 import Portal from '@/components/Portal';
+import { printTicketHtml } from '@/lib/printer';
 
 interface StaffMember {
   id: string;
@@ -530,12 +531,7 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
   // Printing Action
   const handlePrintReceipt = (meal: StaffMeal) => {
     const servedDateStr = new Date(meal.servedAt).toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' });
-    const win = window.open('', '_blank', 'width=400,height=600');
-    if (!win) {
-      showToast('Popup blocker prevented receipt preview. Please enable popups.', 'error');
-      return;
-    }
-    win.document.write(`<html>
+    const html = `<html>
       <head>
         <title>Staff Meal Receipt</title>
         <style>
@@ -547,7 +543,7 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:16px;letter-spacing:2px;">DIVA ADDIS LOUNGE</b><br/>
+        <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
         <span style="font-size:11px;">Addis Ababa, Ethiopia</span>
         <hr/>
         <b>STAFF MEAL RECEIPT</b>
@@ -571,12 +567,11 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
       </div>`).join('')}
       <hr/>
       <div style="text-align:center;font-size:11px;margin-top:15px;">
-        Internal Copy<br/>
-        Auditing & Tracking
+        Internal Copy · Auditing &amp; Tracking<br/>
+        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
       </div>
-    </body></html>`);
-    win.document.close();
-    setTimeout(() => win.print(), 300);
+    </body></html>`;
+    printTicketHtml(html);
   };
 
   const canAddMeal = ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'].includes(role);

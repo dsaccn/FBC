@@ -6,6 +6,7 @@ import { Printer, X, CheckCircle, AlertCircle, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
+import { printTicketHtml } from '@/lib/printer'
 
 interface OrderItem {
   id: string
@@ -54,13 +55,8 @@ export default function OrderDetailPage() {
   useEffect(() => { load() }, [load])
 
   function printCancellationTicket(item: OrderItem, tableNumber: string, qty: number) {
-    const win = window.open('', '_blank', 'width=350,height=500')
-    if (!win) {
-      toast.warning('Please allow popups to print ticket')
-      return
-    }
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
-    win.document.write(`<html>
+    const html = `<html>
       <head>
         <title>Cancellation Ticket</title>
         <style>
@@ -72,7 +68,7 @@ export default function OrderDetailPage() {
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:15px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <b style="font-size:17px;letter-spacing:2px;">Kogna Coffee</b><br/>
         <span style="font-size:11px;">Kitchen / Bar Void Slip</span><br/>
         <hr/>
         <span style="border: 2px solid #000; padding: 3px 8px; font-size: 14px;">CANCELLED ITEM</span>
@@ -85,10 +81,12 @@ export default function OrderDetailPage() {
         <b>Date:</b> ${now}
       </div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">— Item Voided —</div>
-      </body></html>`)
-    win.document.close()
-    setTimeout(() => win.print(), 300)
+      <div style="text-align:center;font-size:11px;">
+        — Item Voided —<br/>
+        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      </div>
+      </body></html>`
+    printTicketHtml(html)
   }
 
   async function handleCancel() {
@@ -136,13 +134,8 @@ export default function OrderDetailPage() {
   function printReceipt() {
     if (!order) return
     const total = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
-    const win = window.open('', '_blank', 'width=400,height=700')
-    if (!win) {
-      toast.warning('Please allow popups to print receipt')
-      return
-    }
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
-    win.document.write(`<html>
+    const html = `<html>
       <head>
         <title>Receipt</title>
         <style>
@@ -154,7 +147,7 @@ export default function OrderDetailPage() {
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:16px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
         <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
         <hr/>
         <b>RECEIPT</b>
@@ -179,10 +172,12 @@ export default function OrderDetailPage() {
       </div>
       <div style="margin-top:8px;"><b>Payment:</b> ${order.payment?.method || '-'}</div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">Thank you for visiting! MEBA TECH PRO</div>
-    </body></html>`)
-    win.document.close()
-    setTimeout(() => win.print(), 300)
+      <div style="text-align:center;font-size:11px;">
+        Thank you for visiting!<br/>
+        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      </div>
+    </body></html>`
+    printTicketHtml(html)
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>Loading...</div>

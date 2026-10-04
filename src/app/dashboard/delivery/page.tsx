@@ -9,6 +9,7 @@ import {
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
+import { printTicketHtml } from '@/lib/printer'
 
 interface MenuItem {
   id: string
@@ -377,13 +378,7 @@ export default function DeliveryPage() {
     const totalAmount = order.payment?.amount || Math.max(0, subtotal - discount)
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
 
-    const win = window.open('', '_blank', 'width=380,height=650')
-    if (!win) {
-      toast.warning('Please allow popups to print ticket')
-      return
-    }
-
-    win.document.write(`
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -403,7 +398,7 @@ export default function DeliveryPage() {
           }
           .center { text-align: center; }
           .bold { font-weight: bold; }
-          .title { font-size: 16px; font-weight: 900; letter-spacing: 1.5px; }
+          .title { font-size: 18px; font-weight: 900; letter-spacing: 1.5px; }
           .type-badge {
             display: inline-block;
             border: 2px solid #000;
@@ -439,8 +434,8 @@ export default function DeliveryPage() {
       </head>
       <body>
         <div class="center">
-          <div class="title">MEBA TECH PRO POS</div>
-          <div style="font-size: 11px; margin-top: 2px;">Diva Addis Coffee & Lounge</div>
+          <div class="title">Kogna Coffee</div>
+          <div style="font-size: 11px; margin-top: 2px;">Coffee &amp; Lounge</div>
           <div class="type-badge">${meta.type === 'DELIVERY' ? '🛵 DELIVERY ORDER' : '🥡 TAKEAWAY ORDER'}</div>
         </div>
 
@@ -495,9 +490,8 @@ export default function DeliveryPage() {
         </div>
       </body>
       </html>
-    `)
-    win.document.close()
-    setTimeout(() => win.print(), 300)
+    `
+    printTicketHtml(html)
   }
 
   // ── Print Kitchen Prep Slip ──────────────────────────────────────────────────
@@ -506,13 +500,7 @@ export default function DeliveryPage() {
     const foodItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
 
-    const win = window.open('', '_blank', 'width=380,height=550')
-    if (!win) {
-      toast.warning('Please allow popups to print ticket')
-      return
-    }
-
-    win.document.write(`
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -536,7 +524,8 @@ export default function DeliveryPage() {
       </head>
       <body>
         <div class="center">
-          <div style="font-size: 16px; letter-spacing: 1px;">🍳 KITCHEN PREP TICKET</div>
+          <div style="font-size: 18px; font-weight: 900; letter-spacing: 1.5px;">Kogna Coffee</div>
+          <div style="font-size: 14px; letter-spacing: 1px; margin: 4px 0;">🍳 KITCHEN PREP TICKET</div>
           <div style="border: 2px solid #000; display: inline-block; padding: 4px 12px; margin: 6px 0; font-size: 15px;">
             ${meta.type === 'DELIVERY' ? '🛵 DELIVERY' : '🥡 TAKEAWAY'}
           </div>
@@ -562,12 +551,14 @@ export default function DeliveryPage() {
           `
         }).join('')}
         <hr/>
-        <div class="center" style="font-size: 11px;">— Ready for Packing —</div>
+        <div class="center" style="font-size: 11px;">
+          — Ready for Packing —<br/>
+          <span style="font-size: 9px; color: #555;">MEBA TECH PRO POS</span>
+        </div>
       </body>
       </html>
-    `)
-    win.document.close()
-    setTimeout(() => win.print(), 300)
+    `
+    printTicketHtml(html)
   }
 
   // Filtered menu items for order creation dialog

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Printer, Plus, Minus, X, AlertCircle, ShoppingBag, ArrowLeft } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
+import { printTicketHtml } from '@/lib/printer'
 
 interface MenuItem { id: string; name: string; price: number; description?: string; category?: { name: string; type: string } | null }
 interface Category { id: string; name: string; type: string; menuItems: MenuItem[] }
@@ -108,7 +109,7 @@ export default function NewOrderPage() {
     return `
       <div style="font-family:'Courier New',monospace;font-size:13px;width:100%;padding:10px 15px;color:#000;background:#fff;box-sizing:border-box;">
         <div style="text-align:center;margin-bottom:8px;">
-          <div style="font-size:16px;font-weight:bold;letter-spacing:2px;">MEBA TECH PRO POS</div>
+          <div style="font-size:18px;font-weight:bold;letter-spacing:2px;">Kogna Coffee</div>
           <div style="font-size:10px;letter-spacing:1px;">Addis Ababa, Ethiopia</div>
           <hr style="border-top:1px dashed #000;border-bottom:none;border-left:none;border-right:none;margin:8px 0;"/>
           <div style="font-size:15px;font-weight:bold;border:2px solid #000;display:inline-block;padding:4px 12px;">
@@ -134,7 +135,10 @@ export default function NewOrderPage() {
         </div>
         <hr style="border-top:1px dashed #000;border-bottom:none;border-left:none;border-right:none;margin:8px 0;"/>
         ${type === 'CASHIER' ? `<div style="text-align:right;font-weight:bold;">SUBTOTAL: ${subtotal.toFixed(2)} ETB</div>` : ''}
-        <div style="text-align:center;margin-top:8px;font-size:10px;">— Thank you —</div>
+        <div style="text-align:center;margin-top:10px;font-size:11px;">
+          — Thank you —<br/>
+          <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+        </div>
       </div>
     `
   }

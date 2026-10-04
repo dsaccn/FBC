@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Printer, CheckCircle } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
+import { printTicketHtml } from '@/lib/printer'
 
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
 interface Order { id: string; table: { number: string; id: string }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
@@ -96,12 +97,7 @@ export default function PaymentPage() {
   function printReceipt() {
     if (!selectedOrder) return
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
-    const win = window.open('', '_blank', 'width=400,height=700')
-    if (!win) {
-      toast.warning('Please allow popups to print receipt')
-      return
-    }
-    win.document.write(`<html>
+    const html = `<html>
       <head>
         <title>Receipt</title>
         <style>
@@ -113,7 +109,7 @@ export default function PaymentPage() {
       </head>
       <body>
       <div style="text-align:center;margin-bottom:10px;">
-        <b style="font-size:16px;letter-spacing:2px;">MEBA TECH PRO POS</b><br/>
+        <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
         <span style="font-size:11px;">Coffee House &amp; Lounge · Addis Ababa</span><br/>
         <hr/>
         <b>RECEIPT</b>
@@ -137,10 +133,13 @@ export default function PaymentPage() {
       </div>
       <div style="margin-top:8px;font-size:13px;"><b>Paid via:</b> ${method}</div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">Thank you for visiting Diva Addis Lounge!<br/>እናመሰግናለን!</div>
-    </body></html>`)
-    win.document.close()
-    setTimeout(() => win.print(), 300)
+      <div style="text-align:center;font-size:11px;">
+        Thank you for visiting Kogna Coffee!<br/>
+        እናመሰግናለን!<br/>
+        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      </div>
+    </body></html>`
+    printTicketHtml(html)
   }
 
   if (paid) {
