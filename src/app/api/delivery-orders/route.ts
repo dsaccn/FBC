@@ -39,13 +39,23 @@ export async function GET(req: Request) {
       dateWhere.lte = isNaN(d.getTime()) ? new Date(to) : d
     }
 
-    const applyDate = (from || to) && status !== 'OPEN'
+    const whereClause: any = {}
+    if (status === 'OPEN') {
+      whereClause.status = 'OPEN'
+    } else if (status === 'PAID' || status === 'CANCELLED') {
+      whereClause.status = status
+      if (from || to) whereClause.createdAt = dateWhere
+    } else {
+      if (from || to) {
+        whereClause.OR = [
+          { status: 'OPEN' },
+          { createdAt: dateWhere }
+        ]
+      }
+    }
 
     const allOrders = await prisma.order.findMany({
-      where: {
-        ...(status ? { status } : {}),
-        ...(applyDate ? { createdAt: dateWhere } : {}),
-      },
+      where: whereClause,
       include: {
         table: true,
         waiter: { select: { id: true, fullName: true, username: true } },
