@@ -135,9 +135,8 @@ export default function NewOrderPage() {
         </div>
         <hr style="border-top:1px dashed #000;border-bottom:none;border-left:none;border-right:none;margin:8px 0;"/>
         ${type === 'CASHIER' ? `<div style="text-align:right;font-weight:bold;">SUBTOTAL: ${subtotal.toFixed(2)} ETB</div>` : ''}
-        <div style="text-align:center;margin-top:10px;font-size:11px;">
-          — Thank you —<br/>
-          <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+        <div style="text-align:center;margin-top:10px;font-size:10px;color:#555;letter-spacing:1px;">
+          MEBA TECH PRO
         </div>
       </div>
     `

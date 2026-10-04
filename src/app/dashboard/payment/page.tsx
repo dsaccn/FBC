@@ -133,10 +133,8 @@ export default function PaymentPage() {
       </div>
       <div style="margin-top:8px;font-size:13px;"><b>Paid via:</b> ${method}</div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">
-        Thank you for visiting Kogna Coffee!<br/>
-        እናመሰግናለን!<br/>
-        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
+        MEBA TECH PRO
       </div>
     </body></html>`
     printTicketHtml(html)

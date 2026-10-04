@@ -484,9 +484,8 @@ export default function DeliveryPage() {
         </div>
 
         <hr/>
-        <div class="center" style="font-size: 11px; margin-top: 10px;">
-          <div>Thank you for ordering with us!</div>
-          <div style="font-size: 9px; margin-top: 4px; color: #555;">MEBA TECH PRO POS</div>
+        <div class="center" style="font-size: 10px; margin-top: 8px; color: #555; letter-spacing: 1px;">
+          MEBA TECH PRO
         </div>
       </body>
       </html>
@@ -552,9 +551,8 @@ export default function DeliveryPage() {
           `
         }).join('')}
         <hr/>
-        <div class="center" style="font-size: 11px;">
-          — Ready for Packing —<br/>
-          <span style="font-size: 9px; color: #555;">MEBA TECH PRO POS</span>
+        <div class="center" style="font-size: 10px; margin-top: 8px; color: #555; letter-spacing: 1px;">
+          MEBA TECH PRO
         </div>
       </body>
       </html>

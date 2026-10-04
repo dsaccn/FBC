@@ -81,9 +81,8 @@ export default function OrderDetailPage() {
         <b>Date:</b> ${now}
       </div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">
-        — Item Voided —<br/>
-        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
+        MEBA TECH PRO
       </div>
       </body></html>`
     printTicketHtml(html)
@@ -172,9 +171,8 @@ export default function OrderDetailPage() {
       </div>
       <div style="margin-top:8px;"><b>Payment:</b> ${order.payment?.method || '-'}</div>
       <hr/>
-      <div style="text-align:center;font-size:11px;">
-        Thank you for visiting!<br/>
-        <span style="font-size:9px;color:#555;letter-spacing:1px;">MEBA TECH PRO POS</span>
+      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
+        MEBA TECH PRO
       </div>
     </body></html>`
     printTicketHtml(html)
