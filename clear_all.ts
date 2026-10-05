@@ -37,6 +37,18 @@ async function clearOffline() {
     const orders = await prisma.order.deleteMany({});
     console.log(`  ✓ Deleted ${orders.count} local orders.`);
     
+    const delTables = await prisma.table.deleteMany({
+      where: {
+        OR: [
+          { number: { startsWith: 'Delivery:' } },
+          { number: { startsWith: 'Takeaway:' } },
+          { number: { startsWith: 'DLV-' } },
+          { number: 'Archived' },
+        ]
+      }
+    });
+    console.log(`  ✓ Removed ${delTables.count} virtual delivery/takeaway tables.`);
+
     await prisma.table.updateMany({
       data: {
         status: 'FREE',
@@ -78,6 +90,15 @@ async function clearCloud() {
       const res4 = await client.query('DELETE FROM "Order"');
       console.log(`  ✓ Deleted ${res4.rowCount} cloud orders.`);
       
+      const res5 = await client.query(`
+        DELETE FROM "Table" 
+        WHERE number LIKE 'Delivery:%' 
+           OR number LIKE 'Takeaway:%' 
+           OR number LIKE 'DLV-%' 
+           OR number = 'Archived'
+      `);
+      console.log(`  ✓ Removed ${res5.rowCount} virtual delivery/takeaway tables from cloud.`);
+
       await client.query(`UPDATE "Table" SET status = 'FREE', "mergedWithId" = NULL`);
       console.log("  ✓ Reset all cloud tables to FREE.");
     } finally {
