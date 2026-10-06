@@ -2,24 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 import { getSession } from '@/lib/session'
-
-// Helper: deduct ingredient stock for a list of ordered items
-async function deductIngredients(items: { menuItemId: string; quantity: number }[]) {
-  for (const item of items) {
-    const recipes = await prisma.recipe.findMany({
-      where: { menuItemId: item.menuItemId },
-      include: { ingredient: true },
-    })
-    for (const recipe of recipes) {
-      const needed = recipe.quantity * item.quantity
-      const newQty = Math.max(0, recipe.ingredient.quantity - needed)
-      await prisma.ingredient.update({
-        where: { id: recipe.ingredientId },
-        data: { quantity: newQty },
-      })
-    }
-  }
-}
+import { deductOrderStock } from '@/lib/stock'
 
 export async function GET(req: Request) {
   try {
@@ -174,8 +157,8 @@ export async function POST(req: Request) {
       },
     })
 
-    // Deduct stock for recipes
-    await deductIngredients(items)
+    // Deduct stock for food, drinks, and recipe ingredients
+    await deductOrderStock(items)
 
     // Trigger background sync to Neon
     backgroundSync()

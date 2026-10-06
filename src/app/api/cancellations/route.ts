@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
+import { restoreOrderStock } from '@/lib/stock'
 
 // Cancel an order item (requires manager approval)
 export async function POST(req: Request) {
@@ -39,6 +40,9 @@ export async function POST(req: Request) {
       data: { status: 'CANCELLED' },
     })
   }
+
+  // Restore inventory stock for the cancelled item (food, drinks, and ingredients)
+  await restoreOrderStock([{ menuItemId: orderItem.menuItemId, quantity: qtyToCancel }])
 
   // Log cancellation
   const cancellation = await prisma.cancellation.create({

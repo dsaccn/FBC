@@ -1,24 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
-
-// Helper: deduct ingredient stock based on recipes
-async function deductIngredients(items: { menuItemId: string; quantity: number }[]) {
-  for (const item of items) {
-    const recipes = await prisma.recipe.findMany({
-      where: { menuItemId: item.menuItemId },
-      include: { ingredient: true },
-    })
-    for (const recipe of recipes) {
-      const needed = recipe.quantity * item.quantity
-      const newQty = Math.max(0, recipe.ingredient.quantity - needed)
-      await prisma.ingredient.update({
-        where: { id: recipe.ingredientId },
-        data: { quantity: newQty },
-      })
-    }
-  }
-}
+import { deductOrderStock } from '@/lib/stock'
 
 // Mark items as printed
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -71,23 +54,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       where: { id },
       data: { pendingSync: true },
     })
-
-    // Deduct drink bottle stock
-    for (const item of items) {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: item.menuItemId },
-        include: { category: true },
-      })
-      if (menuItem?.category?.type === 'DRINK' && menuItem.barQuantity > 0) {
-        await prisma.menuItem.update({
-          where: { id: item.menuItemId },
-          data: { barQuantity: { decrement: item.quantity } },
-        })
-      }
-    }
-
-    // Deduct ingredient stock based on recipes
-    await deductIngredients(items)
+    // Deduct stock for food, drinks, and recipe ingredients
+    await deductOrderStock(items)
 
     // Trigger background sync to Neon
     backgroundSync()
