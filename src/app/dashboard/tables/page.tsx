@@ -92,6 +92,10 @@ export default function TablesPage() {
   }
 
   async function updateStatus(id: string, status: string) {
+    const prevTables = [...tables]
+    // Optimistic UI update: instantly update UI without waiting for network roundtrip
+    setTables(prev => prev.map(t => t.id === id ? { ...t, status: status as any } : t))
+
     try {
       const res = await fetch(`/api/tables/${id}`, {
         method: 'PATCH',
@@ -100,27 +104,32 @@ export default function TablesPage() {
       })
       if (res.ok) {
         toast.success(`Table status updated to ${status.replace('_', ' ')}`)
-        load()
       } else {
+        setTables(prevTables) // Revert on failure
         toast.error('Failed to update table status')
       }
     } catch {
+      setTables(prevTables) // Revert on network error
       toast.error('Network error updating table status')
     }
   }
 
   async function deleteTable(id: string, number: string) {
     if (!confirm(`Delete Table ${number}? Any past order history will be safely preserved.`)) return
+    const prevTables = [...tables]
+    setTables(prev => prev.filter(t => t.id !== id)) // Optimistic delete
+
     try {
       const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        setTables(prevTables) // Revert on failure
         toast.error(data.error || 'Failed to delete table')
       } else {
         toast.success(`Table ${number} deleted`)
-        load()
       }
     } catch {
+      setTables(prevTables)
       toast.error('Network error deleting table')
     }
   }
