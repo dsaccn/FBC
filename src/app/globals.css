@@ -599,3 +599,109 @@ html, body {
   to   { transform: translateY(0); opacity: 1; }
 }
 .offline-banner { animation: ob-slideDown 0.3s ease-out; }
+
+/* ── Sidebar & Left-side Item Animations ────────────────────────────── */
+
+.sidebar-icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease, filter 0.2s ease;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 400;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sidebar-link.active {
+  color: var(--gold);
+  background: rgba(201, 168, 76, 0.08);
+  border-color: rgba(201, 168, 76, 0.15);
+  font-weight: 600;
+}
+
+/* Light shimmer effect sweeping across on hover */
+.sidebar-link::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+  transform: skewX(-20deg);
+  transition: none;
+}
+
+.sidebar-link:hover::after {
+  left: 140%;
+  transition: left 0.6s ease-in-out;
+}
+
+/* Hover state: Slide right, expand scale, gold glow border and background */
+.sidebar-link:hover {
+  transform: translateX(6px) scale(1.02) !important;
+  background: linear-gradient(90deg, rgba(201, 168, 76, 0.18) 0%, rgba(201, 168, 76, 0.05) 100%) !important;
+  border-color: rgba(201, 168, 76, 0.45) !important;
+  color: var(--gold-light) !important;
+  box-shadow: 0 4px 18px rgba(201, 168, 76, 0.25), 0 0 0 1px rgba(201, 168, 76, 0.2);
+}
+
+.sidebar-link:hover .sidebar-icon-wrapper {
+  transform: scale(1.28) rotate(7deg) !important;
+  color: var(--gold) !important;
+  filter: drop-shadow(0 0 6px rgba(201, 168, 76, 0.6));
+}
+
+.sidebar-link:hover .active-arrow {
+  transform: translateX(3px);
+  color: var(--gold-light);
+}
+
+/* Click state: Press down animation + gold pulse */
+.sidebar-link:active {
+  transform: translateX(3px) scale(0.94) !important;
+  background: rgba(201, 168, 76, 0.25) !important;
+  box-shadow: 0 2px 8px rgba(201, 168, 76, 0.5) !important;
+  transition: all 0.08s ease-out !important;
+}
+
+.sidebar-link:active .sidebar-icon-wrapper {
+  transform: scale(0.9) rotate(0deg) !important;
+}
+
+/* Arrow bounce for active link */
+.active-arrow {
+  transition: transform 0.25s ease;
+}
+
+/* Generic Left Items / Category buttons hover & click animation */
+.left-item-anim, .category-btn-anim {
+  transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+.left-item-anim:hover, .category-btn-anim:hover {
+  transform: translateX(4px) scale(1.02) !important;
+  box-shadow: 0 4px 14px rgba(201, 168, 76, 0.2) !important;
+  border-color: var(--gold) !important;
+}
+
+.left-item-anim:active, .category-btn-anim:active {
+  transform: scale(0.95) !important;
+  box-shadow: 0 2px 6px rgba(201, 168, 76, 0.4) !important;
+}
+

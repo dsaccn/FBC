@@ -127,19 +127,13 @@ export default function Sidebar({ user, isOpen = true, onClose }: SidebarProps) 
                 key={item.href}
                 href={item.href}
                 onClick={handleNavClick}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '11px 12px', borderRadius: '8px', marginBottom: '2px',
-                  color: active ? 'var(--gold)' : 'var(--text-secondary)',
-                  background: active ? 'rgba(201,168,76,0.08)' : 'transparent',
-                  border: active ? '1px solid rgba(201,168,76,0.15)' : '1px solid transparent',
-                  textDecoration: 'none', fontSize: '14px', fontWeight: active ? '600' : '400',
-                  transition: 'all 0.15s ease',
-                }}
+                className={active ? 'sidebar-link active' : 'sidebar-link'}
               >
-                {item.icon}
+                <span className="sidebar-icon-wrapper">
+                  {item.icon}
+                </span>
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {active && <ChevronRight size={14} />}
+                {active && <ChevronRight size={14} className="active-arrow" />}
               </Link>
             )
           })}
