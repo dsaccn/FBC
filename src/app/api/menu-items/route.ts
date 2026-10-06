@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Cache for 30 seconds — menu items change rarely
+export const revalidate = 30
+
 export async function GET() {
   const items = await prisma.menuItem.findMany({
     include: { category: true, recipes: true },

@@ -80,6 +80,12 @@ model Order {
   waiter     User        @relation(fields: [waiterId], references: [id])
   orderItems OrderItem[]
   payment    Payment?
+
+  @@index([status])
+  @@index([tableId])
+  @@index([pendingSync])
+  @@index([createdAt])
+  @@index([tableId, status])
 }
 
 model OrderItem {
@@ -96,6 +102,9 @@ model OrderItem {
   order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem     MenuItem       @relation(fields: [menuItemId], references: [id])
   cancellation Cancellation?
+
+  @@index([orderId])
+  @@index([pendingSync])
 }
 
 model Payment {
@@ -113,6 +122,9 @@ model Payment {
 
   order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cashier User  @relation(fields: [cashierId], references: [id])
+
+  @@index([pendingSync])
+  @@index([createdAt])
 }
 
 model Cancellation {

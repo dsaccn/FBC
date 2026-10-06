@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Cache for 30 seconds — menu categories change rarely but we want near-realtime
+export const revalidate = 30
+
 export async function GET() {
   const categories = await prisma.category.findMany({
     include: { menuItems: { where: { available: true }, orderBy: { name: 'asc' } } },

@@ -2,23 +2,42 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 
-// Helper: deduct ingredient stock for a list of ordered items
+// Helper: deduct ingredient stock for a list of ordered items (batched, not N+1)
 async function deductIngredients(items: { menuItemId: string; quantity: number }[]) {
-  for (const item of items) {
-    const recipes = await prisma.recipe.findMany({
-      where: { menuItemId: item.menuItemId },
-      include: { ingredient: true },
-    })
-    for (const recipe of recipes) {
-      const needed = recipe.quantity * item.quantity
-      const newQty = Math.max(0, recipe.ingredient.quantity - needed)
-      await prisma.ingredient.update({
-        where: { id: recipe.ingredientId },
-        data: { quantity: newQty },
-      })
+  if (items.length === 0) return
+  const menuItemIds = items.map((i) => i.menuItemId)
+
+  // Single query to fetch all relevant recipes
+  const recipes = await prisma.recipe.findMany({
+    where: { menuItemId: { in: menuItemIds } },
+    include: { ingredient: true },
+  })
+
+  // Aggregate deductions per ingredient
+  const deductions = new Map<string, { current: number; needed: number }>()
+  for (const recipe of recipes) {
+    const orderedItem = items.find((i) => i.menuItemId === recipe.menuItemId)
+    if (!orderedItem) continue
+    const needed = recipe.quantity * orderedItem.quantity
+    const entry = deductions.get(recipe.ingredientId)
+    if (entry) {
+      entry.needed += needed
+    } else {
+      deductions.set(recipe.ingredientId, { current: recipe.ingredient.quantity, needed })
     }
   }
+
+  // Apply all updates in parallel
+  await Promise.all(
+    Array.from(deductions.entries()).map(([ingredientId, { current, needed }]) =>
+      prisma.ingredient.update({
+        where: { id: ingredientId },
+        data: { quantity: Math.max(0, current - needed) },
+      })
+    )
+  )
 }
+
 
 export async function GET(req: Request) {
   try {
@@ -132,44 +151,47 @@ export async function POST(req: Request) {
     // Update table status to OCCUPIED
     await prisma.table.update({ where: { id: tableId }, data: { status: 'OCCUPIED' } })
 
-    // Deduct drink bottle stock from Bar (respects unit linking)
-    for (const item of order.orderItems) {
-      if (item.menuItem.category?.type === 'DRINK') {
-        const fullItem = await prisma.menuItem.findUnique({
-          where: { id: item.menuItemId },
-          include: { parentItem: true },
-        })
-        if (!fullItem) continue
+    // Deduct drink bottle stock from Bar (respects unit linking) — batched
+    const drinkItems = order.orderItems.filter((item) => item.menuItem.category?.type === 'DRINK')
+    if (drinkItems.length > 0) {
+      const drinkMenuItemIds = drinkItems.map((item) => item.menuItemId)
+      const fullDrinkItems = await prisma.menuItem.findMany({
+        where: { id: { in: drinkMenuItemIds } },
+        include: { parentItem: true },
+      })
+      const fullDrinkMap = new Map(fullDrinkItems.map((fi) => [fi.id, fi]))
 
-        if (fullItem.parentItemId && fullItem.parentItem) {
-          // Linked item (e.g. Jambo): deduct from parent's bar stock using multiplier
-          const deductQty = Math.round(item.quantity * fullItem.unitMultiplier * 100) / 100
-          const parentCurrent = fullItem.parentItem as any
-          const newBarQty = Math.max(0, (parentCurrent.barQuantity ?? 0) - deductQty)
-          await prisma.menuItem.update({
-            where: { id: fullItem.parentItemId },
-            data: { barQuantity: newBarQty },
-          })
-        } else {
-          // Normal item: deduct from its own bar stock. If bar empty, deduct from store.
-          if (fullItem.barQuantity >= item.quantity) {
-            await prisma.menuItem.update({
-              where: { id: item.menuItemId },
-              data: { barQuantity: { decrement: item.quantity } },
+      await Promise.all(
+        drinkItems.map((item) => {
+          const fullItem = fullDrinkMap.get(item.menuItemId)
+          if (!fullItem) return Promise.resolve()
+
+          if (fullItem.parentItemId && fullItem.parentItem) {
+            // Linked item (e.g. Jambo): deduct from parent's bar stock using multiplier
+            const deductQty = Math.round(item.quantity * fullItem.unitMultiplier * 100) / 100
+            const parentCurrent = fullItem.parentItem as any
+            const newBarQty = Math.max(0, (parentCurrent.barQuantity ?? 0) - deductQty)
+            return prisma.menuItem.update({
+              where: { id: fullItem.parentItemId },
+              data: { barQuantity: newBarQty },
             })
           } else {
-            // Bar is empty or insufficient — deduct from store stock directly
-            const remaining = item.quantity - fullItem.barQuantity
-            await prisma.menuItem.update({
-              where: { id: item.menuItemId },
-              data: {
-                barQuantity: 0,
-                stockQuantity: { decrement: remaining },
-              },
-            })
+            // Normal item: deduct from its own bar stock. If bar empty, deduct from store.
+            if (fullItem.barQuantity >= item.quantity) {
+              return prisma.menuItem.update({
+                where: { id: item.menuItemId },
+                data: { barQuantity: { decrement: item.quantity } },
+              })
+            } else {
+              const remaining = item.quantity - fullItem.barQuantity
+              return prisma.menuItem.update({
+                where: { id: item.menuItemId },
+                data: { barQuantity: 0, stockQuantity: { decrement: remaining } },
+              })
+            }
           }
-        }
-      }
+        })
+      )
     }
 
     // Deduct ingredient stock based on recipes

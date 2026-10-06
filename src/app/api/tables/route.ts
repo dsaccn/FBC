@@ -3,40 +3,51 @@ import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 
 export async function GET() {
-  const tables = await prisma.table.findMany({
-    where: {
-      id: { not: '__archived_orders_table__' },
-      number: { not: 'Archived' },
-      status: { not: 'ARCHIVED' },
-    },
-  })
-  
-  // Self-heal: check if table status is out of sync with actual open orders
-  for (const table of tables) {
-    const openOrder = await prisma.order.findFirst({
-      where: { tableId: table.id, status: 'OPEN' },
-    })
+  // Fetch tables and all open order tableIds in parallel — 2 queries instead of 2N+1
+  const [tables, openOrders] = await Promise.all([
+    prisma.table.findMany({
+      where: {
+        id: { not: '__archived_orders_table__' },
+        number: { not: 'Archived' },
+        status: { not: 'ARCHIVED' },
+      },
+    }),
+    prisma.order.findMany({
+      where: { status: 'OPEN' },
+      select: { tableId: true },
+    }),
+  ])
 
-    if (!openOrder && table.status !== 'FREE') {
-      // Table is marked occupied/waiting but has no open orders -> Reset to FREE
-      await prisma.table.update({
-        where: { id: table.id },
-        data: { status: 'FREE' },
-      })
+  const occupiedTableIds = new Set(openOrders.map((o) => o.tableId))
+
+  // Determine which tables need status correction
+  const toFree: string[] = []
+  const toOccupied: string[] = []
+
+  for (const table of tables) {
+    const hasOpen = occupiedTableIds.has(table.id)
+    if (!hasOpen && table.status !== 'FREE') {
+      toFree.push(table.id)
       table.status = 'FREE'
-    } else if (openOrder && table.status === 'FREE') {
-      // Table is marked FREE but has an open order -> Mark as OCCUPIED
-      await prisma.table.update({
-        where: { id: table.id },
-        data: { status: 'OCCUPIED' },
-      })
+    } else if (hasOpen && table.status === 'FREE') {
+      toOccupied.push(table.id)
       table.status = 'OCCUPIED'
     }
   }
-  
-  // Sort tables naturally (e.g. 1, 2, 3... 10, 11 instead of 1, 10, 11, 2)
+
+  // Bulk-update in at most 2 queries (instead of one per table)
+  await Promise.all([
+    toFree.length > 0
+      ? prisma.table.updateMany({ where: { id: { in: toFree } }, data: { status: 'FREE' } })
+      : Promise.resolve(),
+    toOccupied.length > 0
+      ? prisma.table.updateMany({ where: { id: { in: toOccupied } }, data: { status: 'OCCUPIED' } })
+      : Promise.resolve(),
+  ])
+
+  // Sort tables naturally (e.g. 1, 2, 3… 10, 11 instead of 1, 10, 11, 2)
   tables.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }))
-  
+
   return NextResponse.json(tables)
 }
 
