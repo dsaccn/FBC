@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   Bike, ShoppingBag, Plus, RefreshCw, Printer, Search, Phone,
   MapPin, FileText, CheckCircle, Clock, DollarSign, X, AlertCircle,
@@ -64,6 +64,7 @@ interface CartItem {
 export default function DeliveryPage() {
   const [orders, setOrders] = useState<DeliveryOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const hasLoadedRef = useRef(false)
   const [syncing, setSyncing] = useState(false)
   
   // Filters
@@ -115,7 +116,7 @@ export default function DeliveryPage() {
 
   // Load delivery orders
   const loadOrders = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true)
+    if (!hasLoadedRef.current && showLoading) setLoading(true)
     try {
       const params = new URLSearchParams()
       if (dateFrom) params.set('from', dateFrom)
@@ -124,13 +125,14 @@ export default function DeliveryPage() {
       if (res.ok) {
         const data = await res.json()
         setOrders(data)
+        hasLoadedRef.current = true
       } else {
         console.error('Failed to load delivery orders:', res.statusText)
       }
     } catch (err) {
       console.error('Error loading delivery orders:', err)
     } finally {
-      if (showLoading) setLoading(false)
+      setLoading(false)
     }
   }, [dateFrom, dateTo])
 

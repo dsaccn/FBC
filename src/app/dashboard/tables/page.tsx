@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2 } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
@@ -21,6 +21,8 @@ const STATUS_COLORS = {
 export default function TablesPage() {
   const [tables, setTables] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newNumber, setNewNumber] = useState('')
   const [mergeMode, setMergeMode] = useState(false)
@@ -28,36 +30,44 @@ export default function TablesPage() {
   const [transferMode, setTransferMode] = useState(false)
   const [transferSelected, setTransferSelected] = useState<string[]>([])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (isBackground = false) => {
+    // Only show full-page loading spinner on very first mount
+    if (!hasLoadedRef.current && !isBackground) {
+      setLoading(true)
+    } else {
+      setRefreshing(true)
+    }
+
     try {
       const res = await fetch('/api/tables')
       if (res.ok) {
         const allTables: Table[] = await res.json()
         setTables(allTables.filter(t => !t.number.startsWith('Delivery:') && !t.number.startsWith('Takeaway:') && !t.number.startsWith('DLV-') && !t.number.startsWith('DELIVERY') && !t.number.startsWith('TAKEAWAY')))
+        hasLoadedRef.current = true
       } else {
         console.error('Failed to load tables:', res.statusText)
-        toast.error('Failed to load floor tables')
+        if (!isBackground) toast.error('Failed to load floor tables')
       }
     } catch (err) {
       console.error('Error loading tables:', err)
-      toast.error('Network error loading tables')
+      if (!isBackground) toast.error('Network error loading tables')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  // Auto-refresh when OfflineBanner pulls new cloud orders or completes any sync
+  // Silent auto-refresh when OfflineBanner pulls new cloud orders or completes sync
   useEffect(() => {
-    const handleCloudPull = () => load()
-    const handleSyncComplete = () => load()
+    const handleCloudPull = () => load(true)
+    const handleSyncComplete = () => load(true)
     window.addEventListener('cloud-pull-complete', handleCloudPull)
     window.addEventListener('sync-complete', handleSyncComplete)
 
-    // Poll every 30s so table status stays live across terminals
-    const interval = setInterval(load, 30_000)
+    // Poll every 30s silently so table status stays live across terminals with 0 screen flash
+    const interval = setInterval(() => load(true), 30_000)
 
     return () => {
       window.removeEventListener('cloud-pull-complete', handleCloudPull)
@@ -211,7 +221,7 @@ export default function TablesPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={15} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => load(false)}><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /> Refresh</button>
           <button className={`btn btn-sm ${mergeMode ? 'btn-gold' : 'btn-outline'}`} onClick={() => { setMergeMode(!mergeMode); setMergeSelected([]); setTransferMode(false) }}><Merge size={15} /> Merge</button>
           <button className={`btn btn-sm ${transferMode ? 'btn-gold' : 'btn-outline'}`} onClick={() => { setTransferMode(!transferMode); setTransferSelected([]); setMergeMode(false) }}><ArrowRightLeft size={15} /> Transfer</button>
           <button className="btn btn-gold btn-sm" onClick={() => setShowAdd(true)}><Plus size={15} /> Add Table</button>

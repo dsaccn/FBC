@@ -28,6 +28,8 @@ export default function OrdersPage() {
   const tableId = searchParams.get('tableId')
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
   const [filter, setFilter] = useState('OPEN')
 
   // Helper to format date in local timezone YYYY-MM-DD
@@ -42,8 +44,14 @@ export default function OrdersPage() {
   const [dateFrom, setDateFrom] = useState(() => getLocalDateStr())
   const [dateTo, setDateTo] = useState(() => getLocalDateStr())
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (isBackground = false) => {
+    // Only display full-page loading placeholder on first visit
+    if (!hasLoadedRef.current && !isBackground) {
+      setLoading(true)
+    } else {
+      setRefreshing(true)
+    }
+
     try {
       const params = new URLSearchParams()
       if (tableId) params.set('tableId', tableId)
@@ -56,6 +64,7 @@ export default function OrdersPage() {
       const res = await fetch(`/api/orders?${params.toString()}`)
       if (res.ok) {
         setOrders(await res.json())
+        hasLoadedRef.current = true
       } else {
         console.error('Failed to load orders:', res.statusText)
       }
@@ -63,20 +72,21 @@ export default function OrdersPage() {
       console.error('Error loading orders:', err)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [tableId, filter, dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
 
-  // Auto-refresh when OfflineBanner pulls new orders or periodically every 10s
+  // Auto-refresh when OfflineBanner pulls new orders or periodically every 15s silently
   const loadRef = useRef(load)
   useEffect(() => { loadRef.current = load }, [load])
   useEffect(() => {
-    const handleCloudPull = () => loadRef.current()
-    const handleSyncComplete = () => loadRef.current()
+    const handleCloudPull = () => loadRef.current(true)
+    const handleSyncComplete = () => loadRef.current(true)
     window.addEventListener('cloud-pull-complete', handleCloudPull)
     window.addEventListener('sync-complete', handleSyncComplete)
-    const interval = setInterval(() => loadRef.current(), 10000)
+    const interval = setInterval(() => loadRef.current(true), 15000)
     return () => {
       window.removeEventListener('cloud-pull-complete', handleCloudPull)
       window.removeEventListener('sync-complete', handleSyncComplete)
@@ -157,7 +167,7 @@ export default function OrdersPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => load(false)}><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh</button>
           <Link href={`/dashboard/orders/new${tableId ? `?tableId=${tableId}` : ''}`} className="btn btn-gold btn-sm">
             <Plus size={14} /> New Order
           </Link>
