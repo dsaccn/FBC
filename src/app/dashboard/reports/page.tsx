@@ -1,13 +1,66 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
-import { Printer, RefreshCw, TrendingUp, DollarSign, ShoppingBag, XCircle, AlertTriangle, Download } from 'lucide-react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import { 
+  Printer, 
+  RefreshCw, 
+  TrendingUp, 
+  DollarSign, 
+  ShoppingBag, 
+  XCircle, 
+  AlertTriangle, 
+  Download,
+  PieChart,
+  Percent,
+  Search,
+  Filter,
+  ArrowUpDown,
+  Info,
+  Layers
+} from 'lucide-react'
+
+export interface ProfitCategory {
+  category: string
+  quantity: number
+  revenue: number
+  cost: number
+  grossProfit: number
+  profitMargin: number
+}
+
+export interface ProfitItem {
+  id: string
+  name: string
+  category: string
+  type: string
+  quantity: number
+  price: number
+  costPrice: number
+  revenue: number
+  totalCost: number
+  grossProfit: number
+  profitMargin: number
+}
 
 interface ReportData {
   totalRevenue: number
+  totalCOGS?: number
+  grossProfit?: number
+  profitMargin?: number
   totalOrders: number
   revenueByMethod: Record<string, number>
-  bestSelling: { name: string; category: string; quantity: number; revenue: number }[]
+  bestSelling: { 
+    name: string
+    category: string
+    quantity: number
+    revenue: number
+    costPrice?: number
+    totalCost?: number
+    profit?: number
+    profitMargin?: number
+  }[]
+  profitByCategory?: ProfitCategory[]
+  profitByItem?: ProfitItem[]
   staffPerformance: { name: string; orders: number; revenue: number }[]
   cancellations: { id: string; orderItem: { menuItem: { name: string }; quantity: number; order: { table: { number: string }; waiter: { fullName: string } } }; manager: { fullName: string }; reason: string; createdAt: string }[]
   lowStock: { id: string; name: string; stockQuantity: number; lowStockThreshold: number }[]
@@ -58,6 +111,9 @@ export default function ReportsPage() {
   const [to, setTo] = useState('')
   const [activeTab, setActiveTab] = useState('summary')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [plSearch, setPlSearch] = useState('')
+  const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'BEVERAGE'>('ALL')
+  const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
@@ -248,8 +304,120 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
+  function exportProfitLossToExcel() {
+    if (!data || !data.profitByItem) return
+
+    const items = data.profitByItem
+    const dateLabel = from || to
+      ? `from ${from || 'Start'} to ${to || 'End'}`
+      : `at the day of ${new Date().toLocaleDateString('en-US')}`
+
+    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:Arial,sans-serif;font-size:10pt;`
+    const numTd = `${tdBase}text-align:right;`
+
+    let itemRows = ''
+    items.forEach(it => {
+      const marginColor = it.profitMargin >= 50 ? '#047857' : it.profitMargin >= 25 ? '#B45309' : '#B91C1C'
+      itemRows += `<tr>
+        <td style="${tdBase}">${it.name}</td>
+        <td style="${tdBase}">${it.category}</td>
+        <td style="${tdBase}">${it.type}</td>
+        <td style="${numTd}">${it.quantity}</td>
+        <td style="${numTd}">${it.price.toFixed(2)}</td>
+        <td style="${numTd}">${it.costPrice.toFixed(2)}</td>
+        <td style="${numTd}">${it.revenue.toFixed(2)}</td>
+        <td style="${numTd}">${it.totalCost.toFixed(2)}</td>
+        <td style="${numTd}font-weight:600;color:${it.grossProfit >= 0 ? '#047857' : '#B91C1C'};">${it.grossProfit.toFixed(2)}</td>
+        <td style="${numTd}font-weight:600;color:${marginColor};">${it.profitMargin.toFixed(1)}%</td>
+      </tr>`
+    })
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8"/>
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Profit and Loss</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+          td, th { border: 1px solid #D1D5DB; }
+        </style>
+      </head>
+      <body>
+        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:Arial,sans-serif;margin-bottom:4px;color:#1F2937;">Profit & Loss Statement</p>
+        <p style="text-align:center;font-size:10pt;font-family:Arial,sans-serif;color:#4B5563;margin-bottom:16px;">
+          Generated ${dateLabel}
+        </p>
+
+        <!-- Executive Summary Table -->
+        <table style="margin-bottom:20px;width:380px;">
+          <tr style="background-color:#1E293B;color:#FFFFFF;font-weight:bold;">
+            <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Financial Metric</th>
+            <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Amount (ETB)</th>
+          </tr>
+          <tr><td style="${tdBase}">Gross Revenue</td><td style="${numTd}font-weight:bold;">${data.totalRevenue.toFixed(2)}</td></tr>
+          <tr><td style="${tdBase}">Cost of Goods Sold (COGS)</td><td style="${numTd}color:#B91C1C;">${(data.totalCOGS || 0).toFixed(2)}</td></tr>
+          <tr style="background-color:#F0FDF4;"><td style="${tdBase}font-weight:bold;">Gross Profit</td><td style="${numTd}font-weight:bold;color:#047857;">${(data.grossProfit || 0).toFixed(2)}</td></tr>
+          <tr><td style="${tdBase}">Overall Profit Margin</td><td style="${numTd}font-weight:bold;">${(data.profitMargin ?? 0).toFixed(1)}%</td></tr>
+        </table>
+
+        <!-- Item Detail Table -->
+        <table>
+          <thead>
+            <tr style="background-color:#4F727C;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Item Name</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Category</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Type</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Qty Sold</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Selling Price</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Cost Price</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Revenue</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Total Cost</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Gross Profit</th>
+              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Margin %</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemRows}
+            <tr style="background-color:#E5E7EB;font-weight:bold;border-top:3px double #111827;">
+              <td colspan="3" style="${tdBase}">TOTAL</td>
+              <td style="${numTd}">${items.reduce((s, it) => s + it.quantity, 0)}</td>
+              <td style="${tdBase}">-</td>
+              <td style="${tdBase}">-</td>
+              <td style="${numTd}">${data.totalRevenue.toFixed(2)}</td>
+              <td style="${numTd}">${(data.totalCOGS || 0).toFixed(2)}</td>
+              <td style="${numTd}">${(data.grossProfit || 0).toFixed(2)}</td>
+              <td style="${numTd}">${(data.profitMargin ?? 0).toFixed(1)}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+      </html>`
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Profit_Loss_Report_${from || new Date().toISOString().split('T')[0]}.xls`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const tabs = [
     { id: 'summary', label: 'Dashboard', icon: <TrendingUp size={14}/> },
+    { id: 'profit-loss', label: 'Profit & Loss', icon: <PieChart size={14}/> },
     { id: 'daily', label: 'Daily Sales', icon: <DollarSign size={14}/> },
     { id: 'categorized', label: 'Categorized Report', icon: <TrendingUp size={14}/> },
     { id: 'history', label: 'Transaction History', icon: <ShoppingBag size={14}/> },
@@ -313,44 +481,92 @@ export default function ReportsPage() {
       </div>
 
       {/* Advanced KPI Cards */}
-      <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+      <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+        {/* Total Revenue */}
         <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Total Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
+              <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Total Revenue</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Gross sales collected</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(212,175,55,0.2)', borderRadius: '12px', color: 'var(--gold)' }}><DollarSign size={24}/></div>
+            <div style={{ padding: '10px', background: 'rgba(212,175,55,0.2)', borderRadius: '12px', color: 'var(--gold)' }}><DollarSign size={22}/></div>
           </div>
         </div>
 
+        {/* Total Cost (COGS) */}
+        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Total Cost (COGS)</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Purchased item expense</div>
+            </div>
+            <div style={{ padding: '10px', background: 'rgba(239,68,68,0.2)', borderRadius: '12px', color: 'var(--danger-light)' }}><ShoppingBag size={22}/></div>
+          </div>
+        </div>
+
+        {/* Gross Profit */}
+        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.02) 100%)', border: '1px solid rgba(16,185,129,0.35)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Gross Profit</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                {formatMoney(data.grossProfit || 0)}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Revenue minus costs</div>
+            </div>
+            <div style={{ padding: '10px', background: 'rgba(16,185,129,0.2)', borderRadius: '12px', color: 'var(--success-light)' }}><TrendingUp size={22}/></div>
+          </div>
+        </div>
+
+        {/* Profit Margin */}
+        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.02) 100%)', border: '1px solid rgba(168,85,247,0.3)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Profit Margin</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: '#c084fc' }}>
+                {(data.profitMargin ?? 0).toFixed(1)}%
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
+            </div>
+            <div style={{ padding: '10px', background: 'rgba(168,85,247,0.2)', borderRadius: '12px', color: '#c084fc' }}><Percent size={22}/></div>
+          </div>
+        </div>
+
+        {/* Completed Orders */}
         <div className="card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Completed Orders</div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
+              <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Completed Orders</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(82,183,136,0.2)', borderRadius: '12px', color: 'var(--success-light)' }}><ShoppingBag size={24}/></div>
+            <div style={{ padding: '10px', background: 'rgba(82,183,136,0.2)', borderRadius: '12px', color: 'var(--success-light)' }}><ShoppingBag size={22}/></div>
           </div>
         </div>
 
+        {/* Average Order Value */}
         <div className="card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Average Order Value</div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
+              <div style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Avg Order Value</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(244,162,97,0.2)', borderRadius: '12px', color: 'var(--warning-light)' }}><TrendingUp size={24}/></div>
+            <div style={{ padding: '10px', background: 'rgba(244,162,97,0.2)', borderRadius: '12px', color: 'var(--warning-light)' }}><TrendingUp size={22}/></div>
           </div>
         </div>
 
+        {/* Cancellations */}
         <div className="card" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Cancellations</div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
+              <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Cancellations</div>
+              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(230,57,70,0.2)', borderRadius: '12px', color: 'var(--danger-light)' }}><XCircle size={24}/></div>
+            <div style={{ padding: '10px', background: 'rgba(230,57,70,0.2)', borderRadius: '12px', color: 'var(--danger-light)' }}><XCircle size={22}/></div>
           </div>
         </div>
       </div>
@@ -457,6 +673,52 @@ export default function ReportsPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--text-muted)' }}>No payment data yet.</div>
             )}
           </div>
+
+          {/* Executive Profitability & Expense Bar */}
+          <div className="card" style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg, rgba(20,20,20,0.8), rgba(30,25,15,0.9))', border: '1px solid var(--black-border)', marginTop: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontWeight: '600', fontSize: '17px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <PieChart size={18} color="var(--gold)" /> Profit & Expense Allocation
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                  Visual split between cost of goods sold (purchase expense) and gross profit
+                </p>
+              </div>
+              <button className="btn btn-outline btn-sm" onClick={() => setActiveTab('profit-loss')}>
+                Open Full P&L Report →
+              </button>
+            </div>
+
+            {data.totalRevenue > 0 ? (() => {
+              const cogsPct = Math.min(100, Math.max(0, ((data.totalCOGS || 0) / data.totalRevenue) * 100))
+              const profitPct = Math.max(0, 100 - cogsPct)
+              return (
+                <div>
+                  <div style={{ height: '22px', borderRadius: '11px', overflow: 'hidden', display: 'flex', background: 'var(--black-card)', border: '1px solid var(--black-border)', marginBottom: '16px' }}>
+                    <div style={{ width: `${cogsPct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)', transition: 'width 0.4s' }} title={`COGS: ${cogsPct.toFixed(1)}%`} />
+                    <div style={{ width: `${profitPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Gross Profit: ${profitPct.toFixed(1)}%`} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', fontSize: '13px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ef4444' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>Cost of Goods (COGS):</span>
+                      <b style={{ color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</b>
+                      <span style={{ color: 'var(--danger-light)', fontSize: '12px' }}>({cogsPct.toFixed(1)}%)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>Gross Profit:</span>
+                      <b style={{ color: 'var(--text-primary)' }}>{formatMoney(data.grossProfit || 0)}</b>
+                      <span style={{ color: 'var(--success-light)', fontSize: '12px' }}>({profitPct.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })() : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No revenue recorded in this period yet.</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -505,6 +767,347 @@ export default function ReportsPage() {
                 )}
               </div>
             </>
+          )
+        }
+
+        if (activeTab === 'profit-loss') {
+          const totalRev = data.totalRevenue || 0
+          const totalCost = data.totalCOGS || 0
+          const grossProf = data.grossProfit || 0
+          const overallMargin = data.profitMargin ?? 0
+          const cogsPct = totalRev > 0 ? Math.min(100, Math.max(0, (totalCost / totalRev) * 100)) : 0
+          const profitPct = totalRev > 0 ? Math.max(0, 100 - cogsPct) : 0
+
+          const filteredItems = (data.profitByItem || []).filter(item => {
+            const matchesSearch = !plSearch || 
+              item.name.toLowerCase().includes(plSearch.toLowerCase()) || 
+              item.category.toLowerCase().includes(plSearch.toLowerCase())
+            const matchesType = plTypeFilter === 'ALL' || item.type === plTypeFilter
+            return matchesSearch && matchesType
+          }).sort((a, b) => {
+            if (plSortBy === 'profit') return b.grossProfit - a.grossProfit
+            if (plSortBy === 'margin') return b.profitMargin - a.profitMargin
+            if (plSortBy === 'revenue') return b.revenue - a.revenue
+            if (plSortBy === 'quantity') return b.quantity - a.quantity
+            if (plSortBy === 'cost') return b.totalCost - a.totalCost
+            return 0
+          })
+
+          const totalFilteredProfit = filteredItems.reduce((s, it) => s + it.grossProfit, 0)
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+              
+              {/* Header Actions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <h2 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <PieChart size={22} color="var(--gold)" /> Profit & Loss Statement (P&L)
+                  </h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                    Cost of Goods Sold (COGS), Gross Profit, and Margin breakdown across items and categories
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button className="btn btn-gold btn-sm" onClick={exportProfitLossToExcel}>
+                    <Download size={15} style={{ marginRight: '6px' }} /> Export P&L to Excel
+                  </button>
+                </div>
+              </div>
+
+              {/* Section A: Financial Executive Overview Card */}
+              <div className="card" style={{ background: 'linear-gradient(135deg, rgba(20,20,20,0.85), rgba(30,25,12,0.9))', border: '1px solid rgba(212,175,55,0.25)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700', marginBottom: '16px' }}>
+                  Executive Financial Summary
+                </div>
+
+                {/* 4 Mini Cards in Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales Revenue</div>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--gold)', marginTop: '4px' }}>100% of income</div>
+                  </div>
+
+                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Cost of Goods (COGS)</div>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{cogsPct.toFixed(1)}% of revenue</div>
+                  </div>
+
+                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.25)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit</div>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: grossProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                      {formatMoney(grossProf)}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{profitPct.toFixed(1)}% of revenue</div>
+                  </div>
+
+                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(168,85,247,0.25)' }}>
+                    <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit Margin</div>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#c084fc' }}>{overallMargin.toFixed(1)}%</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Net return rate</div>
+                  </div>
+                </div>
+
+                {/* Revenue Split Horizontal Bar */}
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>Revenue Allocation</span>
+                    <span style={{ color: 'var(--text-muted)' }}>Cost ({cogsPct.toFixed(1)}%) vs Profit ({profitPct.toFixed(1)}%)</span>
+                  </div>
+                  <div style={{ height: '22px', borderRadius: '11px', overflow: 'hidden', display: 'flex', background: 'var(--black-card)', border: '1px solid var(--black-border)' }}>
+                    <div style={{ width: `${cogsPct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)', transition: 'width 0.4s' }} title={`COGS: ${formatMoney(totalCost)} (${cogsPct.toFixed(1)}%)`} />
+                    <div style={{ width: `${profitPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Gross Profit: ${formatMoney(grossProf)} (${profitPct.toFixed(1)}%)`} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ef4444' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>COGS:</span>
+                      <b style={{ color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</b>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#10b981' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>Gross Profit:</span>
+                      <b style={{ color: 'var(--success-light)' }}>{formatMoney(grossProf)}</b>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Callout */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', padding: '12px 16px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  <Info size={16} color="var(--gold)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong style={{ color: 'var(--gold)' }}>How COGS & Profit are calculated:</strong> Cost of Goods Sold is calculated by multiplying each sold quantity by the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>). If an item has not had a cost price configured yet in Inventory, its cost defaults to 0 (100% margin). Configure cost prices on the Menu/Inventory management page for exact profitability tracking.
+                  </div>
+                </div>
+              </div>
+
+              {/* Section B: Category Profitability (FOOD vs BEVERAGE) */}
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Layers size={16} /> Category Performance Comparison
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                  {(data.profitByCategory && data.profitByCategory.length > 0) ? (
+                    data.profitByCategory.map(cat => {
+                      const isFood = cat.category === 'FOOD'
+                      const badgeColor = isFood ? '#f59e0b' : '#38bdf8'
+                      const bgGradient = isFood 
+                        ? 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(20,20,20,0.6) 100%)' 
+                        : 'linear-gradient(135deg, rgba(56,189,248,0.08) 0%, rgba(20,20,20,0.6) 100%)'
+                      const borderCol = isFood ? 'rgba(245,158,11,0.3)' : 'rgba(56,189,248,0.3)'
+
+                      return (
+                        <div key={cat.category} className="card" style={{ background: bgGradient, border: `1px solid ${borderCol}`, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '12px', background: `${badgeColor}22`, color: badgeColor, border: `1px solid ${badgeColor}44`, textTransform: 'uppercase' }}>
+                                {cat.category}
+                              </span>
+                              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{cat.quantity} units sold</span>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ fontSize: '18px', fontWeight: '700', color: cat.profitMargin >= 50 ? 'var(--success-light)' : cat.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)' }}>
+                                {cat.profitMargin.toFixed(1)}%
+                              </span>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Margin</div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: 'var(--black-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+                            <div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Revenue</div>
+                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(cat.revenue)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>COGS</div>
+                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--danger-light)', marginTop: '2px' }}>{formatMoney(cat.cost)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profit</div>
+                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--success-light)', marginTop: '2px' }}>{formatMoney(cat.grossProfit)}</div>
+                            </div>
+                          </div>
+
+                          {/* Category Margin Bar */}
+                          <div>
+                            <div style={{ height: '6px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, cat.profitMargin))}%`, background: cat.profitMargin >= 50 ? 'var(--success-light)' : cat.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)', borderRadius: '3px' }} />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '30px' }}>
+                      No category profit breakdown available for this period.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section C: Per-Item Profit Breakdown Table */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Per-Item Profitability Breakdown ({filteredItems.length} items)
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Filtered Gross Profit: <b style={{ color: 'var(--success-light)' }}>{formatMoney(totalFilteredProfit)}</b>
+                  </div>
+                </div>
+
+                {/* Filters and Controls */}
+                <div className="card" style={{ padding: '14px 16px', background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+                  {/* Search Input */}
+                  <div style={{ position: 'relative', flex: '1', minWidth: '220px', maxWidth: '380px' }}>
+                    <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input 
+                      type="text" 
+                      className="input" 
+                      placeholder="Search item or category..." 
+                      value={plSearch} 
+                      onChange={e => setPlSearch(e.target.value)} 
+                      style={{ paddingLeft: '36px', width: '100%', fontSize: '13px' }} 
+                    />
+                  </div>
+
+                  {/* Type Filter Buttons */}
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '4px' }}>Type:</span>
+                    {(['ALL', 'FOOD', 'BEVERAGE'] as const).map(t => (
+                      <button
+                        key={t}
+                        className={`btn btn-sm ${plTypeFilter === t ? 'btn-gold' : 'btn-ghost'}`}
+                        style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
+                        onClick={() => setPlTypeFilter(t)}
+                      >
+                        {t === 'ALL' ? 'All Types' : t}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Sort By Dropdown */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Sort:</span>
+                    <select
+                      className="input"
+                      value={plSortBy}
+                      onChange={e => setPlSortBy(e.target.value as any)}
+                      style={{ padding: '6px 12px', fontSize: '12px', minWidth: '150px' }}
+                    >
+                      <option value="profit">Highest Profit</option>
+                      <option value="margin">Highest Margin %</option>
+                      <option value="revenue">Highest Revenue</option>
+                      <option value="quantity">Most Units Sold</option>
+                      <option value="cost">Highest Cost</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Desktop & Mobile Responsive Table */}
+                {renderResponsiveTable(
+                  ['Item & Category', 'Type', 'Qty Sold', 'Selling Price', 'Unit Cost', 'Revenue', 'Total Cost', 'Gross Profit', 'Margin %'],
+                  filteredItems,
+                  (item) => {
+                    const isUnsetCost = item.costPrice === 0
+                    const marginColor = item.profitMargin >= 50 ? 'var(--success-light)' : item.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
+                    const marginBadgeBg = item.profitMargin >= 50 ? 'rgba(16,185,129,0.12)' : item.profitMargin >= 25 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)'
+
+                    return (
+                      <tr key={item.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
+                        <td style={{ padding: '14px 20px' }}>
+                          <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category}</div>
+                        </td>
+                        <td style={{ padding: '14px 20px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', background: item.type === 'FOOD' ? 'rgba(245,158,11,0.15)' : 'rgba(56,189,248,0.15)', color: item.type === 'FOOD' ? '#f59e0b' : '#38bdf8' }}>
+                            {item.type}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
+                        <td style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>{formatMoney(item.price)}</td>
+                        <td style={{ padding: '14px 20px', fontSize: '13px' }}>
+                          {isUnsetCost ? (
+                            <span style={{ fontSize: '10px', color: 'var(--warning-light)', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }} title="Cost price is 0 ETB. Set in Inventory to see true profit.">
+                              ⚠️ 0.00
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)' }}>{formatMoney(item.costPrice)}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '14px 20px', color: 'var(--gold)', fontWeight: '600', fontSize: '14px' }}>{formatMoney(item.revenue)}</td>
+                        <td style={{ padding: '14px 20px', color: 'var(--danger-light)', fontSize: '13px' }}>{formatMoney(item.totalCost)}</td>
+                        <td style={{ padding: '14px 20px', fontWeight: '700', fontSize: '14px', color: item.grossProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                          {formatMoney(item.grossProfit)}
+                        </td>
+                        <td style={{ padding: '14px 20px' }}>
+                          <span style={{ display: 'inline-block', fontSize: '11px', fontWeight: '700', color: marginColor, background: marginBadgeBg, padding: '3px 8px', borderRadius: '12px', border: `1px solid ${marginColor}33` }}>
+                            {item.profitMargin.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  },
+                  (item) => {
+                    const isUnsetCost = item.costPrice === 0
+                    const marginColor = item.profitMargin >= 50 ? 'var(--success-light)' : item.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
+
+                    return (
+                      <div key={item.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              {item.category} · <span style={{ color: item.type === 'FOOD' ? '#f59e0b' : '#38bdf8', fontWeight: '600' }}>{item.type}</span>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px' }}>
+                            {item.profitMargin.toFixed(1)}% Margin
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
+                          <div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Qty Sold</div>
+                            <div style={{ fontWeight: '700', marginTop: '2px' }}>{item.quantity}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Sell Price</div>
+                            <div style={{ fontWeight: '600', marginTop: '2px' }}>{formatMoney(item.price)}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Unit Cost</div>
+                            <div style={{ fontWeight: '600', marginTop: '2px', color: isUnsetCost ? 'var(--warning-light)' : 'inherit' }}>
+                              {isUnsetCost ? '⚠️ 0 ETB' : formatMoney(item.costPrice)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '13px' }}>
+                          <div>
+                            <span style={{ color: 'var(--text-secondary)' }}>Revenue: </span>
+                            <b style={{ color: 'var(--gold)' }}>{formatMoney(item.revenue)}</b>
+                            <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>|</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>Cost: </span>
+                            <span style={{ color: 'var(--danger-light)' }}>{formatMoney(item.totalCost)}</span>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Profit: </span>
+                            <b style={{ color: item.grossProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)', fontSize: '14px' }}>
+                              {formatMoney(item.grossProfit)}
+                            </b>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  },
+                  'No profit items match your filter criteria.'
+                )}
+              </div>
+            </div>
           )
         }
 
@@ -904,36 +1507,68 @@ export default function ReportsPage() {
         )
 
         if (activeTab === 'best-sellers') return renderResponsiveTable(
-          ['Rank', 'Item Name', 'Category', 'Units Sold', 'Revenue Generated'],
+          ['Rank', 'Item Name', 'Category', 'Units Sold', 'Revenue', 'Unit Cost', 'Gross Profit', 'Margin %'],
           data.bestSelling,
-          (item, i) => (
-            <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-              <td style={{ padding: '16px 20px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px' }}>
-                  {i + 1}
+          (item, i) => {
+            const hasCost = item.costPrice !== undefined && item.costPrice > 0
+            const margin = item.profitMargin ?? 0
+            const marginColor = margin >= 50 ? 'var(--success-light)' : margin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
+
+            return (
+              <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
+                <td style={{ padding: '16px 20px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px' }}>
+                    {i + 1}
+                  </div>
+                </td>
+                <td style={{ padding: '16px 20px', fontWeight: '600', fontSize: '15px' }}>{item.name}</td>
+                <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{item.category}</td>
+                <td style={{ padding: '16px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
+                <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700' }}>{formatMoney(item.revenue)}</td>
+                <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  {hasCost ? formatMoney(item.costPrice || 0) : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
+                </td>
+                <td style={{ padding: '16px 20px', fontWeight: '700', color: (item.profit ?? 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                  {item.profit !== undefined ? formatMoney(item.profit) : '-'}
+                </td>
+                <td style={{ padding: '16px 20px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px' }}>
+                    {item.profitMargin !== undefined ? `${item.profitMargin.toFixed(1)}%` : '-'}
+                  </span>
+                </td>
+              </tr>
+            )
+          },
+          (item, i) => {
+            const margin = item.profitMargin ?? 0
+            const marginColor = margin >= 50 ? 'var(--success-light)' : margin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
+
+            return (
+              <div key={i} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', flexShrink: 0 }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{item.category}</div>
+                  </div>
+                  {item.profitMargin !== undefined && (
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '2px 7px', borderRadius: '8px' }}>
+                      {item.profitMargin.toFixed(1)}%
+                    </span>
+                  )}
                 </div>
-              </td>
-              <td style={{ padding: '16px 20px', fontWeight: '600', fontSize: '15px' }}>{item.name}</td>
-              <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{item.category}</td>
-              <td style={{ padding: '16px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
-              <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700' }}>{formatMoney(item.revenue)}</td>
-            </tr>
-          ),
-          (item, i) => (
-            <div key={i} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', flexShrink: 0 }}>
-                {i + 1}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{item.quantity} sold · Rev: <b style={{ color: 'var(--gold)' }}>{formatMoney(item.revenue)}</b></span>
+                  {item.profit !== undefined && (
+                    <span style={{ color: 'var(--text-secondary)' }}>Profit: <b style={{ color: item.profit >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>{formatMoney(item.profit)}</b></span>
+                  )}
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{item.category}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: 'var(--gold)', fontWeight: '700', fontSize: '14px' }}>{formatMoney(item.revenue)}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.quantity} sold</div>
-              </div>
-            </div>
-          ),
+            )
+          },
           'No items sold yet.'
         )
 

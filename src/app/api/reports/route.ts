@@ -47,19 +47,156 @@ export async function GET(req: Request) {
   ])
 
   // Total revenue
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0)
+  const totalRevenue = Math.round(payments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
 
   // Revenue by payment method
   const revenueByMethod: Record<string, number> = {}
   payments.forEach(p => { revenueByMethod[p.method] = (revenueByMethod[p.method] || 0) + p.amount })
 
+  // Profit and Loss calculations from completed payments
+  let totalCOGS = 0
+  const itemProfitMap: Record<string, {
+    id: string
+    name: string
+    category: string
+    type: string
+    quantity: number
+    price: number
+    costPrice: number
+    revenue: number
+    totalCost: number
+    grossProfit: number
+    profitMargin: number
+  }> = {}
+
+  const categoryTypeProfitMap: Record<string, {
+    category: string
+    quantity: number
+    revenue: number
+    cost: number
+    grossProfit: number
+    profitMargin: number
+  }> = {}
+
+  payments.forEach(p => {
+    p.order.orderItems.forEach((oi: any) => {
+      if (oi.status === 'CANCELLED') return
+
+      const costPrice = Number(oi.menuItem.costPrice || 0)
+      const sellPrice = Number(oi.menuItem.price || 0)
+      const qty = Number(oi.quantity || 0)
+      const lineCost = qty * costPrice
+      const lineRev = qty * sellPrice
+
+      totalCOGS += lineCost
+
+      const rawType = oi.menuItem.category?.type || 'FOOD'
+      const typeName = rawType === 'DRINK' ? 'BEVERAGE' : rawType
+      const catName = oi.menuItem.category?.name || 'Uncategorized'
+      const itemId = oi.menuItemId
+
+      if (!itemProfitMap[itemId]) {
+        itemProfitMap[itemId] = {
+          id: itemId,
+          name: oi.menuItem.name,
+          category: catName,
+          type: typeName,
+          quantity: 0,
+          price: sellPrice,
+          costPrice,
+          revenue: 0,
+          totalCost: 0,
+          grossProfit: 0,
+          profitMargin: 0,
+        }
+      }
+      itemProfitMap[itemId].quantity += qty
+      itemProfitMap[itemId].revenue += lineRev
+      itemProfitMap[itemId].totalCost += lineCost
+
+      if (!categoryTypeProfitMap[typeName]) {
+        categoryTypeProfitMap[typeName] = {
+          category: typeName,
+          quantity: 0,
+          revenue: 0,
+          cost: 0,
+          grossProfit: 0,
+          profitMargin: 0,
+        }
+      }
+      categoryTypeProfitMap[typeName].quantity += qty
+      categoryTypeProfitMap[typeName].revenue += lineRev
+      categoryTypeProfitMap[typeName].cost += lineCost
+    })
+  })
+
+  // Format profit by item
+  const profitByItem = Object.values(itemProfitMap).map(item => {
+    const rev = Math.round(item.revenue * 100) / 100
+    const cost = Math.round(item.totalCost * 100) / 100
+    const profit = Math.round((rev - cost) * 100) / 100
+    const margin = rev > 0 ? Math.round((profit / rev) * 1000) / 10 : 0
+    return {
+      ...item,
+      revenue: rev,
+      totalCost: cost,
+      grossProfit: profit,
+      profitMargin: margin,
+    }
+  }).sort((a, b) => b.grossProfit - a.grossProfit)
+
+  // Format profit by category
+  const profitByCategory = Object.values(categoryTypeProfitMap).map(cat => {
+    const rev = Math.round(cat.revenue * 100) / 100
+    const cost = Math.round(cat.cost * 100) / 100
+    const profit = Math.round((rev - cost) * 100) / 100
+    const margin = rev > 0 ? Math.round((profit / rev) * 1000) / 10 : 0
+    return {
+      ...cat,
+      revenue: rev,
+      cost,
+      grossProfit: profit,
+      profitMargin: margin,
+    }
+  }).sort((a, b) => b.revenue - a.revenue)
+
+  totalCOGS = Math.round(totalCOGS * 100) / 100
+  const grossProfit = Math.round((totalRevenue - totalCOGS) * 100) / 100
+  const profitMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 1000) / 10 : 0
+
   // Best selling items
-  const itemSales: Record<string, { name: string; category: string; quantity: number; revenue: number }> = {}
+  const itemSales: Record<string, { 
+    name: string; 
+    category: string; 
+    quantity: number; 
+    revenue: number;
+    costPrice: number;
+    totalCost: number;
+    profit: number;
+    profitMargin: number;
+  }> = {}
   orderItems.forEach(oi => {
     const key = oi.menuItemId
-    if (!itemSales[key]) itemSales[key] = { name: oi.menuItem.name, category: oi.menuItem.category?.name || '', quantity: 0, revenue: 0 }
+    const costPrice = Number(oi.menuItem.costPrice || 0)
+    if (!itemSales[key]) {
+      itemSales[key] = { 
+        name: oi.menuItem.name, 
+        category: oi.menuItem.category?.name || '', 
+        quantity: 0, 
+        revenue: 0,
+        costPrice,
+        totalCost: 0,
+        profit: 0,
+        profitMargin: 0,
+      }
+    }
+    const itemRev = oi.quantity * oi.menuItem.price
+    const itemCost = oi.quantity * costPrice
     itemSales[key].quantity += oi.quantity
-    itemSales[key].revenue += oi.quantity * oi.menuItem.price
+    itemSales[key].revenue += itemRev
+    itemSales[key].totalCost += itemCost
+    itemSales[key].profit += (itemRev - itemCost)
+    itemSales[key].profitMargin = itemSales[key].revenue > 0 ? Math.round((itemSales[key].profit / itemSales[key].revenue) * 1000) / 10 : 0
   })
   const bestSelling = Object.values(itemSales).sort((a, b) => b.quantity - a.quantity).slice(0, 10)
 
@@ -224,6 +361,11 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     totalRevenue,
+    totalCOGS,
+    grossProfit,
+    profitMargin,
+    profitByCategory,
+    profitByItem,
     totalOrders: orders.length,
     revenueByMethod,
     bestSelling,
