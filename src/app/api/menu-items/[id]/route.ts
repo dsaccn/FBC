@@ -59,7 +59,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const item = await prisma.menuItem.update({
       where: { id },
       data: updateData,
-      include: { recipes: true }
+      include: { recipes: true, category: true }
     })
 
     // Log any stock changes
@@ -79,7 +79,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             userName,
           },
         })
-        backgroundSync()
       }
 
       if (body.barQuantity !== undefined && body.barQuantity !== before.barQuantity) {
@@ -94,9 +93,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             userName,
           },
         })
-        backgroundSync()
       }
     }
+
+    backgroundSync()
 
     return NextResponse.json(item)
   } catch (err) {

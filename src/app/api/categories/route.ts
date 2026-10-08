@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { backgroundSync } from '@/lib/sync-engine'
 
-// Cache for 30 seconds — menu categories change rarely but we want near-realtime
-export const revalidate = 30
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const categories = await prisma.category.findMany({
@@ -32,5 +32,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json()
   const category = await prisma.category.create({ data: body })
+  backgroundSync()
   return NextResponse.json(category)
 }
+

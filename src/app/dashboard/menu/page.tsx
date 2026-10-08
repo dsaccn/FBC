@@ -30,7 +30,11 @@ export default function MenuPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [iRes, cRes, ingRes] = await Promise.all([fetch('/api/menu-items'), fetch('/api/categories'), fetch('/api/ingredients')])
+      const [iRes, cRes, ingRes] = await Promise.all([
+        fetch('/api/menu-items', { cache: 'no-store' }),
+        fetch('/api/categories', { cache: 'no-store' }),
+        fetch('/api/ingredients', { cache: 'no-store' })
+      ])
       if (iRes.ok) setItems(await iRes.json())
       if (cRes.ok) setCategories(await cRes.json())
       if (ingRes.ok) setIngredients(await ingRes.json())
@@ -63,12 +67,24 @@ export default function MenuPage() {
   }
 
   async function saveItem() {
+    if (!form.name.trim()) {
+      setErrorMsg('Item name is required')
+      toast.error('Item name is required')
+      return
+    }
+    const priceVal = parseFloat(form.price)
+    if (isNaN(priceVal) || priceVal < 0) {
+      setErrorMsg('Please enter a valid price')
+      toast.error('Please enter a valid price')
+      return
+    }
+
     setSaving(true)
     setErrorMsg('')
     const data = {
-      name: form.name,
-      description: form.description,
-      price: parseFloat(form.price) || 0,
+      name: form.name.trim(),
+      description: form.description?.trim() || '',
+      price: priceVal,
       available: form.available,
       stockQuantity: parseInt(form.stockQuantity) || 0,
       lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
@@ -95,8 +111,18 @@ export default function MenuPage() {
         return
       }
 
+      const savedItem = await res.json()
       toast.success(editItem ? 'Menu item updated!' : 'Menu item created!')
       setShowForm(false)
+
+      // Optimistically update list so the user immediately sees the change without waiting
+      setItems(prev => {
+        if (editItem) {
+          return prev.map(i => i.id === savedItem.id ? { ...i, ...savedItem } : i)
+        }
+        return [savedItem, ...prev]
+      })
+
       load()
     } catch {
       toast.error('Network error saving menu item')
@@ -118,6 +144,7 @@ export default function MenuPage() {
         return
       }
       toast.success('Menu item deleted')
+      setItems(prev => prev.filter(i => i.id !== id))
       load()
     } catch {
       toast.error('Network error deleting item')
@@ -134,6 +161,7 @@ export default function MenuPage() {
       })
       if (res.ok) {
         toast.info(`${item.name} marked ${nextAvailable ? 'Available' : 'Unavailable'}`)
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, available: nextAvailable } : i))
         load()
       } else {
         toast.error('Failed to update item availability')
@@ -144,13 +172,18 @@ export default function MenuPage() {
   }
 
   async function addCategory() {
+    if (!catForm.name.trim()) {
+      setErrorMsg('Category name is required')
+      toast.error('Category name is required')
+      return
+    }
     setErrorMsg('')
     try {
       let res;
       if (catForm.id) {
-        res = await fetch(`/api/categories/${catForm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
+        res = await fetch(`/api/categories/${catForm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name.trim(), type: catForm.type }) })
       } else {
-        res = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name, type: catForm.type }) })
+        res = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: catForm.name.trim(), type: catForm.type }) })
       }
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}))
@@ -159,9 +192,16 @@ export default function MenuPage() {
         toast.error(msg)
         return
       }
+      const savedCat = await res.json()
       toast.success(catForm.id ? 'Category updated!' : 'Category created!')
       setCatForm({ id: '', name: '', type: 'FOOD' })
       setShowCatForm(false)
+      setCategories(prev => {
+        if (catForm.id) {
+          return prev.map(c => c.id === savedCat.id ? savedCat : c)
+        }
+        return [...prev, savedCat]
+      })
       load()
     } catch {
       toast.error('Network error saving category')

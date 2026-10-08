@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { backgroundSync } from '@/lib/sync-engine'
 
-// Cache for 30 seconds — menu items change rarely
-export const revalidate = 30
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const items = await prisma.menuItem.findMany({
@@ -15,6 +15,15 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { recipes, ...body } = await req.json()
+
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return NextResponse.json({ error: 'Item name is required' }, { status: 400 })
+    }
+
+    const price = Number(body.price)
+    if (isNaN(price) || price < 0) {
+      return NextResponse.json({ error: 'Valid price is required' }, { status: 400 })
+    }
 
     let categoryId = body.categoryId && typeof body.categoryId === 'string' && body.categoryId.trim()
       ? body.categoryId.trim()
@@ -48,17 +57,23 @@ export async function POST(req: Request) {
     const item = await prisma.menuItem.create({
       data: {
         ...body,
+        name: body.name.trim(),
+        price,
         categoryId,
         parentItemId,
         recipes: validRecipes.length > 0 ? {
           create: validRecipes
         } : undefined
       },
-      include: { recipes: true }
+      include: { recipes: true, category: true }
     })
+
+    backgroundSync()
+
     return NextResponse.json(item)
   } catch (err) {
     console.error('[POST /api/menu-items]', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
+
