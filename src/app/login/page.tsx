@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Lock, User, Eye, EyeOff, Sparkles, ShieldCheck, ArrowRight, Coffee, ChefHat } from 'lucide-react'
+import { Lock, User, Eye, EyeOff, Sparkles, ArrowRight, Coffee } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -164,17 +164,6 @@ export default function LoginPage() {
           >
             Kogna Coffee
           </h1>
-          <p
-            style={{
-              fontSize: '12px',
-              fontWeight: '500',
-              letterSpacing: '0.15em',
-              textTransform: 'uppercase',
-              color: '#9C8F7A',
-            }}
-          >
-            Hospitality POS &amp; Terminal
-          </p>
         </div>
 
         {/* Ultra-Luxury Glassmorphic Login Card */}
@@ -189,7 +178,7 @@ export default function LoginPage() {
             boxShadow: '0 24px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 1px 0 rgba(212, 175, 55, 0.25)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div
                 style={{
@@ -204,9 +193,6 @@ export default function LoginPage() {
                 Secure Access
               </span>
             </div>
-            <span style={{ fontSize: '11px', color: '#7A6E5A', letterSpacing: '0.03em' }}>
-              POS Terminal
-            </span>
           </div>
 
           {error && (
@@ -437,32 +423,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Quick role hints */}
-          <div
-            style={{
-              marginTop: '24px',
-              paddingTop: '20px',
-              borderTop: '1px solid rgba(212, 175, 55, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-around',
-              color: '#8A7B65',
-              fontSize: '11px',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <ShieldCheck size={13} style={{ color: '#D4B95E' }} /> Admin / Manager
-            </span>
-            <span>•</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Coffee size={13} style={{ color: '#D4B95E' }} /> Waiter
-            </span>
-            <span>•</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <ChefHat size={13} style={{ color: '#D4B95E' }} /> Kitchen / Bar
-            </span>
-          </div>
         </div>
 
         {/* Footer info */}
