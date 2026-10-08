@@ -29,7 +29,7 @@ echo [2/5] Building the Next.js production app...
 cd /d "%POS_DIR%"
 call npm run build
 if %errorlevel% neq 0 (
-    echo ERROR: Build failed. Please resolve build errors first.
+    echo [ERROR] Build failed. Please resolve build errors first.
     pause
     exit /b 1
 )
@@ -46,57 +46,75 @@ xcopy /E /I /Y "public" "%DIST_DIR%\public" >nul
 xcopy /E /I /Y "src" "%DIST_DIR%\src" >nul
 xcopy /E /I /Y "prisma" "%DIST_DIR%\prisma" >nul
 
-:: Exclude cache in prisma if any (but keep the diva-addis.db sqlite file)
 copy ".env" "%DIST_DIR%\" >nul
 copy "package.json" "%DIST_DIR%\" >nul
 copy "package-lock.json" "%DIST_DIR%\" >nul
 copy "next.config.ts" "%DIST_DIR%\" >nul
 copy "postcss.config.mjs" "%DIST_DIR%\" >nul
 copy "tsconfig.json" "%DIST_DIR%\" >nul
-copy "setup-autostart.bat" "%DIST_DIR%\" >nul
+copy "install-offline.bat" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
+copy "stop-pos.bat" "%DIST_DIR%\" >nul
+copy "setup-autostart.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
+
+:: Copy Node.js installer if present
+if exist "%POS_DIR%node-v22.14.0-x64.msi" (
+    echo Copying Node.js installer into package...
+    copy "%POS_DIR%node-v22.14.0-x64.msi" "%DIST_DIR%\" >nul
+)
 
 :: Copy utility js files in root
 copy "*.js" "%DIST_DIR%\" >nul 2>&1
 
 echo.
-echo [4/5] Copying node_modules (excluding dev caches)...
+echo [4/5] Copying node_modules and production build...
 mkdir "%DIST_DIR%\node_modules"
-xcopy /E /I /Y "node_modules" "%DIST_DIR%\node_modules" >nul
-
-:: Clean up heavy cache directories in node_modules and .next to keep the zip file size smaller
-if exist "%DIST_DIR%\node_modules\.cache" (
-    rmdir /s /q "%DIST_DIR%\node_modules\.cache"
+robocopy "node_modules" "%DIST_DIR%\node_modules" /E /XD .cache /NFL /NDL /NJH /NJS >nul
+if %errorlevel% geq 8 (
+    echo Warning: Robocopy returned code %errorlevel%, falling back to xcopy...
+    xcopy /E /I /Y "node_modules" "%DIST_DIR%\node_modules" >nul
 )
-xcopy /E /I /Y ".next" "%DIST_DIR%\.next" >nul
-if exist "%DIST_DIR%\.next\cache" (
-    rmdir /s /q "%DIST_DIR%\.next\cache"
+
+mkdir "%DIST_DIR%\.next"
+robocopy ".next" "%DIST_DIR%\.next" /E /XD cache /NFL /NDL /NJH /NJS >nul
+if %errorlevel% geq 8 (
+    xcopy /E /I /Y ".next" "%DIST_DIR%\.next" >nul
 )
 
 echo.
 echo [5/5] Compressing files into %ZIP_FILE%...
-powershell -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_FILE%' -Force"
+where tar.exe >nul 2>&1
+if %errorlevel% equ 0 (
+    tar.exe -a -c -f "%ZIP_FILE%" -C "%DIST_DIR%" .
+) else (
+    powershell -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_FILE%' -Force"
+)
 
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to compress folder. Make sure PowerShell is available.
+    echo [ERROR] Failed to compress folder.
     pause
     exit /b 1
 )
 
 echo.
-echo Cleaning up temporary files...
+echo Cleaning up temporary directory...
 rmdir /s /q "%DIST_DIR%"
 
 echo.
 echo =========================================================
 echo  SUCCESS: Offline installation package created!
 echo =========================================================
-echo  File location: 
+echo  Package Location: 
 echo  %ZIP_FILE%
 echo.
-echo  Transfer this ZIP file and a Node.js installer to your 
-echo  USB drive to install it on the target offline PC.
+echo  Instructions for the Offline PC:
+echo   1. Copy %ZIP_FILE% to a USB drive.
+echo   2. Plug USB into the target offline PC.
+echo   3. Extract %ZIP_FILE% to C:\DivaAddisPOS (or Desktop).
+echo   4. If Node.js is not installed, double-click node-v22.14.0-x64.msi.
+echo   5. Right-click install-offline.bat and choose "Run as administrator".
+echo   6. Double-click start-pos.bat to run the POS!
 echo =========================================================
 echo.
 pause
