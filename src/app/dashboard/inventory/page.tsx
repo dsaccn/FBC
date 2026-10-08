@@ -290,16 +290,16 @@ export default function InventoryPage() {
     return true
   })
 
-  const lowDrinkCount = items.filter(i => i.barQuantity <= i.lowStockThreshold && i.category?.type === 'DRINK').length
+  const lowDrinkCount = items.filter(i => (i.category?.type === 'DRINK' ? i.barQuantity : i.stockQuantity) <= i.lowStockThreshold).length
   const lowIngCount = ingredients.filter(i => i.quantity <= i.minThreshold).length
 
   // Calculations for total sums
   const totalStoreQty = items.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.stockQuantity), 0)
-  const totalBarQty = items.reduce((sum, item) => sum + (item.category?.type === 'DRINK' ? item.barQuantity : 0), 0)
+  const totalBarQty = items.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.barQuantity), 0)
 
   // Calculations for filtered totals
   const filteredStoreQty = filtered.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.stockQuantity), 0)
-  const filteredBarQty = filtered.reduce((sum, item) => sum + (item.category?.type === 'DRINK' ? item.barQuantity : 0), 0)
+  const filteredBarQty = filtered.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.barQuantity), 0)
   const filteredTotalQty = filteredStoreQty + filteredBarQty
 
   return (
@@ -413,7 +413,7 @@ export default function InventoryPage() {
                         const isDrink = item.category?.type === 'DRINK'
                         const isLow = isDrink ? item.barQuantity <= item.lowStockThreshold : item.stockQuantity <= item.lowStockThreshold
                         const storeQty = item.parentItemId ? 0 : item.stockQuantity
-                        const barQty = isDrink ? item.barQuantity : 0
+                        const barQty = item.parentItemId ? 0 : item.barQuantity
                         const totalQty = storeQty + barQty
                         return (
                           <tr key={item.id} style={{ borderTop: '1px solid var(--black-border)', background: isLow ? 'rgba(230,57,70,0.03)' : 'transparent' }}>
@@ -438,9 +438,7 @@ export default function InventoryPage() {
                             
                             {/* Bar Qty Cell - Shaded */}
                             <td style={{ padding: '12px 16px', background: 'rgba(82,183,136,0.03)', borderRight: '1px solid rgba(82,183,136,0.1)' }}>
-                              {isDrink ? (
-                                <span style={{ fontWeight: '700', fontSize: '16px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>{item.barQuantity}</span>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                              <span style={{ fontWeight: '700', fontSize: '16px', color: (isDrink && isLow) ? 'var(--danger-light)' : 'var(--success-light)' }}>{barQty}</span>
                             </td>
                             
                             {/* Total Qty Cell - Shaded */}
@@ -449,17 +447,15 @@ export default function InventoryPage() {
                             </td>
 
                             <td style={{ padding: '12px 16px' }}>
-                              {isDrink ? (
-                                <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                                  {item.costPrice > 0 ? `${item.costPrice.toFixed(2)} ETB` : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Not set</span>}
-                                </span>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                                {item.costPrice > 0 ? `${item.costPrice.toFixed(2)} ETB` : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Not set</span>}
+                              </span>
                             </td>
                             <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-primary)' }}>
                               {item.price.toFixed(2)} ETB
                             </td>
                             <td style={{ padding: '12px 16px' }}>
-                              {isDrink && item.costPrice > 0 ? (() => {
+                              {item.costPrice > 0 ? (() => {
                                 const margin = item.price - item.costPrice
                                 const pct = ((margin / item.price) * 100).toFixed(0)
                                 return <span style={{ fontSize: '13px', fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
@@ -479,7 +475,7 @@ export default function InventoryPage() {
                             </td>
                             <td style={{ padding: '12px 16px' }}>
                               <div style={{ display: 'flex', gap: '8px' }}>
-                                {isDrink && <button className="btn btn-gold btn-sm" onClick={() => { setTransferTarget(item); setTransferQty('') }}>Transfer to Bar</button>}
+                                <button className="btn btn-gold btn-sm" onClick={() => { setTransferTarget(item); setTransferQty('') }}>Transfer to Bar</button>
                                 <button className="btn btn-outline btn-sm" onClick={() => { setAdjustTarget(item); setAdjustQty(''); setAdjustCostPrice(item.costPrice > 0 ? String(item.costPrice) : '') }}>Update Store</button>
                               </div>
                             </td>
@@ -565,9 +561,7 @@ export default function InventoryPage() {
                     </div>
                     <div style={{ background: 'rgba(82,183,136,0.04)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(82,183,136,0.1)' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Bar Qty</span>
-                      {isDrink ? (
-                        <span style={{ fontWeight: '700', fontSize: '15px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>{item.barQuantity}</span>
-                      ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                      <span style={{ fontWeight: '700', fontSize: '15px', color: (isDrink && isLow) ? 'var(--danger-light)' : 'var(--success-light)' }}>{item.barQuantity}</span>
                     </div>
                     <div style={{ background: 'rgba(59,130,246,0.04)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.1)' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Total Qty</span>
@@ -576,7 +570,7 @@ export default function InventoryPage() {
                     
                     <div style={{ gridColumn: 'span 1', marginTop: '4px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Cost Price</span>
-                      {isDrink && item.costPrice > 0 ? (
+                      {item.costPrice > 0 ? (
                         <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{item.costPrice.toFixed(2)} ETB</span>
                       ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                     </div>
@@ -586,7 +580,7 @@ export default function InventoryPage() {
                     </div>
                     <div style={{ gridColumn: 'span 3', marginTop: '4px', borderTop: '1px solid var(--black-border)', paddingTop: '4px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Profit Margin</span>
-                      {isDrink && item.costPrice > 0 ? (() => {
+                      {item.costPrice > 0 ? (() => {
                         const margin = item.price - item.costPrice
                         const pct = ((margin / item.price) * 100).toFixed(0)
                         return (
@@ -599,11 +593,9 @@ export default function InventoryPage() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                    {isDrink && (
-                      <button className="btn btn-gold btn-sm" style={{ flex: 1, padding: '10px 0' }} onClick={() => { setTransferTarget(item); setTransferQty('') }}>
-                        Transfer
-                      </button>
-                    )}
+                    <button className="btn btn-gold btn-sm" style={{ flex: 1, padding: '10px 0' }} onClick={() => { setTransferTarget(item); setTransferQty('') }}>
+                      Transfer
+                    </button>
                     <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0' }} onClick={() => { setAdjustTarget(item); setAdjustQty(''); setAdjustCostPrice(item.costPrice > 0 ? String(item.costPrice) : '') }}>
                       Update Stock
                     </button>
@@ -868,24 +860,20 @@ export default function InventoryPage() {
               <input className="input" type="number" value={adjustQty} onChange={e => setAdjustQty(e.target.value)} style={{ width: '100px', textAlign: 'center', fontSize: '20px', fontWeight: '700' }} />
               <button className="btn btn-outline" onClick={() => adjustStock(1)}><Plus size={16} /></button>
             </div>
-            {adjustTarget.category?.type === 'DRINK' && (
-              <>
-                <label className="input-label">Bought Price Per Unit (ETB)</label>
-                <input
-                  className="input"
-                  type="number"
-                  placeholder={adjustTarget.costPrice > 0 ? `Last: ${adjustTarget.costPrice.toFixed(2)} ETB` : 'e.g. 85.00'}
-                  value={adjustCostPrice}
-                  onChange={e => setAdjustCostPrice(e.target.value)}
-                  style={{ marginBottom: '16px' }}
-                />
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  {adjustCostPrice && parseFloat(adjustCostPrice) > 0
-                    ? `Margin: ${(adjustTarget.price - parseFloat(adjustCostPrice)).toFixed(2)} ETB per unit`
-                    : adjustTarget.costPrice > 0 ? `Keeping last bought price: ${adjustTarget.costPrice.toFixed(2)} ETB` : 'Enter cost to track profit margin'}
-                </div>
-              </>
-            )}
+            <label className="input-label">Bought Price Per Unit (ETB)</label>
+            <input
+              className="input"
+              type="number"
+              placeholder={adjustTarget.costPrice > 0 ? `Last: ${adjustTarget.costPrice.toFixed(2)} ETB` : 'e.g. 85.00'}
+              value={adjustCostPrice}
+              onChange={e => setAdjustCostPrice(e.target.value)}
+              style={{ marginBottom: '16px' }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+              {adjustCostPrice && parseFloat(adjustCostPrice) > 0
+                ? `Margin: ${(adjustTarget.price - parseFloat(adjustCostPrice)).toFixed(2)} ETB per unit`
+                : adjustTarget.costPrice > 0 ? `Keeping last bought price: ${adjustTarget.costPrice.toFixed(2)} ETB` : 'Enter cost to track profit margin'}
+            </div>
             {adjustTarget.parentItemId && (() => {
               const parentItem = items.find(i => i.id === adjustTarget.parentItemId)
               const qty = parseInt(adjustQty) || 0

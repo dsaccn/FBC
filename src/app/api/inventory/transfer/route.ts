@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, pushMenuItemStockToCloud } from '@/lib/sync-engine'
 
 export async function POST(req: Request) {
   try {
@@ -42,6 +42,8 @@ export async function POST(req: Request) {
         userName: session?.fullName ?? 'Unknown',
       },
     })
+
+    await pushMenuItemStockToCloud(menuItemId, updated.stockQuantity, updated.barQuantity)
     backgroundSync()
 
     return NextResponse.json(updated)

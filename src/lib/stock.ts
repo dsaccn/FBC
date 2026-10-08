@@ -83,17 +83,34 @@ export async function deductOrderStock(items: OrderStockItem[]) {
             data: { stockQuantity: newStock },
           })
         } else {
-          // Normal food item: deduct directly from store stock
-          if (fullItem.stockQuantity >= totalQty) {
-            await prisma.menuItem.update({
-              where: { id: fullItem.id },
-              data: { stockQuantity: { decrement: totalQty } },
-            })
+          // Normal food item: if bar stock exists, deduct from bar first then store
+          if (fullItem.barQuantity > 0) {
+            if (fullItem.barQuantity >= totalQty) {
+              await prisma.menuItem.update({
+                where: { id: fullItem.id },
+                data: { barQuantity: { decrement: totalQty } },
+              })
+            } else {
+              const remaining = totalQty - fullItem.barQuantity
+              const newStore = Math.max(0, fullItem.stockQuantity - remaining)
+              await prisma.menuItem.update({
+                where: { id: fullItem.id },
+                data: { barQuantity: 0, stockQuantity: newStore },
+              })
+            }
           } else {
-            await prisma.menuItem.update({
-              where: { id: fullItem.id },
-              data: { stockQuantity: 0 },
-            })
+            // Deduct directly from store stock
+            if (fullItem.stockQuantity >= totalQty) {
+              await prisma.menuItem.update({
+                where: { id: fullItem.id },
+                data: { stockQuantity: { decrement: totalQty } },
+              })
+            } else {
+              await prisma.menuItem.update({
+                where: { id: fullItem.id },
+                data: { stockQuantity: 0 },
+              })
+            }
           }
         }
       }
