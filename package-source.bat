@@ -44,13 +44,9 @@ copy "postcss.config.mjs" "%DIST_DIR%\" >nul
 copy "tsconfig.json" "%DIST_DIR%\" >nul
 copy "install-online.bat" "%DIST_DIR%\" >nul
 copy "install-offline.bat" "%DIST_DIR%\" >nul
-copy "setup-autostart.bat" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
 copy "stop-pos.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
-
-:: Copy utility js files in root
-copy "*.js" "%DIST_DIR%\" >nul 2>&1
 
 echo.
 echo [3/4] Compressing source files into %ZIP_FILE%...

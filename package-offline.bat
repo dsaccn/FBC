@@ -52,10 +52,10 @@ copy "package-lock.json" "%DIST_DIR%\" >nul
 copy "next.config.ts" "%DIST_DIR%\" >nul
 copy "postcss.config.mjs" "%DIST_DIR%\" >nul
 copy "tsconfig.json" "%DIST_DIR%\" >nul
+copy "install-online.bat" "%DIST_DIR%\" >nul
 copy "install-offline.bat" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
 copy "stop-pos.bat" "%DIST_DIR%\" >nul
-copy "setup-autostart.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
 
 :: Copy Node.js installer if present
@@ -63,9 +63,6 @@ if exist "%POS_DIR%node-v22.14.0-x64.msi" (
     echo Copying Node.js installer into package...
     copy "%POS_DIR%node-v22.14.0-x64.msi" "%DIST_DIR%\" >nul
 )
-
-:: Copy utility js files in root
-copy "*.js" "%DIST_DIR%\" >nul 2>&1
 
 echo.
 echo [4/5] Copying node_modules and production build...
