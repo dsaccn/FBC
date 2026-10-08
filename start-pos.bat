@@ -1,6 +1,6 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Start Server
+:: Diva Addis / Kogna Coffee POS — Start Server
 :: Can be run interactively by double-clicking, or
 :: automatically on boot via Task Scheduler (--background).
 :: =========================================================
@@ -16,11 +16,11 @@ if "%1"=="--background" goto BACKGROUND_MODE
 :: =========================================================
 :: Interactive Mode (Double-clicked by user)
 :: =========================================================
-title Diva Addis POS Server
+title Kogna Coffee POS Server
 
 echo.
 echo =========================================================
-echo       DIVA ADDIS / MEBA TECH PRO — POS SERVER
+echo             KOGNA COFFEE — POS SERVER
 echo =========================================================
 echo.
 

@@ -1,6 +1,6 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Setup Localhost (Internet-connected PC)
+:: Kogna Coffee POS — Setup Localhost (Internet-connected PC)
 :: Run this script on the target PC to install dependencies
 :: and build the local POS server.
 :: =========================================================
@@ -10,7 +10,7 @@ cd /d "%POS_DIR%"
 
 echo.
 echo =========================================================
-echo   DIVA ADDIS / MEBA TECH PRO — LOCALHOST INSTALLER
+echo        KOGNA COFFEE — LOCALHOST INSTALLER
 echo =========================================================
 echo.
 

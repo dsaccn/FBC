@@ -1,12 +1,12 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Stop Server
+:: Kogna Coffee POS — Stop Server
 :: Use this script to stop the POS server cleanly.
 :: =========================================================
 
 echo.
 echo ==========================================
-echo  Diva Addis POS — Stopping Server
+echo  Kogna Coffee POS — Stopping Server
 echo ==========================================
 echo.
 

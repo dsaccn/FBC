@@ -1,17 +1,17 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Lightweight Package Creator
+:: Kogna Coffee POS — Lightweight Package Creator
 :: Packages code, database, and setup scripts without node_modules.
 :: Ideal for copying to another PC via USB or Telegram (takes seconds).
 :: =========================================================
 
 set "POS_DIR=%~dp0"
-set "DIST_DIR=%POS_DIR%diva-addis-pos-source"
-set "ZIP_FILE=%POS_DIR%diva-addis-pos-online-setup.zip"
+set "DIST_DIR=%POS_DIR%kogna-coffee-pos-source"
+set "ZIP_FILE=%POS_DIR%kogna-coffee-pos-online-setup.zip"
 
 echo.
 echo ==========================================
-echo  Diva Addis POS — Create Online Setup ZIP
+echo  Kogna Coffee POS — Create Online Setup ZIP
 echo ==========================================
 echo.
 

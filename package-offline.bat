@@ -1,17 +1,17 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Offline Package Creator
+:: Kogna Coffee POS — Offline Package Creator
 :: Run this script on the source PC to package the application
 :: into a single zip file for offline transfer.
 :: =========================================================
 
 set "POS_DIR=%~dp0"
-set "DIST_DIR=%POS_DIR%diva-addis-pos-dist"
-set "ZIP_FILE=%POS_DIR%diva-addis-pos-offline.zip"
+set "DIST_DIR=%POS_DIR%kogna-coffee-pos-dist"
+set "ZIP_FILE=%POS_DIR%kogna-coffee-pos-offline.zip"
 
 echo.
 echo ==========================================
-echo  Diva Addis POS — Create Offline Package
+echo  Kogna Coffee POS — Create Offline Package
 echo ==========================================
 echo.
 
