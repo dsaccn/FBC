@@ -91,7 +91,7 @@ export async function GET(req: Request) {
       totalCOGS += lineCost
 
       const rawType = oi.menuItem.category?.type || 'FOOD'
-      const typeName = rawType === 'DRINK' ? 'BEVERAGE' : rawType
+      const typeName = (rawType === 'DRINK' || rawType === 'DRINKS') ? 'DRINKS' : rawType
       const catName = oi.menuItem.category?.name || 'Uncategorized'
       const itemId = oi.menuItemId
 
@@ -289,7 +289,7 @@ export async function GET(req: Request) {
       if (oi.status === 'CANCELLED') return
       
       const rawType = oi.menuItem.category?.type || 'FOOD'
-      const categoryName = rawType === 'DRINK' ? 'BEVERAGE' : rawType
+      const categoryName = (rawType === 'DRINK' || rawType === 'DRINKS') ? 'DRINKS' : rawType
       const subCategoryName = oi.menuItem.category?.name || 'Uncategorized'
       
       if (!categoryGroups[categoryName]) {

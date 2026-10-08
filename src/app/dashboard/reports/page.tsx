@@ -112,7 +112,7 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('summary')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [plSearch, setPlSearch] = useState('')
-  const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'BEVERAGE'>('ALL')
+  const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'DRINKS'>('ALL')
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
 
   const load = useCallback(async (showLoading = true) => {
@@ -883,7 +883,7 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              {/* Section B: Category Profitability (FOOD vs BEVERAGE) */}
+              {/* Section B: Category Profitability (FOOD vs DRINKS) */}
               <div>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Layers size={16} /> Category Performance Comparison
@@ -977,7 +977,7 @@ export default function ReportsPage() {
                   {/* Type Filter Buttons */}
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '4px' }}>Type:</span>
-                    {(['ALL', 'FOOD', 'BEVERAGE'] as const).map(t => (
+                    {(['ALL', 'FOOD', 'DRINKS'] as const).map(t => (
                       <button
                         key={t}
                         className={`btn btn-sm ${plTypeFilter === t ? 'btn-gold' : 'btn-ghost'}`}
