@@ -115,6 +115,39 @@ export default function ReportsPage() {
   const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'DRINKS'>('ALL')
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
 
+  const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
+    const now = new Date()
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear()
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    if (type === 'today') {
+      const today = formatDate(now)
+      setFrom(today)
+      setTo(today)
+    } else if (type === 'yesterday') {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      const yStr = formatDate(y)
+      setFrom(yStr)
+      setTo(yStr)
+    } else if (type === 'week') {
+      const w = new Date(now)
+      w.setDate(w.getDate() - 7)
+      setFrom(formatDate(w))
+      setTo(formatDate(now))
+    } else if (type === 'month') {
+      const m = new Date(now.getFullYear(), now.getMonth(), 1)
+      setFrom(formatDate(m))
+      setTo(formatDate(now))
+    } else {
+      setFrom('')
+      setTo('')
+    }
+  }
+
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
@@ -449,130 +482,173 @@ export default function ReportsPage() {
   return (
     <div className="animate-fade-in no-print" style={{ paddingBottom: '40px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+      <div className="reports-mobile-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="font-cinzel" style={{ fontSize: '28px', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
+          <h1 className="font-cinzel" style={{ fontSize: 'clamp(20px, 4.5vw, 28px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
             <span className="gold-text">Business Intelligence</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Advanced Analytics & Reporting</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Advanced Analytics & Reporting</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--black-card)', padding: '8px', borderRadius: '12px', border: '1px solid var(--black-border)', width: '100%', maxWidth: 'max-content' }} className="mobile-width-full">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '240px' }}>
-            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 12px' }} value={from} onChange={e => setFrom(e.target.value)} />
-            <span style={{ color: 'var(--text-muted)' }}>—</span>
-            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 12px' }} value={to} onChange={e => setTo(e.target.value)} />
+
+        {/* Date Filter Bar & Actions */}
+        <div className="reports-date-bar" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--black-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--black-border)', maxWidth: 'max-content' }}>
+          {/* Quick Date Presets */}
+          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', width: '100%', paddingBottom: '2px' }} className="hide-scrollbar">
+            {(['today', 'yesterday', 'week', 'month', 'all'] as const).map(p => {
+              const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', week: '7 Days', month: 'Month', all: 'All Time' }
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '4px 10px', fontSize: '11px', minHeight: '26px', borderRadius: '6px', whiteSpace: 'nowrap' }}
+                  onClick={() => setQuickDate(p)}
+                >
+                  {labels[p]}
+                </button>
+              )
+            })}
           </div>
+
+          <div className="reports-date-inputs" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={from} onChange={e => setFrom(e.target.value)} />
+            <span style={{ color: 'var(--text-muted)' }}>—</span>
+            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={to} onChange={e => setTo(e.target.value)} />
+          </div>
+
           <div style={{ width: '1px', height: '24px', background: 'var(--black-border)', margin: '0 4px' }} className="desktop-only" />
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+          <div className="reports-actions-row" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               className="btn btn-ghost btn-sm"
               onClick={triggerSyncAndRefresh}
               disabled={syncing || loading}
               title="Sync & Refresh Data"
             >
-              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              <span className="desktop-only" style={{ marginLeft: '4px', fontSize: '13px' }}>
+              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>
                 {syncing ? 'Syncing...' : 'Sync'}
               </span>
             </button>
-            <button className="btn btn-gold btn-sm" onClick={printReport}><Printer size={16} /> Print</button>
+            <button className="btn btn-gold btn-sm" onClick={printReport} style={{ fontSize: '12px' }}>
+              <Printer size={15} /> Print
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Advanced KPI Cards */}
-      <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+      {/* Advanced KPI Cards (2 columns on mobile with no clipped text) */}
+      <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '28px' }}>
         {/* Total Revenue */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Total Revenue</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Gross sales collected</div>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Revenue</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(212,175,55,0.2)', borderRadius: '12px', color: 'var(--gold)' }}><DollarSign size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(212,175,55,0.2)', borderRadius: '10px', color: 'var(--gold)', flexShrink: 0 }}><DollarSign size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Gross sales collected</div>
         </div>
 
         {/* Total Cost (COGS) */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Total Cost (COGS)</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Purchased item expense</div>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Cost (COGS)</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(239,68,68,0.2)', borderRadius: '12px', color: 'var(--danger-light)' }}><ShoppingBag size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(239,68,68,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Purchased item expense</div>
         </div>
 
         {/* Gross Profit */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.02) 100%)', border: '1px solid rgba(16,185,129,0.35)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Gross Profit</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.02) 100%)', border: '1px solid rgba(16,185,129,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Gross Profit</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
                 {formatMoney(data.grossProfit || 0)}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Revenue minus costs</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(16,185,129,0.2)', borderRadius: '12px', color: 'var(--success-light)' }}><TrendingUp size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(16,185,129,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Revenue minus costs</div>
         </div>
 
         {/* Profit Margin */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.02) 100%)', border: '1px solid rgba(168,85,247,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Profit Margin</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: '#c084fc' }}>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.02) 100%)', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Profit Margin</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: '#c084fc' }}>
                 {(data.profitMargin ?? 0).toFixed(1)}%
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(168,85,247,0.2)', borderRadius: '12px', color: '#c084fc' }}><Percent size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(168,85,247,0.2)', borderRadius: '10px', color: '#c084fc', flexShrink: 0 }}><Percent size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
         </div>
 
         {/* Completed Orders */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Completed Orders</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Completed Orders</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(82,183,136,0.2)', borderRadius: '12px', color: 'var(--success-light)' }}><ShoppingBag size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(82,183,136,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
         </div>
 
         {/* Average Order Value */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Avg Order Value</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
+        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Avg Order Value</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(244,162,97,0.2)', borderRadius: '12px', color: 'var(--warning-light)' }}><TrendingUp size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(244,162,97,0.2)', borderRadius: '10px', color: 'var(--warning-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
         </div>
 
-        {/* Cancellations */}
-        <div className="card" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', fontWeight: '600' }}>Cancellations</div>
-              <div style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items</div>
+        {/* Cancellations (spans 2 columns on mobile for perfect balance) */}
+        <div className="card reports-kpi-card reports-kpi-last" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Cancellations</div>
+              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
             </div>
-            <div style={{ padding: '10px', background: 'rgba(230,57,70,0.2)', borderRadius: '12px', color: 'var(--danger-light)' }}><XCircle size={22}/></div>
+            <div style={{ padding: '8px', background: 'rgba(230,57,70,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><XCircle size={18}/></div>
           </div>
+          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items in period</div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--black-border)' }}>
+      {/* Mobile Tab Quick Dropdown Selector */}
+      <div className="mobile-only" style={{ marginBottom: '14px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px', fontWeight: '700' }}>
+          📊 View Section
+        </div>
+        <select
+          className="input"
+          value={activeTab}
+          onChange={e => setActiveTab(e.target.value)}
+          style={{ width: '100%', padding: '10px 14px', fontSize: '14px', fontWeight: '600', borderColor: 'var(--gold-dark)', background: 'var(--black-card)', color: 'var(--gold-light)' }}
+        >
+          {tabs.map(t => (
+            <option key={t.id} value={t.id} style={{ background: '#1c1c1c', color: '#fff' }}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Tabs (Horizontal Scrollable Pills) */}
+      <div className="reports-tabs-scroll hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--black-border)' }}>
         {tabs.map(t => (
           <button key={t.id} className={`btn btn-sm ${activeTab === t.id ? 'btn-gold' : 'btn-ghost'}`} style={{ whiteSpace: 'nowrap', borderRadius: '8px 8px 0 0', borderBottom: activeTab === t.id ? '2px solid var(--gold)' : '2px solid transparent', padding: '10px 16px' }} onClick={() => setActiveTab(t.id)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -589,8 +665,13 @@ export default function ReportsPage() {
           
           {/* Daily Sales Bar Chart (CSS) */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontWeight: '600', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TrendingUp size={18} color="var(--gold)" /> Daily Revenue Trends
+            <h3 style={{ fontWeight: '600', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <TrendingUp size={18} color="var(--gold)" /> Daily Revenue Trends
+              </span>
+              <span className="mobile-only" style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: 'auto' }}>
+                Swipe ↔ to view
+              </span>
             </h3>
             {data.dailySales.length > 0 ? (
               <div className="hide-scrollbar" style={{ overflowX: 'auto', paddingBottom: '8px' }}>
@@ -822,30 +903,30 @@ export default function ReportsPage() {
                 </div>
 
                 {/* 4 Mini Cards in Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
+                <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales Revenue</div>
-                    <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
                     <div style={{ fontSize: '11px', color: 'var(--gold)', marginTop: '4px' }}>100% of income</div>
                   </div>
 
-                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
                     <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Cost of Goods (COGS)</div>
-                    <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{cogsPct.toFixed(1)}% of revenue</div>
                   </div>
 
-                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.25)' }}>
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(160,185,129,0.25)' }}>
                     <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit</div>
-                    <div style={{ fontSize: '22px', fontWeight: '700', color: grossProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: grossProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
                       {formatMoney(grossProf)}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{profitPct.toFixed(1)}% of revenue</div>
                   </div>
 
-                  <div style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(168,85,247,0.25)' }}>
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(168,85,247,0.25)' }}>
                     <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit Margin</div>
-                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#c084fc' }}>{overallMargin.toFixed(1)}%</div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: '#c084fc' }}>{overallMargin.toFixed(1)}%</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Net return rate</div>
                   </div>
                 </div>
@@ -889,7 +970,7 @@ export default function ReportsPage() {
                   <Layers size={16} /> Category Performance Comparison
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
                   {(data.profitByCategory && data.profitByCategory.length > 0) ? (
                     data.profitByCategory.map(cat => {
                       const isFood = cat.category === 'FOOD'
@@ -916,18 +997,18 @@ export default function ReportsPage() {
                             </div>
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: 'var(--black-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
-                            <div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(85px, 1fr))', gap: '8px', background: 'var(--black-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+                            <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Revenue</div>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(cat.revenue)}</div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.revenue)}</div>
                             </div>
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>COGS</div>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--danger-light)', marginTop: '2px' }}>{formatMoney(cat.cost)}</div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger-light)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.cost)}</div>
                             </div>
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profit</div>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--success-light)', marginTop: '2px' }}>{formatMoney(cat.grossProfit)}</div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--success-light)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.grossProfit)}</div>
                             </div>
                           </div>
 
@@ -1086,11 +1167,11 @@ export default function ReportsPage() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '13px' }}>
-                          <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '13px' }}>
+                          <div style={{ fontSize: '12px' }}>
                             <span style={{ color: 'var(--text-secondary)' }}>Revenue: </span>
                             <b style={{ color: 'var(--gold)' }}>{formatMoney(item.revenue)}</b>
-                            <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>|</span>
+                            <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>|</span>
                             <span style={{ color: 'var(--text-secondary)' }}>Cost: </span>
                             <span style={{ color: 'var(--danger-light)' }}>{formatMoney(item.totalCost)}</span>
                           </div>
