@@ -162,7 +162,7 @@ export default function LoginPage() {
               textTransform: 'uppercase',
             }}
           >
-            Kogna Lounge
+            Kogna Coffee
           </h1>
           <p
             style={{
