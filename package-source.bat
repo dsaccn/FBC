@@ -1,9 +1,8 @@
 @echo off
 :: =========================================================
-:: Diva Addis POS — Source Code Packager (for Online Setup)
-:: Run this script on the source PC to package the application
-:: into a tiny zip file. Since the target PC has internet,
-:: dependencies will be downloaded there.
+:: Diva Addis POS — Lightweight Package Creator
+:: Packages code, database, and setup scripts without node_modules.
+:: Ideal for copying to another PC via USB or Telegram (takes seconds).
 :: =========================================================
 
 set "POS_DIR=%~dp0"
@@ -12,7 +11,7 @@ set "ZIP_FILE=%POS_DIR%diva-addis-pos-online-setup.zip"
 
 echo.
 echo ==========================================
-echo  Diva Addis POS — Create Online Package
+echo  Diva Addis POS — Create Online Setup ZIP
 echo ==========================================
 echo.
 
@@ -43,8 +42,11 @@ copy "package-lock.json" "%DIST_DIR%\" >nul
 copy "next.config.ts" "%DIST_DIR%\" >nul
 copy "postcss.config.mjs" "%DIST_DIR%\" >nul
 copy "tsconfig.json" "%DIST_DIR%\" >nul
+copy "install-online.bat" "%DIST_DIR%\" >nul
+copy "install-offline.bat" "%DIST_DIR%\" >nul
 copy "setup-autostart.bat" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
+copy "stop-pos.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
 
 :: Copy utility js files in root
@@ -52,10 +54,15 @@ copy "*.js" "%DIST_DIR%\" >nul 2>&1
 
 echo.
 echo [3/4] Compressing source files into %ZIP_FILE%...
-powershell -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_FILE%' -Force"
+where tar.exe >nul 2>&1
+if %errorlevel% equ 0 (
+    tar.exe -a -c -f "%ZIP_FILE%" -C "%DIST_DIR%" .
+) else (
+    powershell -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_FILE%' -Force"
+)
 
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to compress folder. Make sure PowerShell is available.
+    echo [ERROR] Failed to compress folder.
     pause
     exit /b 1
 )
@@ -66,13 +73,13 @@ rmdir /s /q "%DIST_DIR%"
 
 echo.
 echo =========================================================
-echo  SUCCESS: Online Setup ZIP package created!
+echo  SUCCESS: Lightweight ZIP package created!
 echo =========================================================
 echo  File location: 
 echo  %ZIP_FILE%
 echo.
-echo  This file is very small because it does not include 
-echo  node_modules. Transfer it to the target PC.
+echo  This file is tiny (~1-2 MB) and includes your complete
+echo  local database (prisma/diva-addis.db) and .env configuration.
 echo =========================================================
 echo.
 pause
