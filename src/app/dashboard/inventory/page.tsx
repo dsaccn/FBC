@@ -214,9 +214,9 @@ export default function InventoryPage() {
   const filteredTotalQty = filteredStoreQty + filteredBarQty
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in" style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px', width: '100%', maxWidth: '100%' }}>
         <div>
           <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700' }}><span className="gold-text">Inventory</span></h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
@@ -231,7 +231,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--black-border)', paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--black-border)', paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0 }}>
         {([['drinks', '📦 Store Stock'], ['ingredients', '🥩 Ingredients'], ['logs', '📋 Control Logs']] as const).map(([key, label]) => (
           <button
             key={key}
@@ -243,6 +243,7 @@ export default function InventoryPage() {
               color: tab === key ? 'var(--gold)' : 'var(--text-secondary)',
               transition: 'all 0.2s',
               whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             {label}
@@ -256,33 +257,33 @@ export default function InventoryPage() {
       {tab === 'drinks' && (
         <>
           {lowDrinkCount > 0 && (
-            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <AlertTriangle size={20} color="var(--danger-light)" />
-              <div>
+            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+              <AlertTriangle size={20} color="var(--danger-light)" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: '600', color: 'var(--danger-light)' }}>{lowDrinkCount} item{lowDrinkCount > 1 ? 's' : ''} running low!</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>Click the item to restock.</div>
               </div>
-              <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto', borderColor: 'var(--danger-light)', color: 'var(--danger-light)' }} onClick={() => setFilterCat('low')}>View Low Stock</button>
+              <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto', borderColor: 'var(--danger-light)', color: 'var(--danger-light)', flexShrink: 0 }} onClick={() => setFilterCat('low')}>View Low Stock</button>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-              <button className={`btn btn-sm ${!filterCat ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilterCat('')}>All Items</button>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+            <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', width: '100%', maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch', flex: '1 1 300px' }}>
+              <button className={`btn btn-sm ${!filterCat ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat('')}>All Items</button>
               {categories.map(c => (
-                <button key={c.id} className={`btn btn-sm ${filterCat === c.id ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilterCat(c.id)}>
+                <button key={c.id} className={`btn btn-sm ${filterCat === c.id ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat(c.id)}>
                   {c.type === 'FOOD' ? '🍽' : '🍹'} {c.name}
                 </button>
               ))}
-              <button className={`btn btn-sm ${filterCat === 'low' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilterCat('low')}>⚠ Low Stock</button>
+              <button className={`btn btn-sm ${filterCat === 'low' ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat('low')}>⚠ Low Stock</button>
             </div>
-            <div style={{ position: 'relative', flex: '1', minWidth: '200px', maxWidth: '300px' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '320px', minWidth: 0, flex: '1 1 200px' }}>
               <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 type="text"
                 placeholder="Search items..."
                 className="input"
-                style={{ paddingLeft: '36px', height: '36px', fontSize: '13px' }}
+                style={{ paddingLeft: '36px', height: '36px', fontSize: '13px', width: '100%' }}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />

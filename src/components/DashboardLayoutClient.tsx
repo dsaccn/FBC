@@ -18,7 +18,7 @@ export default function DashboardLayout({ children, session }: { children: React
 
   return (
     <ToastProvider>
-      <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}>
       {/* Offline/Sync status banner — fixed at top of screen */}
       <OfflineBanner />
 
@@ -32,7 +32,7 @@ export default function DashboardLayout({ children, session }: { children: React
         onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="main-content" style={{ flex: 1 }}>
+      <main className="main-content" style={{ flex: 1, minWidth: 0, maxWidth: '100%', overflowX: 'hidden' }}>
         {children}
       </main>
     </div>

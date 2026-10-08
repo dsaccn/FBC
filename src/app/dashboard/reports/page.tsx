@@ -485,7 +485,7 @@ export default function ReportsPage() {
   const methodColors = ['#D4AF37', '#52B788', '#F4A261', '#E63946', '#4A4E69']
 
   return (
-    <div className="animate-fade-in no-print" style={{ paddingBottom: '40px' }}>
+    <div className="animate-fade-in no-print" style={{ paddingBottom: '40px', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
       {/* ============================================================ */}
       {/* MOBILE-ONLY TOP SECTION (Ultra-compact, zero-scroll layout)  */}
       {/* ============================================================ */}
@@ -607,7 +607,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Mobile 2x2 Micro-Metric Summary Grid (~95px total height!) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px', marginBottom: '12px', width: '100%', maxWidth: '100%' }}>
           {/* Revenue */}
           <div style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(20,20,20,0.8) 100%)', border: '1px solid rgba(212,175,55,0.3)', borderRadius: '10px', padding: '9px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Total Revenue</div>
@@ -844,7 +844,7 @@ export default function ReportsPage() {
         <div className="reports-dashboard-grid">
           
           {/* Daily Sales Bar Chart (CSS) */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
             <h3 style={{ fontWeight: '600', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <TrendingUp size={18} color="var(--gold)" /> Daily Revenue Trends
@@ -854,8 +854,8 @@ export default function ReportsPage() {
               </span>
             </h3>
             {data.dailySales.length > 0 ? (
-              <div className="hide-scrollbar" style={{ overflowX: 'auto', paddingBottom: '8px' }}>
-                <div style={{ minWidth: '500px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+              <div className="hide-scrollbar" style={{ overflowX: 'auto', paddingBottom: '8px', width: '100%', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
+                <div style={{ minWidth: '450px', display: 'flex', flexDirection: 'column', flex: 1 }}>
                   <div style={{ position: 'relative', height: '220px', display: 'flex', alignItems: 'flex-end', gap: '6px', borderBottom: '2px solid var(--black-border)', marginBottom: '8px' }}>
                     {data.dailySales.slice(0, 14).reverse().map((day, i) => {
                       const maxRev = Math.max(...data.dailySales.slice(0, 14).map(d => d.revenue))
@@ -1153,7 +1153,7 @@ export default function ReportsPage() {
                   <Layers size={16} /> Category Performance Comparison
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px', width: '100%', maxWidth: '100%' }}>
                   {(data.profitByCategory && data.profitByCategory.length > 0) ? (
                     data.profitByCategory.map(cat => {
                       const isFood = cat.category === 'FOOD'
