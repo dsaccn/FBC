@@ -30,11 +30,13 @@ mkdir "%DIST_DIR%"
 mkdir "%DIST_DIR%\prisma"
 mkdir "%DIST_DIR%\public"
 mkdir "%DIST_DIR%\src"
+mkdir "%DIST_DIR%\scripts"
 
 :: Copy code and configs (excluding node_modules and .next)
 xcopy /E /I /Y "public" "%DIST_DIR%\public" >nul
 xcopy /E /I /Y "src" "%DIST_DIR%\src" >nul
 xcopy /E /I /Y "prisma" "%DIST_DIR%\prisma" >nul
+xcopy /E /I /Y "scripts" "%DIST_DIR%\scripts" >nul
 
 copy ".env" "%DIST_DIR%\" >nul
 copy "package.json" "%DIST_DIR%\" >nul

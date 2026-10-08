@@ -16,7 +16,9 @@ import {
   Filter,
   ArrowUpDown,
   Info,
-  Layers
+  Layers,
+  Package,
+  Boxes
 } from 'lucide-react'
 
 export interface ProfitCategory {
@@ -40,6 +42,8 @@ export interface ProfitItem {
   totalCost: number
   grossProfit: number
   profitMargin: number
+  isRecipe?: boolean
+  recipeCost?: number
 }
 
 interface ReportData {
@@ -58,12 +62,41 @@ interface ReportData {
     totalCost?: number
     profit?: number
     profitMargin?: number
+    isRecipe?: boolean
+    recipeCost?: number
   }[]
   profitByCategory?: ProfitCategory[]
   profitByItem?: ProfitItem[]
   staffPerformance: { name: string; orders: number; revenue: number }[]
   cancellations: { id: string; orderItem: { menuItem: { name: string }; quantity: number; order: { table: { number: string }; waiter: { fullName: string } } }; manager: { fullName: string }; reason: string; createdAt: string }[]
   lowStock: { id: string; name: string; stockQuantity: number; lowStockThreshold: number }[]
+  inventory?: {
+    id: string
+    name: string
+    stockQuantity: number
+    barQuantity?: number
+    lowStockThreshold: number
+    costPrice: number
+    price: number
+    effectiveCost?: number
+    isRecipe?: boolean
+    recipeCost?: number
+    category?: { name: string; type: string }
+  }[]
+  ingredients?: {
+    id: string
+    name: string
+    unit: string
+    quantity: number
+    costPerUnit: number
+    totalValue: number
+    minAlert?: number
+  }[]
+  inventoryValuation?: {
+    totalValue: number
+    ingredientValue: number
+    retailValue: number
+  }
   transactions: { id: string; date: string; amount: number; method: string; cashier: string; waiter: string; table: string; items: string }[]
   dailySales: { date: string; orders: number; revenue: number; categories: { categoryName: string; items: { name: string; quantity: number; revenue: number }[] }[] }[]
   categorizedReport: {
@@ -114,6 +147,8 @@ export default function ReportsPage() {
   const [plSearch, setPlSearch] = useState('')
   const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'DRINKS'>('ALL')
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
+  const [invSubTab, setInvSubTab] = useState<'ingredients' | 'retail' | 'lowstock'>('ingredients')
+  const [invSearch, setInvSearch] = useState('')
 
   const [quickDateActive, setQuickDateActive] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'>('all')
   const [showCustomDate, setShowCustomDate] = useState(false)
@@ -356,10 +391,12 @@ export default function ReportsPage() {
     let itemRows = ''
     items.forEach(it => {
       const marginColor = it.profitMargin >= 50 ? '#047857' : it.profitMargin >= 25 ? '#B45309' : '#B91C1C'
+      const costMethod = it.isRecipe ? 'Recipe Cost' : (it.costPrice === 0 ? 'Unset (0.00)' : 'Direct Cost')
       itemRows += `<tr>
-        <td style="${tdBase}">${it.name}</td>
+        <td style="${tdBase}">${it.name}${it.isRecipe ? ' (Recipe)' : ''}</td>
         <td style="${tdBase}">${it.category}</td>
         <td style="${tdBase}">${it.type}</td>
+        <td style="${tdBase}">${costMethod}</td>
         <td style="${numTd}">${it.quantity}</td>
         <td style="${numTd}">${it.price.toFixed(2)}</td>
         <td style="${numTd}">${it.costPrice.toFixed(2)}</td>
@@ -400,7 +437,7 @@ export default function ReportsPage() {
         </p>
 
         <!-- Executive Summary Table -->
-        <table style="margin-bottom:20px;width:380px;">
+        <table style="margin-bottom:20px;width:420px;">
           <tr style="background-color:#1E293B;color:#FFFFFF;font-weight:bold;">
             <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Financial Metric</th>
             <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Amount (ETB)</th>
@@ -409,6 +446,11 @@ export default function ReportsPage() {
           <tr><td style="${tdBase}">Cost of Goods Sold (COGS)</td><td style="${numTd}color:#B91C1C;">${(data.totalCOGS || 0).toFixed(2)}</td></tr>
           <tr style="background-color:#F0FDF4;"><td style="${tdBase}font-weight:bold;">Gross Profit</td><td style="${numTd}font-weight:bold;color:#047857;">${(data.grossProfit || 0).toFixed(2)}</td></tr>
           <tr><td style="${tdBase}">Overall Profit Margin</td><td style="${numTd}font-weight:bold;">${(data.profitMargin ?? 0).toFixed(1)}%</td></tr>
+          ${data.inventoryValuation ? `
+          <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Store Raw Ingredients Valuation</td><td style="${numTd}">${data.inventoryValuation.ingredientValue.toFixed(2)}</td></tr>
+          <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Retail Finished Stock Valuation</td><td style="${numTd}">${data.inventoryValuation.retailValue.toFixed(2)}</td></tr>
+          <tr style="background-color:#FEF3C7;"><td style="${tdBase}font-weight:bold;">Total Inventory Asset Valuation</td><td style="${numTd}font-weight:bold;color:#92400E;">${data.inventoryValuation.totalValue.toFixed(2)}</td></tr>
+          ` : ''}
         </table>
 
         <!-- Item Detail Table -->
@@ -418,6 +460,7 @@ export default function ReportsPage() {
               <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Item Name</th>
               <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Category</th>
               <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Type</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Cost Method</th>
               <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Qty Sold</th>
               <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Selling Price</th>
               <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Cost Price</th>
@@ -430,7 +473,7 @@ export default function ReportsPage() {
           <tbody>
             ${itemRows}
             <tr style="background-color:#E5E7EB;font-weight:bold;border-top:3px double #111827;">
-              <td colspan="3" style="${tdBase}">TOTAL</td>
+              <td colspan="4" style="${tdBase}">TOTAL</td>
               <td style="${numTd}">${items.reduce((s, it) => s + it.quantity, 0)}</td>
               <td style="${tdBase}">-</td>
               <td style="${tdBase}">-</td>
@@ -462,7 +505,7 @@ export default function ReportsPage() {
     { id: 'best-sellers', label: 'Best Sellers', icon: <TrendingUp size={14}/> },
     { id: 'staff', label: 'Staff Performance', icon: <TrendingUp size={14}/> },
     { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={14}/> },
-    { id: 'inventory', label: 'Low Stock', icon: <AlertTriangle size={14}/> },
+    { id: 'inventory', label: 'Inventory Valuation', icon: <Boxes size={14}/> },
     { id: 'inventory-logs', label: 'Inventory Control Log', icon: <RefreshCw size={14}/> }
   ]
 
@@ -638,6 +681,34 @@ export default function ReportsPage() {
             <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Voided tickets</div>
           </div>
         </div>
+
+        {/* Mobile Stock Asset Valuation Banner */}
+        {data.inventoryValuation && (
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.12) 0%, rgba(20,20,20,0.85) 100%)', 
+            border: '1px solid rgba(212,175,55,0.3)', 
+            borderRadius: '10px', 
+            padding: '8px 12px', 
+            marginBottom: '12px', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            fontSize: '11px' 
+          }}>
+            <div>
+              <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Package size={11} color="var(--gold)" /> Stock Asset Valuation
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff', marginTop: '1px' }}>
+                {formatMoney(data.inventoryValuation.totalValue)}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '10px', lineHeight: 1.4 }}>
+              <div>Raw Store: <b style={{ color: 'var(--gold-light)' }}>{formatMoney(data.inventoryValuation.ingredientValue)}</b></div>
+              <div>Retail Stock: <b style={{ color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation.retailValue)}</b></div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Sticky Section Selector */}
         <div style={{ position: 'sticky', top: '60px', zIndex: 120, background: 'rgba(12,12,12,0.95)', backdropFilter: 'blur(10px)', padding: '6px 0', borderBottom: '1px solid var(--black-border)', marginBottom: '14px' }}>
@@ -823,6 +894,20 @@ export default function ReportsPage() {
               <div style={{ padding: '8px', background: 'rgba(230,57,70,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><XCircle size={18}/></div>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items in period</div>
+          </div>
+
+          {/* Stock Asset Valuation */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.18) 0%, rgba(20,20,20,0.85) 100%)', border: '1px solid rgba(212,175,55,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Stock Assets Valuation</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(212,175,55,0.2)', borderRadius: '10px', color: 'var(--gold)', flexShrink: 0 }}><Package size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
+            </div>
           </div>
         </div>
 
@@ -1082,8 +1167,8 @@ export default function ReportsPage() {
                   Executive Financial Summary
                 </div>
 
-                {/* 4 Mini Cards in Grid */}
-                <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                {/* 5 Mini Cards in Grid */}
+                <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                   <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales Revenue</div>
                     <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
@@ -1108,6 +1193,12 @@ export default function ReportsPage() {
                     <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit Margin</div>
                     <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: '#c084fc' }}>{overallMargin.toFixed(1)}%</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Net return rate</div>
+                  </div>
+
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(212,175,55,0.25)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: '4px' }}>Stock Valuation</div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: 'var(--gold)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)}</div>
                   </div>
                 </div>
 
@@ -1139,10 +1230,21 @@ export default function ReportsPage() {
                 <details style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', cursor: 'pointer' }}>
                   <summary style={{ color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
                     <Info size={15} color="var(--gold)" />
-                    <span>How COGS & Profit are calculated (tap to view)</span>
+                    <span>How COGS & Recipe Costs are calculated (tap to view)</span>
                   </summary>
                   <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(212,175,55,0.1)' }}>
-                    Cost of Goods Sold is calculated by multiplying each sold quantity by the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>). If an item has not had a cost price configured yet in Inventory, its cost defaults to 0 (100% margin). Configure cost prices on the Menu/Inventory management page for exact profitability tracking.
+                    Cost of Goods Sold (COGS) is computed automatically:
+                    <ul style={{ paddingLeft: '18px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <li>
+                        <b>Prepared Drinks & Food (e.g. STRAWBERRY MOJITO, COCKTAILS, FRESH JUICE):</b> Cost is calculated dynamically from recipe ingredients (<code style={{ color: 'var(--gold-light)' }}>∑ recipe.quantity × ingredient.costPerUnit</code>). There is no standalone finished item stock; the ingredients themselves are the cost.
+                      </li>
+                      <li>
+                        <b>Direct Retail Goods (e.g. Water bottles, soft drinks, retail snacks):</b> Cost is taken from the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>).
+                      </li>
+                      <li>
+                        If an ingredient cost is 0, update unit bought prices in <b>Inventory / Store</b> to see exact profitability.
+                      </li>
+                    </ul>
                   </div>
                 </details>
               </div>
@@ -1283,7 +1385,14 @@ export default function ReportsPage() {
                     return (
                       <tr key={item.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
                         <td style={{ padding: '14px 20px' }}>
-                          <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</span>
+                            {item.isRecipe && (
+                              <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }} title="Cost computed dynamically from recipe ingredients">
+                                🍹 Recipe
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category}</div>
                         </td>
                         <td style={{ padding: '14px 20px' }}>
@@ -1294,7 +1403,16 @@ export default function ReportsPage() {
                         <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
                         <td style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>{formatMoney(item.price)}</td>
                         <td style={{ padding: '14px 20px', fontSize: '13px' }}>
-                          {isUnsetCost ? (
+                          {item.isRecipe ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span style={{ color: item.costPrice > 0 ? 'var(--text-primary)' : 'var(--warning-light)', fontWeight: '600' }}>
+                                {formatMoney(item.costPrice)}
+                              </span>
+                              <span style={{ fontSize: '10px', color: item.costPrice > 0 ? 'var(--gold)' : 'var(--warning-light)' }}>
+                                {item.costPrice > 0 ? '🍹 Recipe Cost' : '⚠️ 0.00 (Set Ing. Cost)'}
+                              </span>
+                            </div>
+                          ) : isUnsetCost ? (
                             <span style={{ fontSize: '10px', color: 'var(--warning-light)', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }} title="Cost price is 0 ETB. Set in Inventory to see true profit.">
                               ⚠️ 0.00
                             </span>
@@ -1321,14 +1439,21 @@ export default function ReportsPage() {
 
                     return (
                       <div key={item.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                           <div>
-                            <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</span>
+                              {item.isRecipe && (
+                                <span style={{ fontSize: '9px', fontWeight: '700', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }}>
+                                  🍹 Recipe
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                               {item.category} · <span style={{ color: item.type === 'FOOD' ? '#f59e0b' : '#38bdf8', fontWeight: '600' }}>{item.type}</span>
                             </div>
                           </div>
-                          <span style={{ fontSize: '12px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>
                             {item.profitMargin.toFixed(1)}% Margin
                           </span>
                         </div>
@@ -1344,8 +1469,8 @@ export default function ReportsPage() {
                           </div>
                           <div>
                             <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Unit Cost</div>
-                            <div style={{ fontWeight: '600', marginTop: '2px', color: isUnsetCost ? 'var(--warning-light)' : 'inherit' }}>
-                              {isUnsetCost ? '⚠️ 0 ETB' : formatMoney(item.costPrice)}
+                            <div style={{ fontWeight: '600', marginTop: '2px', color: item.isRecipe ? 'var(--gold-light)' : (isUnsetCost ? 'var(--warning-light)' : 'inherit') }}>
+                              {item.isRecipe ? (item.costPrice > 0 ? `${formatMoney(item.costPrice)} (R)` : '⚠️ 0 (Recipe)') : (isUnsetCost ? '⚠️ 0 ETB' : formatMoney(item.costPrice))}
                             </div>
                           </div>
                         </div>
@@ -1785,12 +1910,25 @@ export default function ReportsPage() {
                     {i + 1}
                   </div>
                 </td>
-                <td style={{ padding: '16px 20px', fontWeight: '600', fontSize: '15px' }}>{item.name}</td>
+                <td style={{ padding: '16px 20px', fontWeight: '600', fontSize: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span>{item.name}</span>
+                    {item.isRecipe && (
+                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }}>
+                        🍹 Recipe
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{item.category}</td>
                 <td style={{ padding: '16px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
                 <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700' }}>{formatMoney(item.revenue)}</td>
                 <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {hasCost ? formatMoney(item.costPrice || 0) : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
+                  {item.isRecipe ? (
+                    <span style={{ color: item.costPrice ? 'var(--text-primary)' : 'var(--warning-light)', fontWeight: '500' }}>
+                      {item.costPrice ? formatMoney(item.costPrice) : '⚠️ 0.00'}
+                    </span>
+                  ) : hasCost ? formatMoney(item.costPrice || 0) : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
                 </td>
                 <td style={{ padding: '16px 20px', fontWeight: '700', color: (item.profit ?? 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
                   {item.profit !== undefined ? formatMoney(item.profit) : '-'}
@@ -1814,7 +1952,14 @@ export default function ReportsPage() {
                     {i + 1}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</div>
+                    <div style={{ fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>{item.name}</span>
+                      {item.isRecipe && (
+                        <span style={{ fontSize: '9px', fontWeight: '700', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)' }}>
+                          🍹 Recipe
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{item.category}</div>
                   </div>
                   {item.profitMargin !== undefined && (
@@ -1903,37 +2048,297 @@ export default function ReportsPage() {
           'No cancellations recorded.'
         )
 
-        if (activeTab === 'inventory') return renderResponsiveTable(
-          ['Item Name', 'Current Stock', 'Alert Threshold', 'Status'],
-          data.lowStock,
-          (item) => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: 'rgba(230,57,70,0.03)' }}>
-              <td style={{ padding: '16px 20px', fontWeight: '600' }}>{item.name}</td>
-              <td style={{ padding: '16px 20px', color: 'var(--danger-light)', fontWeight: '700', fontSize: '16px' }}>{item.stockQuantity}</td>
-              <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{item.lowStockThreshold}</td>
-              <td style={{ padding: '16px 20px' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '4px 10px', borderRadius: '12px', fontWeight: '700', letterSpacing: '1px' }}>
-                  <AlertTriangle size={12}/> LOW STOCK
-                </span>
-              </td>
-            </tr>
-          ),
-          (item) => (
-            <div key={item.id} className="card" style={{ background: 'rgba(230,57,70,0.02)', border: '1px solid rgba(230,57,70,0.2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: '700' }}>
-                  <AlertTriangle size={10}/> LOW STOCK
-                </span>
+        if (activeTab === 'inventory') {
+          const val = data.inventoryValuation || {
+            totalValue: 0,
+            ingredientValue: 0,
+            retailValue: 0,
+          }
+          const allIngs = data.ingredients || []
+          const allItems = data.inventory || []
+          const lowStockList = data.lowStock || []
+
+          const filteredIngs = allIngs.filter(i => 
+            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.unit && i.unit.toLowerCase().includes(invSearch.toLowerCase()))
+          )
+
+          const filteredItems = allItems.filter(i =>
+            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.category?.name && i.category.name.toLowerCase().includes(invSearch.toLowerCase()))
+          )
+
+          const filteredLowStock = lowStockList.filter(i =>
+            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase())
+          )
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {/* Header Title */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Boxes size={22} color="var(--gold)" /> Inventory Assets & Stock Valuation
+                  </h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                    Valuation of raw store ingredients, prepared recipe items, retail inventory, and low stock warnings
+                  </p>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)', borderTop: '1px solid rgba(230,57,70,0.05)', paddingTop: '8px' }}>
-                <span>Current Stock: <b style={{ color: 'var(--danger-light)', fontSize: '14px' }}>{item.stockQuantity}</b></span>
-                <span>Alert Threshold: <b>{item.lowStockThreshold}</b></span>
+
+              {/* 4 Asset Valuation KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.18) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(212,175,55,0.35)', padding: '16px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Total Inventory Assets</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '6px 0 2px' }}>{formatMoney(val.totalValue)}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ingredients + Retail Stock</div>
+                </div>
+
+                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(56,189,248,0.3)', padding: '16px' }}>
+                  <div style={{ fontSize: '11px', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Raw Store Ingredients</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#38bdf8', margin: '6px 0 2px' }}>{formatMoney(val.ingredientValue)}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{allIngs.length} raw ingredients in stock</div>
+                </div>
+
+                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Retail Products Stock</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--success-light)', margin: '6px 0 2px' }}>{formatMoney(val.retailValue)}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stand-alone goods (bar + store)</div>
+                </div>
+
+                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(239,68,68,0.3)', padding: '16px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Low Stock Items</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: lowStockList.length > 0 ? 'var(--danger-light)' : 'var(--text-primary)', margin: '6px 0 2px' }}>{lowStockList.length}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Items needing reorder</div>
+                </div>
               </div>
+
+              {/* Sub-tab selection and search controls */}
+              <div className="card" style={{ padding: '12px 16px', background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    className={`btn btn-sm ${invSubTab === 'ingredients' ? 'btn-gold' : 'btn-ghost'}`}
+                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
+                    onClick={() => setInvSubTab('ingredients')}
+                  >
+                    🧪 Store Ingredients ({allIngs.length})
+                  </button>
+                  <button
+                    className={`btn btn-sm ${invSubTab === 'retail' ? 'btn-gold' : 'btn-ghost'}`}
+                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
+                    onClick={() => setInvSubTab('retail')}
+                  >
+                    🍽️ Menu & Retail Items ({allItems.length})
+                  </button>
+                  <button
+                    className={`btn btn-sm ${invSubTab === 'lowstock' ? 'btn-gold' : 'btn-ghost'}`}
+                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
+                    onClick={() => setInvSubTab('lowstock')}
+                  >
+                    ⚠️ Low Stock Alerts ({lowStockList.length})
+                  </button>
+                </div>
+
+                <div style={{ position: 'relative', flex: '1', minWidth: '200px', maxWidth: '340px' }}>
+                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search stock..."
+                    value={invSearch}
+                    onChange={e => setInvSearch(e.target.value)}
+                    style={{ paddingLeft: '34px', width: '100%', fontSize: '12px' }}
+                  />
+                </div>
+              </div>
+
+              {/* Sub-tab Content: 1) Store Ingredients */}
+              {invSubTab === 'ingredients' && renderResponsiveTable(
+                ['Ingredient', 'In-Store Qty', 'Unit', 'Cost / Unit', 'Total Asset Value', 'Alert Threshold', 'Status'],
+                filteredIngs,
+                (ing) => {
+                  const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
+                  return (
+                    <tr key={ing.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-primary)' }}>{ing.name}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: isLow ? 'var(--danger-light)' : 'var(--text-primary)' }}>
+                        {ing.quantity}
+                      </td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>{ing.unit}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        {ing.costPerUnit > 0 ? `${formatMoney(ing.costPerUnit)} / ${ing.unit}` : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
+                      </td>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--gold)', fontSize: '14px' }}>
+                        {formatMoney(ing.totalValue || 0)}
+                      </td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-muted)', fontSize: '13px' }}>{ing.minAlert || 5} {ing.unit}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        {isLow ? (
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger-light)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                            ⚠️ LOW
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', color: 'var(--success-light)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                            ✅ OK
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                },
+                (ing) => {
+                  const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
+                  return (
+                    <div key={ing.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: '700', fontSize: '15px' }}>{ing.name}</span>
+                        {isLow ? (
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger-light)' }}>
+                            ⚠️ LOW
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(16,185,129,0.15)', color: 'var(--success-light)' }}>
+                            ✅ OK
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>In Store</div>
+                          <div style={{ fontWeight: '700', marginTop: '2px', color: isLow ? 'var(--danger-light)' : 'inherit' }}>{ing.quantity} {ing.unit}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Cost / Unit</div>
+                          <div style={{ fontWeight: '600', marginTop: '2px' }}>{ing.costPerUnit > 0 ? formatMoney(ing.costPerUnit) : '0 ETB'}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Asset Value</div>
+                          <div style={{ fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(ing.totalValue || 0)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                },
+                'No ingredients found in store.'
+              )}
+
+              {/* Sub-tab Content: 2) Menu & Retail Items */}
+              {invSubTab === 'retail' && renderResponsiveTable(
+                ['Item & Category', 'Type & Recipe Status', 'Store Stock', 'Bar Stock', 'Unit Cost / Recipe', 'Selling Price'],
+                filteredItems,
+                (item) => (
+                  <tr key={item.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category?.name || 'Uncategorized'}</div>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      {item.isRecipe ? (
+                        <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.35)' }}>
+                          🍹 Made from Ingredients (Prepared)
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
+                          📦 Direct Retail Stock
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: item.isRecipe ? 'var(--text-muted)' : (item.stockQuantity <= item.lowStockThreshold ? 'var(--danger-light)' : 'var(--text-primary)') }}>
+                      {item.isRecipe ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '12px' }}>0 (Made on demand)</span> : item.stockQuantity}
+                    </td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>
+                      {item.isRecipe ? '-' : (item.barQuantity ?? 0)}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px' }}>
+                      {item.isRecipe ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <b style={{ color: item.recipeCost ? 'var(--gold)' : 'var(--warning-light)' }}>{formatMoney(item.recipeCost || 0)}</b>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Recipe dynamic cost</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: item.costPrice > 0 ? 'var(--text-secondary)' : 'var(--warning-light)' }}>
+                          {item.costPrice > 0 ? formatMoney(item.costPrice) : '⚠️ 0.00'}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 20px', color: 'var(--gold)', fontWeight: '600' }}>
+                      {formatMoney(item.price)}
+                    </td>
+                  </tr>
+                ),
+                (item) => (
+                  <div key={item.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: '700', fontSize: '15px' }}>{item.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category?.name || 'Uncategorized'}</div>
+                      </div>
+                      {item.isRecipe ? (
+                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)' }}>
+                          🍹 Recipe Item
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>
+                          📦 Retail Stock
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Store / Bar Qty</div>
+                        <div style={{ fontWeight: '700', marginTop: '2px' }}>
+                          {item.isRecipe ? '0 (Demand)' : `${item.stockQuantity} / ${item.barQuantity ?? 0}`}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Cost / Unit</div>
+                        <div style={{ fontWeight: '600', marginTop: '2px', color: item.isRecipe ? 'var(--gold)' : 'inherit' }}>
+                          {item.isRecipe ? (item.recipeCost ? formatMoney(item.recipeCost) : '0 ETB') : formatMoney(item.costPrice || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Price</div>
+                        <div style={{ fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(item.price)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                'No menu items found.'
+              )}
+
+              {/* Sub-tab Content: 3) Low Stock Alerts */}
+              {invSubTab === 'lowstock' && renderResponsiveTable(
+                ['Item Name', 'Current Stock', 'Alert Threshold', 'Status'],
+                filteredLowStock,
+                (item) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: 'rgba(230,57,70,0.03)' }}>
+                    <td style={{ padding: '16px 20px', fontWeight: '600' }}>{item.name}</td>
+                    <td style={{ padding: '16px 20px', color: 'var(--danger-light)', fontWeight: '700', fontSize: '16px' }}>{item.stockQuantity}</td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{item.lowStockThreshold}</td>
+                    <td style={{ padding: '16px 20px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '4px 10px', borderRadius: '12px', fontWeight: '700', letterSpacing: '1px' }}>
+                        <AlertTriangle size={12}/> LOW STOCK
+                      </span>
+                    </td>
+                  </tr>
+                ),
+                (item) => (
+                  <div key={item.id} className="card" style={{ background: 'rgba(230,57,70,0.02)', border: '1px solid rgba(230,57,70,0.2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: '700' }}>
+                        <AlertTriangle size={10}/> LOW STOCK
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)', borderTop: '1px solid rgba(230,57,70,0.05)', paddingTop: '8px' }}>
+                      <span>Current Stock: <b style={{ color: 'var(--danger-light)', fontSize: '14px' }}>{item.stockQuantity}</b></span>
+                      <span>Alert Threshold: <b>{item.lowStockThreshold}</b></span>
+                    </div>
+                  </div>
+                ),
+                '✅ All items have sufficient stock.'
+              )}
             </div>
-          ),
-          '✅ All items have sufficient stock.'
-        )
+          )
+        }
 
         if (activeTab === 'inventory-logs') return renderResponsiveTable(
           ['Date & Time', 'Item Name', 'Source/Type', 'Action', 'Qty Changed', 'Prev Qty', 'New Qty', 'User'],

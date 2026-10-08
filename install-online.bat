@@ -50,6 +50,9 @@ echo.
 
 :: 3. Generate Prisma client & build production Next.js bundle
 echo [3/3] Generating database client and building application...
+if exist "scripts\add-cost-per-unit.js" (
+    call node scripts\add-cost-per-unit.js
+)
 call npx prisma generate
 call npm run build
 if %errorlevel% neq 0 (

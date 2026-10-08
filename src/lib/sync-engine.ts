@@ -99,6 +99,7 @@ export async function pushIngredientToCloud(i: {
   name: string
   unit: string
   quantity: number
+  costPerUnit?: number
   minThreshold: number
   createdAt: Date
 }): Promise<void> {
@@ -106,14 +107,15 @@ export async function pushIngredientToCloud(i: {
   try {
     const pg = getPool()
     await pg.query(
-      `INSERT INTO "Ingredient" (id, name, unit, quantity, "minThreshold", "createdAt")
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO "Ingredient" (id, name, unit, quantity, "costPerUnit", "minThreshold", "createdAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE SET
          name           = EXCLUDED.name,
          unit           = EXCLUDED.unit,
          quantity       = EXCLUDED.quantity,
+         "costPerUnit"  = EXCLUDED."costPerUnit",
          "minThreshold" = EXCLUDED."minThreshold"`,
-      [i.id, i.name, i.unit, i.quantity, i.minThreshold, i.createdAt]
+      [i.id, i.name, i.unit, i.quantity, i.costPerUnit ?? 0, i.minThreshold, i.createdAt]
     )
   } catch (err: any) {
     console.warn('[SyncEngine] pushIngredientToCloud error (offline?):', err?.message)
@@ -250,7 +252,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
 
       // 2. Ingredients
       const { rows: cloudIngs } = await pg.query(
-        `SELECT id, name, unit, quantity, "minThreshold", "createdAt" FROM "Ingredient"`
+        `SELECT id, name, unit, quantity, "costPerUnit", "minThreshold", "createdAt" FROM "Ingredient"`
       )
 
       for (const i of cloudIngs) {
@@ -263,6 +265,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               name: i.name,
               unit: i.unit,
               quantity: Number(i.quantity),
+              costPerUnit: Number(i.costPerUnit || 0),
               minThreshold: Number(i.minThreshold),
               createdAt: new Date(i.createdAt),
             },
@@ -274,6 +277,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             data: {
               name: i.name,
               unit: i.unit,
+              costPerUnit: Number(i.costPerUnit || 0),
               minThreshold: Number(i.minThreshold),
             },
           })

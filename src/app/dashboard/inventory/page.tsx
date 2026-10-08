@@ -7,7 +7,7 @@ import { toast } from '@/components/ToastProvider'
 
 interface Category { id: string; name: string; type: string }
 interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null }
-interface Ingredient { id: string; name: string; unit: string; quantity: number; minThreshold: number }
+interface Ingredient { id: string; name: string; unit: string; quantity: number; costPerUnit?: number; minThreshold: number }
 
 const UNITS = ['grams', 'kg', 'ml', 'liters', 'pieces', 'cups', 'tbsp', 'tsp']
 
@@ -30,11 +30,12 @@ export default function InventoryPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loadingIngs, setLoadingIngs] = useState(true)
   const [editIng, setEditIng] = useState<Ingredient | null>(null)
-  const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', minThreshold: '0' })
+  const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', costPerUnit: '0', minThreshold: '0' })
   const [showIngForm, setShowIngForm] = useState(false)
   const [ingError, setIngError] = useState('')
   const [adjustIngTarget, setAdjustIngTarget] = useState<Ingredient | null>(null)
   const [adjustIngQty, setAdjustIngQty] = useState('')
+  const [adjustIngCost, setAdjustIngCost] = useState('')
   const [adjustIngMode, setAdjustIngMode] = useState<'add' | 'set'>('add')
   const [adjustIngSaving, setAdjustIngSaving] = useState(false)
   
@@ -157,14 +158,20 @@ export default function InventoryPage() {
   // Ingredient functions
   function openNewIng() {
     setEditIng(null)
-    setIngForm({ name: '', unit: 'grams', quantity: '0', minThreshold: '0' })
+    setIngForm({ name: '', unit: 'grams', quantity: '0', costPerUnit: '0', minThreshold: '0' })
     setIngError('')
     setShowIngForm(true)
   }
 
   function openEditIng(ing: Ingredient) {
     setEditIng(ing)
-    setIngForm({ name: ing.name, unit: ing.unit, quantity: String(ing.quantity), minThreshold: String(ing.minThreshold) })
+    setIngForm({
+      name: ing.name,
+      unit: ing.unit,
+      quantity: String(ing.quantity),
+      costPerUnit: String(ing.costPerUnit || 0),
+      minThreshold: String(ing.minThreshold),
+    })
     setIngError('')
     setShowIngForm(true)
   }
@@ -200,12 +207,17 @@ export default function InventoryPage() {
       newQty = Math.round(inputVal * 100) / 100
     }
 
+    const patchBody: any = { quantity: newQty }
+    if (adjustIngCost !== '' && !isNaN(parseFloat(adjustIngCost))) {
+      patchBody.costPerUnit = parseFloat(adjustIngCost)
+    }
+
     setAdjustIngSaving(true)
     try {
       const res = await fetch(`/api/ingredients/${adjustIngTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: newQty }),
+        body: JSON.stringify(patchBody),
       })
 
       if (!res.ok) {
@@ -217,13 +229,15 @@ export default function InventoryPage() {
 
       const updated = await res.json().catch(() => ({}))
       const savedQty = typeof updated?.quantity === 'number' ? updated.quantity : newQty
+      const savedCost = typeof updated?.costPerUnit === 'number' ? updated.costPerUnit : adjustIngTarget.costPerUnit
 
       toast.success(`Updated store stock for ${adjustIngTarget.name}: ${savedQty} ${adjustIngTarget.unit}`)
       setIngredients(prev =>
-        prev.map(i => (i.id === adjustIngTarget.id ? { ...i, quantity: savedQty } : i))
+        prev.map(i => (i.id === adjustIngTarget.id ? { ...i, quantity: savedQty, costPerUnit: savedCost } : i))
       )
       setAdjustIngTarget(null)
       setAdjustIngQty('')
+      setAdjustIngCost('')
       loadIngredients()
       loadLogs()
     } catch {
@@ -235,7 +249,13 @@ export default function InventoryPage() {
 
   async function saveIngredient() {
     setIngError('')
-    const body = { name: ingForm.name.trim(), unit: ingForm.unit, quantity: parseFloat(ingForm.quantity) || 0, minThreshold: parseFloat(ingForm.minThreshold) || 0 }
+    const body = {
+      name: ingForm.name.trim(),
+      unit: ingForm.unit,
+      quantity: parseFloat(ingForm.quantity) || 0,
+      costPerUnit: parseFloat(ingForm.costPerUnit) || 0,
+      minThreshold: parseFloat(ingForm.minThreshold) || 0,
+    }
     let res
     if (editIng) {
       res = await fetch(`/api/ingredients/${editIng.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -627,20 +647,22 @@ export default function InventoryPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
-                    {['Ingredient', 'Unit', 'In Stock', 'Min Threshold', 'Status', 'Actions'].map(h => (
+                    {['Ingredient', 'Unit', 'In Stock', 'Cost / Unit', 'Stock Value', 'Min Threshold', 'Status', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loadingIngs ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
                   ) : ingredients.length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                       No ingredients yet. Click <strong>Add Ingredient</strong> to start.
                     </td></tr>
                   ) : filteredIngredients.map(ing => {
                     const isLow = ing.quantity <= ing.minThreshold
+                    const costVal = Number(ing.costPerUnit || 0)
+                    const totalVal = Math.round(ing.quantity * costVal * 100) / 100
                     return (
                       <tr key={ing.id} style={{ borderTop: '1px solid var(--black-border)', background: isLow ? 'rgba(230,57,70,0.03)' : 'transparent' }}>
                         <td style={{ padding: '12px 16px', fontWeight: '500' }}>
@@ -652,6 +674,20 @@ export default function InventoryPage() {
                           <span style={{ fontWeight: '700', fontSize: '16px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
                             {ing.quantity}
                           </span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                          {costVal > 0 ? (
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{costVal.toFixed(2)} ETB</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                          {costVal > 0 ? (
+                            <span style={{ fontWeight: '700', color: 'var(--gold-light)' }}>{totalVal.toFixed(2)} ETB</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-secondary)' }}>{ing.minThreshold}</td>
                         <td style={{ padding: '12px 16px' }}>
@@ -670,6 +706,7 @@ export default function InventoryPage() {
                               onClick={() => {
                                 setAdjustIngTarget(ing)
                                 setAdjustIngQty('')
+                                setAdjustIngCost(ing.costPerUnit ? String(ing.costPerUnit) : '')
                                 setAdjustIngMode('add')
                               }}
                             >
@@ -701,6 +738,8 @@ export default function InventoryPage() {
               </div>
             ) : filteredIngredients.map(ing => {
               const isLow = ing.quantity <= ing.minThreshold
+              const costVal = Number(ing.costPerUnit || 0)
+              const totalVal = Math.round(ing.quantity * costVal * 100) / 100
               return (
                 <div
                   key={ing.id}
@@ -727,16 +766,28 @@ export default function InventoryPage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '13px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
                     <div>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>In Stock</span>
                       <span style={{ fontWeight: '700', fontSize: '15px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
-                        {ing.quantity}
+                        {ing.quantity} {ing.unit}
                       </span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Min Threshold</span>
-                      <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{ing.minThreshold}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Min Alert</span>
+                      <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{ing.minThreshold} {ing.unit}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Cost / Unit</span>
+                      <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                        {costVal > 0 ? `${costVal.toFixed(2)} ETB` : '-'}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Stock Value</span>
+                      <span style={{ fontWeight: '700', color: 'var(--gold-light)' }}>
+                        {costVal > 0 ? `${totalVal.toFixed(2)} ETB` : '-'}
+                      </span>
                     </div>
                   </div>
 
@@ -936,7 +987,11 @@ export default function InventoryPage() {
                 <label className="input-label">Current Stock</label>
                 <input className="input" type="number" value={ingForm.quantity} onChange={e => setIngForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
-              <div style={{ gridColumn: '1/-1' }}>
+              <div>
+                <label className="input-label">Cost / Bought Price (ETB)</label>
+                <input className="input" type="number" step="any" placeholder="e.g. 2.00 or 1500" value={ingForm.costPerUnit} onChange={e => setIngForm(f => ({ ...f, costPerUnit: e.target.value }))} />
+              </div>
+              <div>
                 <label className="input-label">Low Stock Alert At</label>
                 <input className="input" type="number" value={ingForm.minThreshold} onChange={e => setIngForm(f => ({ ...f, minThreshold: e.target.value }))} />
               </div>
@@ -1016,6 +1071,21 @@ export default function InventoryPage() {
                   )
                 })()}
 
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="input-label">Cost / Bought Price per Unit (ETB) — Optional</label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="any"
+                    placeholder={adjustIngTarget.costPerUnit ? `Current: ${adjustIngTarget.costPerUnit.toFixed(2)} ETB` : 'e.g. 2.00 or 1500'}
+                    value={adjustIngCost}
+                    onChange={e => setAdjustIngCost(e.target.value)}
+                  />
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Leave blank to keep existing bought price, or enter new cost price if this batch changed.
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     className="btn btn-gold"
@@ -1047,7 +1117,7 @@ export default function InventoryPage() {
                   const setVal = parseFloat(adjustIngQty) || 0
                   const diff = Math.round((setVal - adjustIngTarget.quantity) * 100) / 100
                   return (
-                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Change from {adjustIngTarget.quantity} {adjustIngTarget.unit}:</span>
                       <span style={{ fontWeight: '700', color: diff >= 0 ? 'var(--success-light)' : 'var(--danger-light)', fontSize: '14px' }}>
                         {diff >= 0 ? `+${diff}` : diff} {adjustIngTarget.unit}
@@ -1055,6 +1125,21 @@ export default function InventoryPage() {
                     </div>
                   )
                 })()}
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="input-label">Cost / Bought Price per Unit (ETB) — Optional</label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="any"
+                    placeholder={adjustIngTarget.costPerUnit ? `Current: ${adjustIngTarget.costPerUnit.toFixed(2)} ETB` : 'e.g. 2.00 or 1500'}
+                    value={adjustIngCost}
+                    onChange={e => setAdjustIngCost(e.target.value)}
+                  />
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Leave blank to keep existing bought price, or enter new cost price if changed.
+                  </div>
+                </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button

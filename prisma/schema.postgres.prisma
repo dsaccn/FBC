@@ -155,6 +155,7 @@ model Ingredient {
   name         String
   unit         String
   quantity     Float    @default(0)
+  costPerUnit  Float    @default(0) // Bought / cost price per unit
   minThreshold Float    @default(0)
   createdAt    DateTime @default(now())
 

@@ -15,6 +15,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.minThreshold !== undefined && body.minThreshold !== null) {
       body.minThreshold = Number(body.minThreshold)
     }
+    if (body.costPerUnit !== undefined && body.costPerUnit !== null) {
+      body.costPerUnit = Number(body.costPerUnit)
+    }
 
     // Fetch current ingredient to compare quantity
     const before = await prisma.ingredient.findUnique({ where: { id } })

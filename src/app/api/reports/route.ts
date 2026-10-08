@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     ...(to && { lte: new Date(to + 'T23:59:59') }),
   }
 
-  const [payments, orders, orderItems, cancellations, inventory, inventoryLogs] = await Promise.all([
+  const [payments, orders, orderItems, cancellations, inventory, inventoryLogs, allIngredients] = await Promise.all([
     prisma.payment.findMany({
       where: from || to ? { createdAt: dateFilter } : {},
       include: {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
           include: {
             table: true,
             waiter: { select: { fullName: true } },
-            orderItems: { include: { menuItem: { include: { category: true } } } },
+            orderItems: { include: { menuItem: { include: { category: true, recipes: { include: { ingredient: true } } } } } },
           },
         },
         cashier: { select: { fullName: true } },
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     }),
     prisma.orderItem.findMany({
       where: { status: { not: 'CANCELLED' }, ...(from || to ? { createdAt: dateFilter } : {}) },
-      include: { menuItem: { include: { category: true } } },
+      include: { menuItem: { include: { category: true, recipes: { include: { ingredient: true } } } } },
     }),
     prisma.cancellation.findMany({
       where: from || to ? { createdAt: dateFilter } : {},
@@ -39,12 +39,43 @@ export async function GET(req: Request) {
         manager: { select: { fullName: true } },
       },
     }),
-    prisma.menuItem.findMany({ include: { category: true }, orderBy: { name: 'asc' } }),
+    prisma.menuItem.findMany({
+      include: {
+        category: true,
+        recipes: { include: { ingredient: true } },
+      },
+      orderBy: { name: 'asc' },
+    }),
     prisma.inventoryLog.findMany({
       where: from || to ? { createdAt: dateFilter } : {},
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.ingredient.findMany({
+      orderBy: { name: 'asc' },
+    }),
   ])
+
+  // Helper to compute effective cost price for a menu item
+  // If it has a recipe with ingredient costs > 0, sum recipe ingredient costs!
+  // Otherwise, fall back to menuItem.costPrice.
+  function getItemCost(menuItem: any): { cost: number; isRecipe: boolean; recipeCost: number } {
+    if (!menuItem) return { cost: 0, isRecipe: false, recipeCost: 0 }
+    let calculatedRecipeCost = 0
+    const hasRecipe = Array.isArray(menuItem.recipes) && menuItem.recipes.length > 0
+    if (hasRecipe) {
+      for (const r of menuItem.recipes) {
+        const ingUnitCost = Number(r.ingredient?.costPerUnit || 0)
+        calculatedRecipeCost += Number(r.quantity || 0) * ingUnitCost
+      }
+      calculatedRecipeCost = Math.round(calculatedRecipeCost * 100) / 100
+    }
+
+    if (hasRecipe && calculatedRecipeCost > 0) {
+      return { cost: calculatedRecipeCost, isRecipe: true, recipeCost: calculatedRecipeCost }
+    }
+    const directCost = Number(menuItem.costPrice || 0)
+    return { cost: directCost, isRecipe: hasRecipe, recipeCost: calculatedRecipeCost }
+  }
 
   // Total revenue
   const totalRevenue = Math.round(payments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
@@ -67,6 +98,8 @@ export async function GET(req: Request) {
     totalCost: number
     grossProfit: number
     profitMargin: number
+    isRecipe?: boolean
+    recipeCost?: number
   }> = {}
 
   const categoryTypeProfitMap: Record<string, {
@@ -82,7 +115,7 @@ export async function GET(req: Request) {
     p.order.orderItems.forEach((oi: any) => {
       if (oi.status === 'CANCELLED') return
 
-      const costPrice = Number(oi.menuItem.costPrice || 0)
+      const { cost: costPrice, isRecipe, recipeCost } = getItemCost(oi.menuItem)
       const sellPrice = Number(oi.menuItem.price || 0)
       const qty = Number(oi.quantity || 0)
       const lineCost = qty * costPrice
@@ -108,6 +141,8 @@ export async function GET(req: Request) {
           totalCost: 0,
           grossProfit: 0,
           profitMargin: 0,
+          isRecipe,
+          recipeCost,
         }
       }
       itemProfitMap[itemId].quantity += qty
@@ -174,10 +209,12 @@ export async function GET(req: Request) {
     totalCost: number;
     profit: number;
     profitMargin: number;
+    isRecipe?: boolean;
+    recipeCost?: number;
   }> = {}
   orderItems.forEach(oi => {
     const key = oi.menuItemId
-    const costPrice = Number(oi.menuItem.costPrice || 0)
+    const { cost: costPrice, isRecipe, recipeCost } = getItemCost(oi.menuItem)
     if (!itemSales[key]) {
       itemSales[key] = { 
         name: oi.menuItem.name, 
@@ -188,6 +225,8 @@ export async function GET(req: Request) {
         totalCost: 0,
         profit: 0,
         profitMargin: 0,
+        isRecipe,
+        recipeCost,
       }
     }
     const itemRev = oi.quantity * oi.menuItem.price
@@ -359,6 +398,41 @@ export async function GET(req: Request) {
     grandTotal: repGrandTotal
   }
 
+  // Inventory Asset Valuation
+  // 1. Raw Ingredients in Store
+  const ingredientStockValue = Math.round(
+    allIngredients.reduce((sum, ing) => sum + (Number(ing.quantity || 0) * Number(ing.costPerUnit || 0)), 0) * 100
+  ) / 100
+
+  // 2. Retail / Standalone Products (items with no recipe)
+  const retailStockValue = Math.round(
+    inventory
+      .filter(item => !item.recipes || item.recipes.length === 0)
+      .reduce((sum, item) => {
+        const totalUnits = Number(item.stockQuantity || 0) + Number(item.barQuantity || 0)
+        return sum + (totalUnits * Number(item.costPrice || 0))
+      }, 0) * 100
+  ) / 100
+
+  const totalInventoryValue = Math.round((ingredientStockValue + retailStockValue) * 100) / 100
+
+  // Enrich inventory items with isRecipe and effective cost
+  const enrichedInventory = inventory.map(item => {
+    const { cost: effectiveCost, isRecipe, recipeCost } = getItemCost(item)
+    return {
+      ...item,
+      effectiveCost,
+      isRecipe,
+      recipeCost,
+    }
+  })
+
+  // Enrich ingredients with total monetary value
+  const enrichedIngredients = allIngredients.map(ing => ({
+    ...ing,
+    totalValue: Math.round(Number(ing.quantity || 0) * Number(ing.costPerUnit || 0) * 100) / 100,
+  }))
+
   return NextResponse.json({
     totalRevenue,
     totalCOGS,
@@ -371,7 +445,13 @@ export async function GET(req: Request) {
     bestSelling,
     staffPerformance: Object.values(staffPerf),
     cancellations,
-    inventory,
+    inventory: enrichedInventory,
+    ingredients: enrichedIngredients,
+    inventoryValuation: {
+      totalValue: totalInventoryValue,
+      ingredientValue: ingredientStockValue,
+      retailValue: retailStockValue,
+    },
     lowStock,
     transactions,
     dailySales,

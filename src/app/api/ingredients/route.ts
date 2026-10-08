@@ -26,6 +26,9 @@ export async function POST(req: Request) {
     if (body.minThreshold !== undefined && body.minThreshold !== null) {
       body.minThreshold = Number(body.minThreshold)
     }
+    if (body.costPerUnit !== undefined && body.costPerUnit !== null) {
+      body.costPerUnit = Number(body.costPerUnit)
+    }
 
     const ingredient = await prisma.ingredient.create({ data: body })
 
