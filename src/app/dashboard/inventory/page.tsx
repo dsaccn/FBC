@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { AlertTriangle, Plus, Minus, Pencil, Trash2, RefreshCw, Search } from 'lucide-react'
 import Portal from '@/components/Portal'
+import { toast } from '@/components/ToastProvider'
 
 interface Category { id: string; name: string; type: string }
 interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null }
@@ -32,6 +33,10 @@ export default function InventoryPage() {
   const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', minThreshold: '0' })
   const [showIngForm, setShowIngForm] = useState(false)
   const [ingError, setIngError] = useState('')
+  const [adjustIngTarget, setAdjustIngTarget] = useState<Ingredient | null>(null)
+  const [adjustIngQty, setAdjustIngQty] = useState('')
+  const [adjustIngMode, setAdjustIngMode] = useState<'add' | 'set'>('add')
+  const [adjustIngSaving, setAdjustIngSaving] = useState(false)
   
   // Stock logging state
   const [logs, setLogs] = useState<any[]>([])
@@ -40,7 +45,7 @@ export default function InventoryPage() {
   const loadItems = useCallback(async () => {
     setLoadingItems(true)
     try {
-      const res = await fetch('/api/menu-items')
+      const res = await fetch('/api/menu-items', { cache: 'no-store' })
       if (res.ok) {
         setItems(await res.json())
       } else {
@@ -56,7 +61,7 @@ export default function InventoryPage() {
   const loadIngredients = useCallback(async () => {
     setLoadingIngs(true)
     try {
-      const res = await fetch('/api/ingredients')
+      const res = await fetch('/api/ingredients', { cache: 'no-store' })
       if (res.ok) {
         setIngredients(await res.json())
       } else {
@@ -71,7 +76,7 @@ export default function InventoryPage() {
 
   const loadCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/categories')
+      const res = await fetch('/api/categories', { cache: 'no-store' })
       if (res.ok) {
         setCategories(await res.json())
       } else {
@@ -85,7 +90,7 @@ export default function InventoryPage() {
   const loadLogs = useCallback(async () => {
     setLoadingLogs(true)
     try {
-      const res = await fetch('/api/inventory/logs')
+      const res = await fetch('/api/inventory/logs', { cache: 'no-store' })
       if (res.ok) {
         setLogs(await res.json())
       } else {
@@ -164,9 +169,70 @@ export default function InventoryPage() {
     setShowIngForm(true)
   }
 
+  function adjustIngDelta(delta: number) {
+    setAdjustIngQty(prev => {
+      const current = parseFloat(prev || '0') || 0
+      const next = Math.max(0, current + delta)
+      return String(next)
+    })
+  }
+
+  async function handleAdjustIngredient() {
+    if (!adjustIngTarget) return
+    const inputVal = parseFloat(adjustIngQty)
+    if (isNaN(inputVal)) {
+      toast.error('Please enter a valid quantity')
+      return
+    }
+
+    let newQty: number
+    if (adjustIngMode === 'add') {
+      if (inputVal === 0) {
+        toast.error('Please enter a quantity greater than 0')
+        return
+      }
+      newQty = Math.max(0, Math.round((adjustIngTarget.quantity + inputVal) * 100) / 100)
+    } else {
+      if (inputVal < 0) {
+        toast.error('Quantity cannot be negative')
+        return
+      }
+      newQty = Math.round(inputVal * 100) / 100
+    }
+
+    setAdjustIngSaving(true)
+    try {
+      const res = await fetch(`/api/ingredients/${adjustIngTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: newQty }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const msg = data.error || 'Failed to update ingredient stock'
+        toast.error(msg)
+        return
+      }
+
+      toast.success(`Updated store stock for ${adjustIngTarget.name}: ${newQty} ${adjustIngTarget.unit}`)
+      setIngredients(prev =>
+        prev.map(i => (i.id === adjustIngTarget.id ? { ...i, quantity: newQty } : i))
+      )
+      setAdjustIngTarget(null)
+      setAdjustIngQty('')
+      loadIngredients()
+      loadLogs()
+    } catch {
+      toast.error('Network error updating ingredient stock')
+    } finally {
+      setAdjustIngSaving(false)
+    }
+  }
+
   async function saveIngredient() {
     setIngError('')
-    const body = { name: ingForm.name.trim(), unit: ingForm.unit, quantity: parseFloat(ingForm.quantity), minThreshold: parseFloat(ingForm.minThreshold) }
+    const body = { name: ingForm.name.trim(), unit: ingForm.unit, quantity: parseFloat(ingForm.quantity) || 0, minThreshold: parseFloat(ingForm.minThreshold) || 0 }
     let res
     if (editIng) {
       res = await fetch(`/api/ingredients/${editIng.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -174,19 +240,39 @@ export default function InventoryPage() {
       res = await fetch('/api/ingredients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     }
     if (!res.ok) {
-      const { error } = await res.json()
-      setIngError(error || 'Failed to save')
+      const { error } = await res.json().catch(() => ({}))
+      const msg = error || 'Failed to save'
+      setIngError(msg)
+      toast.error(msg)
       return
     }
+    const saved = await res.json()
+    toast.success(editIng ? 'Ingredient updated!' : 'Ingredient created!')
     setShowIngForm(false)
+    setIngredients(prev => {
+      if (editIng) {
+        return prev.map(i => i.id === saved.id ? saved : i)
+      }
+      return [...prev, saved].sort((a, b) => a.name.localeCompare(b.name))
+    })
     loadIngredients()
     loadLogs()
   }
 
   async function deleteIngredient(id: string) {
     if (!confirm('Delete this ingredient? It will also be removed from all recipes.')) return
-    await fetch(`/api/ingredients/${id}`, { method: 'DELETE' })
-    loadIngredients()
+    try {
+      const res = await fetch(`/api/ingredients/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Ingredient deleted')
+        setIngredients(prev => prev.filter(i => i.id !== id))
+        loadIngredients()
+      } else {
+        toast.error('Failed to delete ingredient')
+      }
+    } catch {
+      toast.error('Network error deleting ingredient')
+    }
   }
 
   const filtered = items.filter(i => {
@@ -583,9 +669,23 @@ export default function InventoryPage() {
                           )}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEditIng(ing)}><Pencil size={13} /></button>
-                            <button className="btn btn-ghost btn-sm" style={{ padding: '6px 10px', color: 'var(--danger-light)' }} onClick={() => deleteIngredient(ing.id)}><Trash2 size={13} /></button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => {
+                                setAdjustIngTarget(ing)
+                                setAdjustIngQty('')
+                                setAdjustIngMode('add')
+                              }}
+                            >
+                              Update Store
+                            </button>
+                            <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEditIng(ing)} title="Edit ingredient">
+                              <Pencil size={13} />
+                            </button>
+                            <button className="btn btn-ghost btn-sm" style={{ padding: '6px 10px', color: 'var(--danger-light)' }} onClick={() => deleteIngredient(ing.id)} title="Delete ingredient">
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -646,11 +746,22 @@ export default function InventoryPage() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                    <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => openEditIng(ing)}>
-                      <Pencil size={14} /> Edit
+                    <button
+                      className="btn btn-gold btn-sm"
+                      style={{ flex: 2, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
+                      onClick={() => {
+                        setAdjustIngTarget(ing)
+                        setAdjustIngQty('')
+                        setAdjustIngMode('add')
+                      }}
+                    >
+                      Update Store
                     </button>
-                    <button className="btn btn-ghost btn-sm" style={{ flex: 1, padding: '10px 0', color: 'var(--danger-light)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => deleteIngredient(ing.id)}>
-                      <Trash2 size={14} /> Delete
+                    <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px' }} onClick={() => openEditIng(ing)}>
+                      <Pencil size={13} /> Edit
+                    </button>
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '10px 12px', color: 'var(--danger-light)', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => deleteIngredient(ing.id)}>
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -846,6 +957,131 @@ export default function InventoryPage() {
           </div>
         </div></Portal>
       )}
+
+      {/* Ingredient Stock Adjust Modal */}
+      {adjustIngTarget && (
+        <Portal><div className="modal-overlay" onClick={() => setAdjustIngTarget(null)}>
+          <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Update Store Stock</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+              {adjustIngTarget.name} — Current Store Stock: <b style={{ color: 'var(--gold)' }}>{adjustIngTarget.quantity} {adjustIngTarget.unit}</b>
+            </p>
+
+            {/* Mode Selector */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: 'var(--black-hover)', padding: '4px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${adjustIngMode === 'add' ? 'btn-gold' : 'btn-ghost'}`}
+                style={{ flex: 1, fontSize: '12px', padding: '8px 0' }}
+                onClick={() => setAdjustIngMode('add')}
+              >
+                + Add to Stock
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${adjustIngMode === 'set' ? 'btn-gold' : 'btn-ghost'}`}
+                style={{ flex: 1, fontSize: '12px', padding: '8px 0' }}
+                onClick={() => {
+                  setAdjustIngMode('set')
+                  if (!adjustIngQty) setAdjustIngQty(String(adjustIngTarget.quantity))
+                }}
+              >
+                = Set Exact Stock
+              </button>
+            </div>
+
+            {adjustIngMode === 'add' ? (
+              <>
+                <label className="input-label">Quantity to Add ({adjustIngTarget.unit})</label>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(-5)}>-5</button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(-1)}>-1</button>
+                  <input
+                    className="input"
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={adjustIngQty}
+                    onChange={e => setAdjustIngQty(e.target.value)}
+                    style={{ flex: 1, minWidth: '80px', textAlign: 'center', fontSize: '18px', fontWeight: '700' }}
+                    autoFocus
+                  />
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(1)}>+1</button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(5)}>+5</button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(10)}>+10</button>
+                </div>
+
+                {/* Calculation preview */}
+                {(() => {
+                  const addVal = parseFloat(adjustIngQty) || 0
+                  const newTotal = Math.max(0, Math.round((adjustIngTarget.quantity + addVal) * 100) / 100)
+                  return (
+                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>New Store Stock:</span>
+                      <span style={{ fontWeight: '700', color: 'var(--gold)', fontSize: '15px' }}>
+                        {newTotal} {adjustIngTarget.unit} {addVal > 0 && <span style={{ fontSize: '12px', color: 'var(--success-light)', fontWeight: '600' }}>(+{addVal})</span>}
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    className="btn btn-gold"
+                    style={{ flex: 1 }}
+                    onClick={handleAdjustIngredient}
+                    disabled={adjustIngSaving || !adjustIngQty || parseFloat(adjustIngQty) === 0}
+                  >
+                    {adjustIngSaving ? 'Saving...' : `Add ${adjustIngQty || 0} ${adjustIngTarget.unit} to Store`}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setAdjustIngTarget(null)}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="input-label">New Exact Stock ({adjustIngTarget.unit})</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="any"
+                  placeholder="e.g. 25"
+                  value={adjustIngQty}
+                  onChange={e => setAdjustIngQty(e.target.value)}
+                  style={{ textAlign: 'center', fontSize: '18px', fontWeight: '700', marginBottom: '14px' }}
+                  autoFocus
+                />
+
+                {/* Calculation preview */}
+                {(() => {
+                  const setVal = parseFloat(adjustIngQty) || 0
+                  const diff = Math.round((setVal - adjustIngTarget.quantity) * 100) / 100
+                  return (
+                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Change from {adjustIngTarget.quantity} {adjustIngTarget.unit}:</span>
+                      <span style={{ fontWeight: '700', color: diff >= 0 ? 'var(--success-light)' : 'var(--danger-light)', fontSize: '14px' }}>
+                        {diff >= 0 ? `+${diff}` : diff} {adjustIngTarget.unit}
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    className="btn btn-gold"
+                    style={{ flex: 1 }}
+                    onClick={handleAdjustIngredient}
+                    disabled={adjustIngSaving || !adjustIngQty || parseFloat(adjustIngQty) < 0}
+                  >
+                    {adjustIngSaving ? 'Saving...' : `Set Stock to ${adjustIngQty || 0} ${adjustIngTarget.unit}`}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setAdjustIngTarget(null)}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div></Portal>
+      )}
+
     </div>
   )
 }

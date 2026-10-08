@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
 import { backgroundSync } from '@/lib/sync-engine'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const ingredients = await prisma.ingredient.findMany({
@@ -34,8 +36,9 @@ export async function POST(req: Request) {
           userName: session?.fullName ?? 'Unknown',
         },
       })
-      backgroundSync()
     }
+
+    backgroundSync()
 
     return NextResponse.json(ingredient)
   } catch (err) {

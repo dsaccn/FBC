@@ -26,8 +26,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           userName: session?.fullName ?? 'Unknown',
         },
       })
-      backgroundSync()
     }
+
+    backgroundSync()
 
     return NextResponse.json(ingredient)
   } catch (err) {
