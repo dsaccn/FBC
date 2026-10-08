@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
-import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+import { backgroundSync, deleteFromCloud, pushIngredientToCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await req.json()
+
+    // Normalize numeric fields if provided
+    if (body.quantity !== undefined && body.quantity !== null) {
+      body.quantity = Number(body.quantity)
+    }
+    if (body.minThreshold !== undefined && body.minThreshold !== null) {
+      body.minThreshold = Number(body.minThreshold)
+    }
 
     // Fetch current ingredient to compare quantity
     const before = await prisma.ingredient.findUnique({ where: { id } })
@@ -27,6 +35,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
       })
     }
+
+    // Immediately push to Neon cloud so cloud has fresh stock right away
+    await pushIngredientToCloud(ingredient)
 
     backgroundSync()
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
-import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+import { backgroundSync, deleteFromCloud, pushMenuItemStockToCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -94,6 +94,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           },
         })
       }
+    }
+
+    if (body.stockQuantity !== undefined || body.barQuantity !== undefined) {
+      await pushMenuItemStockToCloud(id, item.stockQuantity, item.barQuantity)
     }
 
     backgroundSync()

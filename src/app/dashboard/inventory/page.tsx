@@ -215,9 +215,12 @@ export default function InventoryPage() {
         return
       }
 
-      toast.success(`Updated store stock for ${adjustIngTarget.name}: ${newQty} ${adjustIngTarget.unit}`)
+      const updated = await res.json().catch(() => ({}))
+      const savedQty = typeof updated?.quantity === 'number' ? updated.quantity : newQty
+
+      toast.success(`Updated store stock for ${adjustIngTarget.name}: ${savedQty} ${adjustIngTarget.unit}`)
       setIngredients(prev =>
-        prev.map(i => (i.id === adjustIngTarget.id ? { ...i, quantity: newQty } : i))
+        prev.map(i => (i.id === adjustIngTarget.id ? { ...i, quantity: savedQty } : i))
       )
       setAdjustIngTarget(null)
       setAdjustIngQty('')

@@ -91,6 +91,58 @@ export async function deleteFromCloud(sql: string, params: unknown[]): Promise<v
   }
 }
 
+/**
+ * Push an ingredient upsert directly to Neon immediately.
+ */
+export async function pushIngredientToCloud(i: {
+  id: string
+  name: string
+  unit: string
+  quantity: number
+  minThreshold: number
+  createdAt: Date
+}): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    await pg.query(
+      `INSERT INTO "Ingredient" (id, name, unit, quantity, "minThreshold", "createdAt")
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO UPDATE SET
+         name           = EXCLUDED.name,
+         unit           = EXCLUDED.unit,
+         quantity       = EXCLUDED.quantity,
+         "minThreshold" = EXCLUDED."minThreshold"`,
+      [i.id, i.name, i.unit, i.quantity, i.minThreshold, i.createdAt]
+    )
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushIngredientToCloud error (offline?):', err?.message)
+  }
+}
+
+/**
+ * Push menu item stock update directly to Neon immediately.
+ */
+export async function pushMenuItemStockToCloud(id: string, stockQuantity: number, barQuantity?: number): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    if (barQuantity !== undefined) {
+      await pg.query(
+        `UPDATE "MenuItem" SET "stockQuantity" = $1, "barQuantity" = $2 WHERE id = $3`,
+        [stockQuantity, barQuantity, id]
+      )
+    } else {
+      await pg.query(
+        `UPDATE "MenuItem" SET "stockQuantity" = $1 WHERE id = $2`,
+        [stockQuantity, id]
+      )
+    }
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushMenuItemStockToCloud error (offline?):', err?.message)
+  }
+}
+
 // ─── Sync state ───────────────────────────────────────────────────────────────
 
 let isSyncing = false
@@ -202,26 +254,31 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       )
 
       for (const i of cloudIngs) {
-        await prisma.ingredient.upsert({
-          where: { id: i.id },
-          update: { 
-            name: i.name, 
-            unit: i.unit, 
-            quantity: Number(i.quantity), 
-            minThreshold: Number(i.minThreshold), 
-            createdAt: new Date(i.createdAt) 
-          },
-          create: { 
-            id: i.id, 
-            name: i.name, 
-            unit: i.unit, 
-            quantity: Number(i.quantity), 
-            minThreshold: Number(i.minThreshold), 
-            createdAt: new Date(i.createdAt) 
-          },
-        })
+        const local = await prisma.ingredient.findUnique({ where: { id: i.id } })
+        if (!local) {
+          // Brand new ingredient from cloud: insert into local SQLite
+          await prisma.ingredient.create({
+            data: {
+              id: i.id,
+              name: i.name,
+              unit: i.unit,
+              quantity: Number(i.quantity),
+              minThreshold: Number(i.minThreshold),
+              createdAt: new Date(i.createdAt),
+            },
+          })
+        } else {
+          // Existing ingredient: sync details from cloud but PRESERVE local inventory store stock!
+          await prisma.ingredient.update({
+            where: { id: i.id },
+            data: {
+              name: i.name,
+              unit: i.unit,
+              minThreshold: Number(i.minThreshold),
+            },
+          })
+        }
       }
-
 
       // 3. MenuItems
       const { rows: cloudItems } = await pg.query(
@@ -230,38 +287,42 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
 
       // First pass: upsert with parentItemId = null to avoid self-referential foreign key constraint issues
       for (const item of cloudItems) {
-        await prisma.menuItem.upsert({
-          where: { id: item.id },
-          update: {
-            categoryId: item.categoryId,
-            name: item.name,
-            description: item.description,
-            price: Number(item.price),
-            available: Boolean(item.available),
-            stockQuantity: Number(item.stockQuantity),
-            barQuantity: Number(item.barQuantity),
-            costPrice: Number(item.costPrice),
-            lowStockThreshold: Number(item.lowStockThreshold),
-            parentItemId: null,
-            unitMultiplier: Number(item.unitMultiplier),
-            createdAt: new Date(item.createdAt),
-          },
-          create: {
-            id: item.id,
-            categoryId: item.categoryId,
-            name: item.name,
-            description: item.description,
-            price: Number(item.price),
-            available: Boolean(item.available),
-            stockQuantity: Number(item.stockQuantity),
-            barQuantity: Number(item.barQuantity),
-            costPrice: Number(item.costPrice),
-            lowStockThreshold: Number(item.lowStockThreshold),
-            parentItemId: null,
-            unitMultiplier: Number(item.unitMultiplier),
-            createdAt: new Date(item.createdAt),
-          },
-        })
+        const local = await prisma.menuItem.findUnique({ where: { id: item.id } })
+        if (!local) {
+          // Brand new product from cloud: insert into local SQLite
+          await prisma.menuItem.create({
+            data: {
+              id: item.id,
+              categoryId: item.categoryId,
+              name: item.name,
+              description: item.description,
+              price: Number(item.price),
+              available: Boolean(item.available),
+              stockQuantity: Number(item.stockQuantity),
+              barQuantity: Number(item.barQuantity),
+              costPrice: Number(item.costPrice),
+              lowStockThreshold: Number(item.lowStockThreshold),
+              parentItemId: null,
+              unitMultiplier: Number(item.unitMultiplier),
+              createdAt: new Date(item.createdAt),
+            },
+          })
+        } else {
+          // Existing product: sync pricing, category, availability from cloud but PRESERVE local store/bar stock!
+          await prisma.menuItem.update({
+            where: { id: item.id },
+            data: {
+              categoryId: item.categoryId,
+              name: item.name,
+              description: item.description,
+              price: Number(item.price),
+              available: Boolean(item.available),
+              costPrice: Number(item.costPrice),
+              lowStockThreshold: Number(item.lowStockThreshold),
+              unitMultiplier: Number(item.unitMultiplier),
+            },
+          })
+        }
       }
 
       // Second pass: update parentItemId links

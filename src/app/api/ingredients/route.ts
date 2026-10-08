@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, pushIngredientToCloud } from '@/lib/sync-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +20,13 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    if (body.quantity !== undefined && body.quantity !== null) {
+      body.quantity = Number(body.quantity)
+    }
+    if (body.minThreshold !== undefined && body.minThreshold !== null) {
+      body.minThreshold = Number(body.minThreshold)
+    }
+
     const ingredient = await prisma.ingredient.create({ data: body })
 
     // Log initial stock if ingredient was created with stock > 0
@@ -37,6 +44,9 @@ export async function POST(req: Request) {
         },
       })
     }
+
+    // Immediately push new ingredient to Neon
+    await pushIngredientToCloud(ingredient)
 
     backgroundSync()
 
