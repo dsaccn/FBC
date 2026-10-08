@@ -272,8 +272,7 @@ export default function OfflineBanner() {
       className="offline-banner"
       style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0,
-        zIndex: 9999,
+        left: 0, right: 0,
         background: c.bg,
         borderBottom: `1px solid ${c.border}`,
         color: c.color,

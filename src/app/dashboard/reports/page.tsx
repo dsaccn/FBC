@@ -115,7 +115,12 @@ export default function ReportsPage() {
   const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'DRINKS'>('ALL')
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
 
+  const [quickDateActive, setQuickDateActive] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'>('all')
+  const [showCustomDate, setShowCustomDate] = useState(false)
+
   const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
+    setQuickDateActive(type)
+    setShowCustomDate(false)
     const now = new Date()
     const formatDate = (d: Date) => {
       const year = d.getFullYear()
@@ -481,182 +486,357 @@ export default function ReportsPage() {
 
   return (
     <div className="animate-fade-in no-print" style={{ paddingBottom: '40px' }}>
-      {/* Header */}
-      <div className="reports-mobile-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 className="font-cinzel" style={{ fontSize: 'clamp(20px, 4.5vw, 28px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
-            <span className="gold-text">Business Intelligence</span>
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Advanced Analytics & Reporting</p>
-        </div>
-
-        {/* Date Filter Bar & Actions */}
-        <div className="reports-date-bar" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--black-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--black-border)', maxWidth: 'max-content' }}>
-          {/* Quick Date Presets */}
-          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', width: '100%', paddingBottom: '2px' }} className="hide-scrollbar">
-            {(['today', 'yesterday', 'week', 'month', 'all'] as const).map(p => {
-              const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', week: '7 Days', month: 'Month', all: 'All Time' }
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ padding: '4px 10px', fontSize: '11px', minHeight: '26px', borderRadius: '6px', whiteSpace: 'nowrap' }}
-                  onClick={() => setQuickDate(p)}
-                >
-                  {labels[p]}
-                </button>
-              )
-            })}
+      {/* ============================================================ */}
+      {/* MOBILE-ONLY TOP SECTION (Ultra-compact, zero-scroll layout)  */}
+      {/* ============================================================ */}
+      <div className="mobile-only" style={{ marginBottom: '16px' }}>
+        {/* Mobile Header: Title + Sync & Print icons */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+          <div>
+            <h1 className="font-cinzel" style={{ fontSize: '18px', fontWeight: '700', lineHeight: 1.2, margin: 0 }}>
+              <span className="gold-text">Business Intelligence</span>
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '11px', margin: '2px 0 0 0' }}>
+              Advanced Analytics & Reports
+            </p>
           </div>
-
-          <div className="reports-date-inputs" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={from} onChange={e => setFrom(e.target.value)} />
-            <span style={{ color: 'var(--text-muted)' }}>—</span>
-            <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={to} onChange={e => setTo(e.target.value)} />
-          </div>
-
-          <div style={{ width: '1px', height: '24px', background: 'var(--black-border)', margin: '0 4px' }} className="desktop-only" />
-
-          <div className="reports-actions-row" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button
               className="btn btn-ghost btn-sm"
               onClick={triggerSyncAndRefresh}
               disabled={syncing || loading}
+              style={{ padding: '6px 10px', height: '32px', minHeight: '32px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
               title="Sync & Refresh Data"
             >
-              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>
-                {syncing ? 'Syncing...' : 'Sync'}
-              </span>
+              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+              <span>{syncing ? '...' : 'Sync'}</span>
             </button>
-            <button className="btn btn-gold btn-sm" onClick={printReport} style={{ fontSize: '12px' }}>
-              <Printer size={15} /> Print
+            <button
+              className="btn btn-gold btn-sm"
+              onClick={printReport}
+              style={{ padding: '6px 10px', height: '32px', minHeight: '32px', fontSize: '11px' }}
+              title="Print report"
+            >
+              <Printer size={13} />
             </button>
           </div>
         </div>
+
+        {/* Mobile Quick Date Preset Filter Bar */}
+        <div style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '8px 10px', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }} className="hide-scrollbar">
+            {([
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'week', label: '7 Days' },
+              { id: 'month', label: 'This Month' },
+              { id: 'all', label: 'All Time' },
+            ] as const).map(p => {
+              const isActive = quickDateActive === p.id
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setQuickDate(p.id)
+                    setQuickDateActive(p.id)
+                    setShowCustomDate(false)
+                  }}
+                  style={{
+                    padding: '5px 10px',
+                    fontSize: '11px',
+                    borderRadius: '6px',
+                    whiteSpace: 'nowrap',
+                    fontWeight: isActive ? '700' : '500',
+                    background: isActive ? 'var(--gold)' : 'transparent',
+                    color: isActive ? '#000' : 'var(--text-secondary)',
+                    border: isActive ? '1px solid var(--gold)' : '1px solid transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => setShowCustomDate(!showCustomDate)}
+              style={{
+                padding: '5px 10px',
+                fontSize: '11px',
+                borderRadius: '6px',
+                whiteSpace: 'nowrap',
+                fontWeight: quickDateActive === 'custom' || showCustomDate ? '700' : '500',
+                background: quickDateActive === 'custom' || showCustomDate ? 'rgba(212,175,55,0.2)' : 'transparent',
+                color: quickDateActive === 'custom' || showCustomDate ? 'var(--gold)' : 'var(--text-secondary)',
+                border: quickDateActive === 'custom' || showCustomDate ? '1px solid var(--gold)' : '1px solid var(--black-border)',
+                cursor: 'pointer'
+              }}
+            >
+              📅 {showCustomDate ? 'Hide' : 'Custom'}
+            </button>
+          </div>
+
+          {/* Collapsible Custom Date Pickers */}
+          {showCustomDate && (
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--black-border)', display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                type="date"
+                className="input"
+                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0 }}
+                value={from}
+                onChange={e => {
+                  setFrom(e.target.value)
+                  setQuickDateActive('custom')
+                }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
+              <input
+                type="date"
+                className="input"
+                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0 }}
+                value={to}
+                onChange={e => {
+                  setTo(e.target.value)
+                  setQuickDateActive('custom')
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Mobile 2x2 Micro-Metric Summary Grid (~95px total height!) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+          {/* Revenue */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(20,20,20,0.8) 100%)', border: '1px solid rgba(212,175,55,0.3)', borderRadius: '10px', padding: '9px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Total Revenue</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalRevenue)}</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{data.totalOrders} paid orders</div>
+          </div>
+
+          {/* Gross Profit */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(20,20,20,0.8) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '10px', padding: '9px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Gross Profit</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>
+              {formatMoney(data.grossProfit || 0)}
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(data.profitMargin ?? 0).toFixed(0)}% return</div>
+          </div>
+
+          {/* Cost / COGS */}
+          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '8px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cost of Goods</div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalCOGS || 0)}</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Avg bill: {formatMoney(avgOrderValue)}</div>
+          </div>
+
+          {/* Cancellations / Voids */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '8px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cancellations</div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: data.cancellations.length > 0 ? 'var(--danger-light)' : 'var(--text-primary)', margin: '2px 0', lineHeight: 1.2 }}>{data.cancellations.length}</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Voided tickets</div>
+          </div>
+        </div>
+
+        {/* Mobile Sticky Section Selector */}
+        <div style={{ position: 'sticky', top: '60px', zIndex: 120, background: 'rgba(12,12,12,0.95)', backdropFilter: 'blur(10px)', padding: '6px 0', borderBottom: '1px solid var(--black-border)', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--gold)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              📊 Selected Report:
+            </span>
+            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+              Tap below to switch
+            </span>
+          </div>
+          <select
+            className="input"
+            value={activeTab}
+            onChange={e => setActiveTab(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              fontSize: '14px',
+              fontWeight: '700',
+              borderRadius: '8px',
+              background: '#1a1a1a',
+              color: 'var(--gold-light)',
+              border: '1.5px solid var(--gold-dark)',
+              outline: 'none'
+            }}
+          >
+            {tabs.map(t => (
+              <option key={t.id} value={t.id} style={{ background: '#181818', color: '#fff' }}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Advanced KPI Cards (2 columns on mobile with no clipped text) */}
-      <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        {/* Total Revenue */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Revenue</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(212,175,55,0.2)', borderRadius: '10px', color: 'var(--gold)', flexShrink: 0 }}><DollarSign size={18}/></div>
+      {/* ============================================================ */}
+      {/* DESKTOP-ONLY TOP SECTION (Grand luxury layout)               */}
+      {/* ============================================================ */}
+      <div className="desktop-only">
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1 className="font-cinzel" style={{ fontSize: 'clamp(20px, 4.5vw, 28px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
+              <span className="gold-text">Business Intelligence</span>
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Advanced Analytics & Reporting</p>
           </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Gross sales collected</div>
-        </div>
 
-        {/* Total Cost (COGS) */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Cost (COGS)</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</div>
+          {/* Date Filter Bar & Actions */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--black-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--black-border)', maxWidth: 'max-content' }}>
+            {/* Quick Date Presets */}
+            <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', width: '100%', paddingBottom: '2px' }} className="hide-scrollbar">
+              {(['today', 'yesterday', 'week', 'month', 'all'] as const).map(p => {
+                const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', week: '7 Days', month: 'Month', all: 'All Time' }
+                const isActive = quickDateActive === p
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`btn ${isActive ? 'btn-gold' : 'btn-ghost'} btn-sm`}
+                    style={{ padding: '4px 10px', fontSize: '11px', minHeight: '26px', borderRadius: '6px', whiteSpace: 'nowrap' }}
+                    onClick={() => setQuickDate(p)}
+                  >
+                    {labels[p]}
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ padding: '8px', background: 'rgba(239,68,68,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Purchased item expense</div>
-        </div>
 
-        {/* Gross Profit */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.02) 100%)', border: '1px solid rgba(16,185,129,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Gross Profit</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                {formatMoney(data.grossProfit || 0)}
-              </div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(16,185,129,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Revenue minus costs</div>
-        </div>
-
-        {/* Profit Margin */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.02) 100%)', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Profit Margin</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: '#c084fc' }}>
-                {(data.profitMargin ?? 0).toFixed(1)}%
-              </div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(168,85,247,0.2)', borderRadius: '10px', color: '#c084fc', flexShrink: 0 }}><Percent size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
-        </div>
-
-        {/* Completed Orders */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Completed Orders</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(82,183,136,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
-        </div>
-
-        {/* Average Order Value */}
-        <div className="card reports-kpi-card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Avg Order Value</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(244,162,97,0.2)', borderRadius: '10px', color: 'var(--warning-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
-        </div>
-
-        {/* Cancellations (spans 2 columns on mobile for perfect balance) */}
-        <div className="card reports-kpi-card reports-kpi-last" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="reports-kpi-title" style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Cancellations</div>
-              <div className="reports-kpi-value" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
-            </div>
-            <div style={{ padding: '8px', background: 'rgba(230,57,70,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><XCircle size={18}/></div>
-          </div>
-          <div className="reports-kpi-desc" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items in period</div>
-        </div>
-      </div>
-
-      {/* Mobile Tab Quick Dropdown Selector */}
-      <div className="mobile-only" style={{ marginBottom: '14px' }}>
-        <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px', fontWeight: '700' }}>
-          📊 View Section
-        </div>
-        <select
-          className="input"
-          value={activeTab}
-          onChange={e => setActiveTab(e.target.value)}
-          style={{ width: '100%', padding: '10px 14px', fontSize: '14px', fontWeight: '600', borderColor: 'var(--gold-dark)', background: 'var(--black-card)', color: 'var(--gold-light)' }}
-        >
-          {tabs.map(t => (
-            <option key={t.id} value={t.id} style={{ background: '#1c1c1c', color: '#fff' }}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Tabs (Horizontal Scrollable Pills) */}
-      <div className="reports-tabs-scroll hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--black-border)' }}>
-        {tabs.map(t => (
-          <button key={t.id} className={`btn btn-sm ${activeTab === t.id ? 'btn-gold' : 'btn-ghost'}`} style={{ whiteSpace: 'nowrap', borderRadius: '8px 8px 0 0', borderBottom: activeTab === t.id ? '2px solid var(--gold)' : '2px solid transparent', padding: '10px 16px' }} onClick={() => setActiveTab(t.id)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {t.icon}
-              <span style={{ fontWeight: activeTab === t.id ? '600' : '400' }}>{t.label}</span>
+              <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={from} onChange={e => { setFrom(e.target.value); setQuickDateActive('custom') }} />
+              <span style={{ color: 'var(--text-muted)' }}>—</span>
+              <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={to} onChange={e => { setTo(e.target.value); setQuickDateActive('custom') }} />
             </div>
-          </button>
-        ))}
+
+            <div style={{ width: '1px', height: '24px', background: 'var(--black-border)', margin: '0 4px' }} />
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={triggerSyncAndRefresh}
+                disabled={syncing || loading}
+                title="Sync & Refresh Data"
+              >
+                <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+                <span style={{ marginLeft: '4px', fontSize: '12px' }}>
+                  {syncing ? 'Syncing...' : 'Sync'}
+                </span>
+              </button>
+              <button className="btn btn-gold btn-sm" onClick={printReport} style={{ fontSize: '12px' }}>
+                <Printer size={15} /> Print
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 7 KPI Cards for Desktop */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+          {/* Total Revenue */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Revenue</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(212,175,55,0.2)', borderRadius: '10px', color: 'var(--gold)', flexShrink: 0 }}><DollarSign size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Gross sales collected</div>
+          </div>
+
+          {/* Total Cost (COGS) */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Total Cost (COGS)</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(data.totalCOGS || 0)}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(239,68,68,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Purchased item expense</div>
+          </div>
+
+          {/* Gross Profit */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.02) 100%)', border: '1px solid rgba(16,185,129,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Gross Profit</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                  {formatMoney(data.grossProfit || 0)}
+                </div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(16,185,129,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Revenue minus costs</div>
+          </div>
+
+          {/* Profit Margin */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(168,85,247,0.02) 100%)', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Profit Margin</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#c084fc' }}>
+                  {(data.profitMargin ?? 0).toFixed(1)}%
+                </div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(168,85,247,0.2)', borderRadius: '10px', color: '#c084fc', flexShrink: 0 }}><Percent size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
+          </div>
+
+          {/* Completed Orders */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Completed Orders</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(82,183,136,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
+          </div>
+
+          {/* Average Order Value */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Avg Order Value</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(avgOrderValue)}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(244,162,97,0.2)', borderRadius: '10px', color: 'var(--warning-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
+          </div>
+
+          {/* Cancellations */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Cancellations</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
+              </div>
+              <div style={{ padding: '8px', background: 'rgba(230,57,70,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><XCircle size={18}/></div>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items in period</div>
+          </div>
+        </div>
+
+        {/* Tabs (Horizontal Scrollable Pills for Desktop) */}
+        <div className="reports-tabs-scroll hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--black-border)' }}>
+          {tabs.map(t => (
+            <button key={t.id} className={`btn btn-sm ${activeTab === t.id ? 'btn-gold' : 'btn-ghost'}`} style={{ whiteSpace: 'nowrap', borderRadius: '8px 8px 0 0', borderBottom: activeTab === t.id ? '2px solid var(--gold)' : '2px solid transparent', padding: '10px 16px' }} onClick={() => setActiveTab(t.id)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {t.icon}
+                <span style={{ fontWeight: activeTab === t.id ? '600' : '400' }}>{t.label}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Advanced Summary Dashboard */}
@@ -955,13 +1135,16 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
-                {/* Info Callout */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', padding: '12px 16px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                  <Info size={16} color="var(--gold)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div>
-                    <strong style={{ color: 'var(--gold)' }}>How COGS & Profit are calculated:</strong> Cost of Goods Sold is calculated by multiplying each sold quantity by the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>). If an item has not had a cost price configured yet in Inventory, its cost defaults to 0 (100% margin). Configure cost prices on the Menu/Inventory management page for exact profitability tracking.
+                {/* Collapsible Info Callout */}
+                <details style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', cursor: 'pointer' }}>
+                  <summary style={{ color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
+                    <Info size={15} color="var(--gold)" />
+                    <span>How COGS & Profit are calculated (tap to view)</span>
+                  </summary>
+                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(212,175,55,0.1)' }}>
+                    Cost of Goods Sold is calculated by multiplying each sold quantity by the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>). If an item has not had a cost price configured yet in Inventory, its cost defaults to 0 (100% margin). Configure cost prices on the Menu/Inventory management page for exact profitability tracking.
                   </div>
-                </div>
+                </details>
               </div>
 
               {/* Section B: Category Profitability (FOOD vs DRINKS) */}

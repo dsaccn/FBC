@@ -513,6 +513,14 @@ html, body {
     max-width: 100% !important;
   }
 
+  /* Offline Banner sits below fixed mobile header (60px) so it never covers hamburger/logo */
+  .offline-banner {
+    top: 60px !important;
+    font-size: 11px !important;
+    padding: 5px 12px !important;
+    z-index: 140 !important;
+  }
+
   /* Reports page mobile */
   .reports-tabs-scroll {
     overflow-x: auto !important;
@@ -666,7 +674,11 @@ html, body {
   from { transform: translateY(-100%); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
-.offline-banner { animation: ob-slideDown 0.3s ease-out; }
+.offline-banner {
+  top: 0;
+  z-index: 9999;
+  animation: ob-slideDown 0.3s ease-out;
+}
 
 /* ── Sidebar & Left-side Item Animations ────────────────────────────── */
 
