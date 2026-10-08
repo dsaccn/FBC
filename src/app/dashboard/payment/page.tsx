@@ -371,7 +371,8 @@ export default function PaymentPage() {
               ))}
             </div>
 
-            {/* Official Digital Receipt Verifier (Telebirr, CBE, etc.) */}
+            {/* Official Digital Receipt Verifier (Telebirr, CBE, etc.) - Commented out for now */}
+            {/*
             <ReceiptVerifier
               method={method}
               expectedAmount={total}
@@ -384,6 +385,7 @@ export default function PaymentPage() {
                 setNotes(prev => prev.replace(/\[Verified[^\]]+\]/g, '').trim())
               }}
             />
+            */}
 
             {/* Tip for digital payments */}
             {isDigitalPayment && (

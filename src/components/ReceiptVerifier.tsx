@@ -1,9 +1,8 @@
 'use client'
 
-import React, { useState } from 'react'
-import { CheckCircle2, AlertTriangle, RefreshCw, ExternalLink, ShieldCheck, X } from 'lucide-react'
+import React from 'react'
 
-export const DEFAULT_CBE_ACCOUNT = '1000545397618'
+export const DEFAULT_CBE_ACCOUNT = ''
 
 export interface VerifiedReceiptData {
   success: boolean
@@ -29,11 +28,15 @@ interface ReceiptVerifierProps {
 }
 
 export default function ReceiptVerifier({
-  method,
-  expectedAmount,
-  onVerified,
-  onClear,
+  method: _method,
+  expectedAmount: _expectedAmount,
+  onVerified: _onVerified,
+  onClear: _onClear,
 }: ReceiptVerifierProps) {
+  // Verification options are commented out for now
+  return null
+
+  /*
   const [refInput, setRefInput] = useState('')
   const [accountInput, setAccountInput] = useState(DEFAULT_CBE_ACCOUNT)
   const [loading, setLoading] = useState(false)
@@ -42,7 +45,7 @@ export default function ReceiptVerifier({
   const [copiedAcc, setCopiedAcc] = useState(false)
 
   // Only show verifier for digital bank/telecom payments
-  const normalizedMethod = method.toUpperCase()
+  const normalizedMethod = _method.toUpperCase()
   const isDigital = ['TELEBIRR', 'CBE', 'CBE BIRR', 'ABYSSINIA', 'BOA', 'DASHEN', 'BANK TRANSFER'].some(m =>
     normalizedMethod.includes(m)
   )
@@ -55,9 +58,11 @@ export default function ReceiptVerifier({
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    navigator.clipboard.writeText(DEFAULT_CBE_ACCOUNT)
-    setCopiedAcc(true)
-    setTimeout(() => setCopiedAcc(false), 2000)
+    if (accountInput) {
+      navigator.clipboard.writeText(accountInput)
+      setCopiedAcc(true)
+      setTimeout(() => setCopiedAcc(false), 2000)
+    }
   }
 
   const handleVerify = async () => {
@@ -76,8 +81,8 @@ export default function ReceiptVerifier({
         body: JSON.stringify({
           provider: isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : 'AUTO',
           referenceOrUrl: refInput.trim(),
-          accountDigits: accountInput.trim() || DEFAULT_CBE_ACCOUNT,
-          expectedAmount,
+          accountDigits: accountInput.trim() || undefined,
+          expectedAmount: _expectedAmount,
         }),
       })
 
@@ -85,7 +90,7 @@ export default function ReceiptVerifier({
 
       if (res.ok && data.receipt && data.receipt.success) {
         setVerifiedReceipt(data.receipt)
-        if (onVerified) onVerified(data.receipt)
+        if (_onVerified) _onVerified(data.receipt)
       } else {
         const msg = data.receipt?.errorMessage || data.error || 'Receipt could not be verified'
         setErrorMsg(msg)
@@ -104,7 +109,7 @@ export default function ReceiptVerifier({
     setErrorMsg('')
     setRefInput('')
     setAccountInput(DEFAULT_CBE_ACCOUNT)
-    if (onClear) onClear()
+    if (_onClear) _onClear()
   }
 
   return (
@@ -137,36 +142,6 @@ export default function ReceiptVerifier({
         )}
       </div>
 
-      {/* Default Account Pill for CBE */}
-      {isCbe && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(201, 168, 76, 0.08)',
-            border: '1px solid rgba(201, 168, 76, 0.2)',
-            borderRadius: '6px',
-            padding: '5px 10px',
-            marginBottom: '10px',
-            fontSize: '11px',
-          }}
-        >
-          <div>
-            <span style={{ color: 'var(--text-secondary)' }}>Default CBE Account: </span>
-            <b style={{ color: 'var(--gold)', letterSpacing: '0.5px' }}>{DEFAULT_CBE_ACCOUNT}</b>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            style={{ padding: '2px 6px', fontSize: '10px', height: '20px', color: 'var(--gold)' }}
-            onClick={handleCopyAccount}
-          >
-            {copiedAcc ? '✓ Copied' : 'Copy'}
-          </button>
-        </div>
-      )}
-
       {!verifiedReceipt ? (
         <div>
           <div style={{ marginBottom: '8px' }}>
@@ -189,41 +164,6 @@ export default function ReceiptVerifier({
               disabled={loading}
             />
           </div>
-
-          {isCbe && !refInput.startsWith('http') && refInput.length <= 14 && (
-            <div style={{ marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  CBE Account Number
-                </label>
-                {accountInput !== DEFAULT_CBE_ACCOUNT && (
-                  <button
-                    type="button"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--gold)',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                    onClick={() => setAccountInput(DEFAULT_CBE_ACCOUNT)}
-                  >
-                    Reset to default ({DEFAULT_CBE_ACCOUNT})
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                className="input"
-                style={{ width: '100%', fontSize: '12px', height: '30px' }}
-                placeholder={DEFAULT_CBE_ACCOUNT}
-                value={accountInput}
-                onChange={e => setAccountInput(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-          )}
 
           {errorMsg && (
             <div
@@ -291,25 +231,6 @@ export default function ReceiptVerifier({
                 {verifiedReceipt.receiverAccount ? ` (${verifiedReceipt.receiverAccount})` : ''}
               </div>
             )}
-            {verifiedReceipt.isReceiverMatched && (
-              <div style={{ marginTop: '2px', marginBottom: '2px' }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    color: 'var(--success-light)',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontSize: '10px',
-                    fontWeight: '600',
-                  }}
-                >
-                  ✓ Credited to Default CBE Account (1000545397618)
-                </span>
-              </div>
-            )}
             <div>
               <b style={{ color: 'var(--text-primary)' }}>Verified Amount:</b>{' '}
               <span style={{ fontWeight: '700', color: 'var(--gold)' }}>
@@ -326,20 +247,19 @@ export default function ReceiptVerifier({
             )}
           </div>
 
-          {/* Amount Match Check */}
           {typeof verifiedReceipt.amount === 'number' && (
             <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed rgba(16, 185, 129, 0.3)', fontSize: '11px' }}>
-              {Math.abs(verifiedReceipt.amount - expectedAmount) < 0.5 ? (
+              {Math.abs(verifiedReceipt.amount - _expectedAmount) < 0.5 ? (
                 <span style={{ color: 'var(--success-light)', fontWeight: '600' }}>
-                  ✓ Transferred amount matches order total ({expectedAmount.toFixed(2)} ETB).
+                  ✓ Transferred amount matches order total ({_expectedAmount.toFixed(2)} ETB).
                 </span>
-              ) : verifiedReceipt.amount < expectedAmount ? (
+              ) : verifiedReceipt.amount < _expectedAmount ? (
                 <span style={{ color: 'var(--danger-light)', fontWeight: '600' }}>
-                  ⚠️ Underpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) is less than order total ({expectedAmount.toFixed(2)} ETB)!
+                  ⚠️ Underpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) is less than order total ({_expectedAmount.toFixed(2)} ETB)!
                 </span>
               ) : (
                 <span style={{ color: 'var(--gold)', fontWeight: '600' }}>
-                  ℹ Overpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) covers total ({expectedAmount.toFixed(2)} ETB) with excess.
+                  ℹ Overpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) covers total ({_expectedAmount.toFixed(2)} ETB) with excess.
                 </span>
               )}
             </div>
@@ -348,4 +268,5 @@ export default function ReceiptVerifier({
       )}
     </div>
   )
+  */
 }

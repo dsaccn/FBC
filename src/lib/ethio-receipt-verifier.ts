@@ -4,7 +4,7 @@
  * Supports Telebirr, Commercial Bank of Ethiopia (CBE), and general receipt URL links.
  */
 
-export const DEFAULT_CBE_ACCOUNT = '1000545397618'
+export const DEFAULT_CBE_ACCOUNT = ''
 
 export interface VerifiedReceipt {
   success: boolean
@@ -14,7 +14,7 @@ export interface VerifiedReceipt {
   payerAccountOrPhone?: string
   receiverName?: string
   receiverAccount?: string
-  isReceiverMatched?: boolean // True if receiver account matches our lounge account (1000545397618)
+  isReceiverMatched?: boolean
   amount?: number
   currency: string
   dateTime?: string
@@ -26,7 +26,7 @@ export interface VerifiedReceipt {
 export interface VerifyReceiptParams {
   provider?: 'TELEBIRR' | 'CBE' | 'AUTO'
   referenceOrUrl: string
-  accountDigits?: string // Used for CBE (last 8 digits of account, defaults to 1000545397618)
+  accountDigits?: string // Used for CBE (last 8 digits of receiver account)
   expectedAmount?: number
 }
 
@@ -172,17 +172,17 @@ export async function verifyCbeReceipt(
   let fetchUrl = clean
   let ftCode = clean.toUpperCase()
 
-  // Use provided account digits or fallback to default CBE account (1000545397618)
+  // Use provided account digits if supplied
   const targetAcc = (accountDigits && accountDigits.trim().length > 0)
     ? accountDigits.trim()
-    : DEFAULT_CBE_ACCOUNT
+    : ''
 
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     fetchUrl = clean
     const match = clean.match(/[?&]id=([A-Za-z0-9]+)/i)
     if (match) ftCode = match[1].slice(0, 12).toUpperCase()
   } else {
-    // Construct CBE URL: FT code + last 8 digits of account
+    // Construct CBE URL: FT code + last 8 digits of account if available
     const cleanFt = clean.toUpperCase()
     const cleanAcc = targetAcc.replace(/\D/g, '')
 
@@ -195,9 +195,7 @@ export async function verifyCbeReceipt(
       fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}${last8}`
       ftCode = cleanFt
     } else {
-      // Fallback to default CBE account last 8 digits (45397618)
-      const last8 = DEFAULT_CBE_ACCOUNT.slice(-8)
-      fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}${last8}`
+      fetchUrl = `https://apps.cbe.com.et:100/?id=${cleanFt}`
       ftCode = cleanFt
     }
   }
@@ -255,11 +253,9 @@ export async function verifyCbeReceipt(
     const extractedRef = refMatch ? refMatch[1].trim() : ftCode
 
     const parsedReceiverAcc = receiverAccMatch ? receiverAccMatch[1].trim() : ''
-    const defaultLast8 = DEFAULT_CBE_ACCOUNT.slice(-8)
-    const isReceiverMatched =
-      parsedReceiverAcc.includes(DEFAULT_CBE_ACCOUNT) ||
-      parsedReceiverAcc.includes(defaultLast8) ||
-      parsedReceiverAcc.replace(/\D/g, '').endsWith(defaultLast8)
+    const isReceiverMatched = targetAcc && targetAcc.length >= 8
+      ? (parsedReceiverAcc.includes(targetAcc) || parsedReceiverAcc.includes(targetAcc.slice(-8)))
+      : false
 
     return {
       success: true,

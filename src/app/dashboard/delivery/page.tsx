@@ -1598,7 +1598,8 @@ export default function DeliveryPage() {
                 </div>
               )}
 
-              {/* Official Receipt Verifier */}
+              {/* Official Receipt Verifier - Commented out for now */}
+              {/*
               {(() => {
                 const sub = orderToPay.orderItems
                   .filter(i => i.status !== 'CANCELLED')
@@ -1621,6 +1622,7 @@ export default function DeliveryPage() {
                   />
                 )
               })()}
+              */}
 
               {/* Discount Input */}
               <div style={{ marginBottom: '14px' }}>
