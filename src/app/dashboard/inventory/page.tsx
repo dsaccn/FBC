@@ -165,11 +165,16 @@ export default function InventoryPage() {
     setAdjustTarget(null); setAdjustQty(''); setAdjustCostPrice(''); loadItems(); loadLogs()
   }
 
-  async function handleTransfer() {
-    if (!transferTarget || !transferQty) return
+  async function handleTransfer(qtyOverride?: number) {
+    const qty = qtyOverride !== undefined ? qtyOverride : parseInt(transferQty)
+    if (!transferTarget || !qty || isNaN(qty) || qty <= 0) return
+    if (qty > transferTarget.stockQuantity) {
+      alert(`Cannot transfer ${qty} units. Only ${transferTarget.stockQuantity} available in store.`)
+      return
+    }
     const res = await fetch(`/api/inventory/transfer`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ menuItemId: transferTarget.id, quantity: parseInt(transferQty) }),
+      body: JSON.stringify({ menuItemId: transferTarget.id, quantity: qty }),
     })
     if (!res.ok) {
       const { error } = await res.json()
@@ -522,21 +527,6 @@ export default function InventoryPage() {
                           </tr>
                         )
                       })}
-                      {/* Highlighted Totals Row */}
-                      <tr style={{ background: 'var(--black-hover)', borderTop: '2px solid var(--gold)', fontWeight: '700' }}>
-                        <td style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--gold)' }}>TOTALS</td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>-</td>
-                        <td style={{ padding: '12px 16px', background: 'rgba(201,168,76,0.12)', borderLeft: '1px solid rgba(201,168,76,0.15)', borderRight: '1px solid rgba(201,168,76,0.15)', fontSize: '16px', color: 'var(--text-primary)' }}>
-                          {filteredStoreQty}
-                        </td>
-                        <td style={{ padding: '12px 16px', background: 'rgba(82,183,136,0.12)', borderRight: '1px solid rgba(82,183,136,0.15)', fontSize: '16px', color: 'var(--text-primary)' }}>
-                          {filteredBarQty}
-                        </td>
-                        <td style={{ padding: '12px 16px', background: 'rgba(59,130,246,0.12)', borderRight: '1px solid rgba(59,130,246,0.15)', fontSize: '16px', color: 'var(--text-primary)' }}>
-                          {filteredTotalQty}
-                        </td>
-                        <td colSpan={6} style={{ padding: '12px 16px' }}></td>
-                      </tr>
                     </>
                   )}
                 </tbody>
@@ -991,19 +981,59 @@ export default function InventoryPage() {
       {/* Transfer to Bar Modal */}
       {transferTarget && (
         <Portal><div className="modal-overlay" onClick={() => setTransferTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Transfer to Bar</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-              {transferTarget.name} <br/>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Store Qty: {transferTarget.stockQuantity} | Bar Qty: {transferTarget.barQuantity}</span>
+              <strong style={{ color: 'var(--text-primary)' }}>{transferTarget.name}</strong> <br/>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Store Qty: <b style={{ color: 'var(--gold)' }}>{transferTarget.stockQuantity}</b> | Bar Qty: <b style={{ color: 'var(--success-light)' }}>{transferTarget.barQuantity}</b>
+              </span>
             </p>
-            <label className="input-label">Quantity to move from Store to Bar</label>
-            <input className="input" type="number" placeholder="e.g. 24" value={transferQty} onChange={e => setTransferQty(e.target.value)} autoFocus style={{ marginBottom: '20px' }} />
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn btn-gold" style={{ flex: 1 }} onClick={handleTransfer} disabled={!transferQty || parseInt(transferQty) <= 0 || parseInt(transferQty) > transferTarget.stockQuantity}>
-                Confirm Transfer
-              </button>
-              <button className="btn btn-ghost" onClick={() => setTransferTarget(null)}>Cancel</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label className="input-label" style={{ marginBottom: 0 }}>Quantity to move from Store to Bar</label>
+              {transferTarget.stockQuantity > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.4)', borderRadius: '6px' }}
+                  onClick={() => setTransferQty(String(transferTarget.stockQuantity))}
+                >
+                  ⚡ All ({transferTarget.stockQuantity})
+                </button>
+              )}
+            </div>
+            <input
+              className="input"
+              type="number"
+              placeholder={transferTarget.stockQuantity > 0 ? `e.g. ${transferTarget.stockQuantity}` : '0 available in store'}
+              value={transferQty}
+              onChange={e => setTransferQty(e.target.value)}
+              autoFocus
+              style={{ marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-gold"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => handleTransfer(transferTarget.stockQuantity)}
+                  disabled={transferTarget.stockQuantity <= 0}
+                  title={`Transfer all ${transferTarget.stockQuantity} units to bar`}
+                >
+                  ⚡ Transfer All ({transferTarget.stockQuantity})
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                  onClick={() => handleTransfer()}
+                  disabled={!transferQty || parseInt(transferQty) <= 0 || parseInt(transferQty) > transferTarget.stockQuantity}
+                >
+                  Transfer {transferQty && parseInt(transferQty) > 0 ? `(${transferQty})` : ''}
+                </button>
+              </div>
+              <button type="button" className="btn btn-ghost" onClick={() => setTransferTarget(null)}>Cancel</button>
             </div>
           </div>
         </div></Portal>
