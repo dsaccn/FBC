@@ -504,7 +504,6 @@ export default function ReportsPage() {
     { id: 'categorized', label: 'Categorized Report', icon: <TrendingUp size={14}/> },
     { id: 'history', label: 'Transaction History', icon: <ShoppingBag size={14}/> },
     { id: 'best-sellers', label: 'Best Sellers', icon: <TrendingUp size={14}/> },
-    { id: 'staff', label: 'Staff Performance', icon: <TrendingUp size={14}/> },
     { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={14}/> },
     { id: 'inventory', label: 'Inventory Valuation', icon: <Boxes size={14}/> },
     { id: 'inventory-logs', label: 'Inventory Control Log', icon: <RefreshCw size={14}/> }
@@ -2078,39 +2077,6 @@ export default function ReportsPage() {
           'No items sold yet.'
         )
 
-        if (activeTab === 'staff') return renderResponsiveTable(
-          ['Staff Member', 'Orders Handled', 'Total Revenue'],
-          [...data.staffPerformance].sort((a, b) => b.revenue - a.revenue),
-          (s, i) => (
-            <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-              <td style={{ padding: '16px 20px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(212,175,55,0.2)', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>
-                  {s.name.charAt(0)}
-                </div>
-                {s.name}
-              </td>
-              <td style={{ padding: '16px 20px' }}><span className="badge badge-outline">{s.orders}</span></td>
-              <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700', fontSize: '15px' }}>{formatMoney(s.revenue)}</td>
-            </tr>
-          ),
-          (s, i) => (
-            <div key={i} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(212,175,55,0.15)', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '15px', flexShrink: 0, border: '1px solid var(--gold-dark)' }}>
-                {s.name.charAt(0)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: '600', fontSize: '14px' }}>{s.name}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Orders: <span className="badge badge-outline" style={{ padding: '1px 6px', fontSize: '10px' }}>{s.orders}</span>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: 'var(--gold)', fontWeight: '700', fontSize: '14px' }}>{formatMoney(s.revenue)}</div>
-              </div>
-            </div>
-          ),
-          'No staff performance data.'
-        )
 
         if (activeTab === 'cancellations') return renderResponsiveTable(
           ['Item Cancelled', 'Order Info', 'Reason', 'Authorized By', 'Date & Time'],
