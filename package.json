@@ -10,6 +10,7 @@
     "lint": "eslint",
     "db:migrate": "npx prisma migrate dev --name init",
     "db:seed": "npx ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
+    "db:seed:menu": "npx tsx scripts/seed_kogna_menu.ts",
     "db:studio": "npx prisma studio",
     "clear:all": "npx tsx scripts/clear_all.ts",
     "clear:offline": "npx tsx scripts/clear_offline.ts",
