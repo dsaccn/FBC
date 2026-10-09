@@ -29,6 +29,8 @@ export default function InventoryPage() {
   // Ingredient state
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loadingIngs, setLoadingIngs] = useState(true)
+  const [ingSearchQuery, setIngSearchQuery] = useState('')
+  const [filterIng, setFilterIng] = useState('')
   const [editIng, setEditIng] = useState<Ingredient | null>(null)
   const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', costPerUnit: '0', minThreshold: '0' })
   const [showIngForm, setShowIngForm] = useState(false)
@@ -176,13 +178,6 @@ export default function InventoryPage() {
     setShowIngForm(true)
   }
 
-  function adjustIngDelta(delta: number) {
-    setAdjustIngQty(prev => {
-      const current = parseFloat(prev || '0') || 0
-      const next = Math.max(0, current + delta)
-      return String(next)
-    })
-  }
 
   async function handleAdjustIngredient() {
     if (!adjustIngTarget) return
@@ -306,7 +301,10 @@ export default function InventoryPage() {
   })
 
   const filteredIngredients = ingredients.filter(i => {
-    if (searchQuery && !i.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    const q = ingSearchQuery.trim().toLowerCase()
+    if (q && !i.name.toLowerCase().includes(q) && !i.unit.toLowerCase().includes(q)) return false
+    if (filterIng === 'low') return i.quantity <= i.minThreshold
+    if (filterIng && filterIng !== 'low' && i.unit !== filterIng) return false
     return true
   })
 
@@ -632,14 +630,39 @@ export default function InventoryPage() {
       {tab === 'ingredients' && (
         <>
           {lowIngCount > 0 && (
-            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <AlertTriangle size={20} color="var(--danger-light)" />
-              <div>
+            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+              <AlertTriangle size={20} color="var(--danger-light)" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: '600', color: 'var(--danger-light)' }}>{lowIngCount} ingredient{lowIngCount > 1 ? 's' : ''} running low!</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>Restock before serving affected dishes.</div>
               </div>
+              <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto', borderColor: 'var(--danger-light)', color: 'var(--danger-light)', flexShrink: 0 }} onClick={() => setFilterIng('low')}>View Low Stock</button>
             </div>
           )}
+
+          {/* Search and Filter Buttons Bar */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+            <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', width: '100%', maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch', flex: '1 1 300px' }}>
+              <button className={`btn btn-sm ${!filterIng ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterIng('')}>All Ingredients</button>
+              {Array.from(new Set(ingredients.map(i => i.unit))).filter(Boolean).map(u => (
+                <button key={u} className={`btn btn-sm ${filterIng === u ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' }} onClick={() => setFilterIng(u)}>
+                  {u}
+                </button>
+              ))}
+              <button className={`btn btn-sm ${filterIng === 'low' ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterIng('low')}>⚠ Low Stock</button>
+            </div>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '320px', minWidth: 0, flex: '1 1 200px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search ingredients..."
+                className="input"
+                style={{ paddingLeft: '36px', height: '36px', fontSize: '13px', width: '100%' }}
+                value={ingSearchQuery}
+                onChange={e => setIngSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
 
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
@@ -655,9 +678,9 @@ export default function InventoryPage() {
                 <tbody>
                   {loadingIngs ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
-                  ) : ingredients.length === 0 ? (
+                  ) : filteredIngredients.length === 0 ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                      No ingredients yet. Click <strong>Add Ingredient</strong> to start.
+                      {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
                     </td></tr>
                   ) : filteredIngredients.map(ing => {
                     const isLow = ing.quantity <= ing.minThreshold
@@ -732,9 +755,9 @@ export default function InventoryPage() {
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             {loadingIngs ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</div>
-            ) : ingredients.length === 0 ? (
+            ) : filteredIngredients.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                No ingredients yet. Click <strong>Add Ingredient</strong> to start.
+                {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
               </div>
             ) : filteredIngredients.map(ing => {
               const isLow = ing.quantity <= ing.minThreshold
@@ -1039,9 +1062,7 @@ export default function InventoryPage() {
             {adjustIngMode === 'add' ? (
               <>
                 <label className="input-label">Quantity to Add ({adjustIngTarget.unit})</label>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(-5)}>-5</button>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(-1)}>-1</button>
+                <div style={{ marginBottom: '16px' }}>
                   <input
                     className="input"
                     type="number"
@@ -1049,27 +1070,10 @@ export default function InventoryPage() {
                     placeholder="0"
                     value={adjustIngQty}
                     onChange={e => setAdjustIngQty(e.target.value)}
-                    style={{ flex: 1, minWidth: '80px', textAlign: 'center', fontSize: '18px', fontWeight: '700' }}
+                    style={{ textAlign: 'center', fontSize: '18px', fontWeight: '700', width: '100%' }}
                     autoFocus
                   />
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(1)}>+1</button>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(5)}>+5</button>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => adjustIngDelta(10)}>+10</button>
                 </div>
-
-                {/* Calculation preview */}
-                {(() => {
-                  const addVal = parseFloat(adjustIngQty) || 0
-                  const newTotal = Math.max(0, Math.round((adjustIngTarget.quantity + addVal) * 100) / 100)
-                  return (
-                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>New Store Stock:</span>
-                      <span style={{ fontWeight: '700', color: 'var(--gold)', fontSize: '15px' }}>
-                        {newTotal} {adjustIngTarget.unit} {addVal > 0 && <span style={{ fontSize: '12px', color: 'var(--success-light)', fontWeight: '600' }}>(+{addVal})</span>}
-                      </span>
-                    </div>
-                  )
-                })()}
 
                 <div style={{ marginBottom: '16px' }}>
                   <label className="input-label">Cost / Bought Price per Unit (ETB) — Optional</label>
@@ -1108,23 +1112,9 @@ export default function InventoryPage() {
                   placeholder="e.g. 25"
                   value={adjustIngQty}
                   onChange={e => setAdjustIngQty(e.target.value)}
-                  style={{ textAlign: 'center', fontSize: '18px', fontWeight: '700', marginBottom: '14px' }}
+                  style={{ textAlign: 'center', fontSize: '18px', fontWeight: '700', marginBottom: '16px', width: '100%' }}
                   autoFocus
                 />
-
-                {/* Calculation preview */}
-                {(() => {
-                  const setVal = parseFloat(adjustIngQty) || 0
-                  const diff = Math.round((setVal - adjustIngTarget.quantity) * 100) / 100
-                  return (
-                    <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Change from {adjustIngTarget.quantity} {adjustIngTarget.unit}:</span>
-                      <span style={{ fontWeight: '700', color: diff >= 0 ? 'var(--success-light)' : 'var(--danger-light)', fontSize: '14px' }}>
-                        {diff >= 0 ? `+${diff}` : diff} {adjustIngTarget.unit}
-                      </span>
-                    </div>
-                  )
-                })()}
 
                 <div style={{ marginBottom: '16px' }}>
                   <label className="input-label">Cost / Bought Price per Unit (ETB) — Optional</label>
