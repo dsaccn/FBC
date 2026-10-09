@@ -18,7 +18,8 @@ import {
   Info,
   Layers,
   Package,
-  Boxes
+  Boxes,
+  Calendar
 } from 'lucide-react'
 
 export interface ProfitCategory {
@@ -749,19 +750,86 @@ export default function ReportsPage() {
       {/* DESKTOP-ONLY TOP SECTION (Grand luxury layout)               */}
       {/* ============================================================ */}
       <div className="desktop-only">
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        {/* Header Title & Main Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <h1 className="font-cinzel" style={{ fontSize: 'clamp(20px, 4.5vw, 28px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
+            <h1 className="font-cinzel" style={{ fontSize: 'clamp(22px, 3.5vw, 30px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
               <span className="gold-text">Business Intelligence</span>
             </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Advanced Analytics & Reporting</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+              Advanced Analytics & Financial Performance
+            </p>
           </div>
 
-          {/* Date Filter Bar & Actions */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--black-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--black-border)', maxWidth: 'max-content' }}>
-            {/* Quick Date Presets */}
-            <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', width: '100%', paddingBottom: '2px' }} className="hide-scrollbar">
+          {/* Quick Action Buttons */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={triggerSyncAndRefresh}
+              disabled={syncing || loading}
+              style={{
+                height: '38px',
+                padding: '0 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--black-border)',
+                background: 'rgba(20,20,20,0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px'
+              }}
+              title="Sync & Refresh Data"
+            >
+              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} color="var(--gold)" />
+              <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>
+            </button>
+            <button
+              className="btn btn-gold btn-sm"
+              onClick={printReport}
+              style={{
+                height: '38px',
+                padding: '0 18px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(212,175,55,0.25)'
+              }}
+            >
+              <Printer size={15} /> Print Report
+            </button>
+          </div>
+        </div>
+
+        {/* Unified Luxury Filter Toolbar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          background: 'linear-gradient(135deg, rgba(20,20,20,0.9) 0%, rgba(15,15,15,0.95) 100%)',
+          border: '1px solid rgba(212,175,55,0.25)',
+          padding: '8px 14px',
+          borderRadius: '12px',
+          marginBottom: '24px',
+          flexWrap: 'wrap',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.35)'
+        }}>
+          {/* Left: Period Presets (Segmented Pill Switcher) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>
+              Period:
+            </span>
+            <div style={{
+              display: 'inline-flex',
+              background: 'rgba(0,0,0,0.5)',
+              padding: '3px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.06)',
+              gap: '2px'
+            }}>
               {(['today', 'yesterday', 'week', 'month', 'all'] as const).map(p => {
                 const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', week: '7 Days', month: 'Month', all: 'All Time' }
                 const isActive = quickDateActive === p
@@ -769,8 +837,19 @@ export default function ReportsPage() {
                   <button
                     key={p}
                     type="button"
-                    className={`btn ${isActive ? 'btn-gold' : 'btn-ghost'} btn-sm`}
-                    style={{ padding: '4px 10px', fontSize: '11px', minHeight: '26px', borderRadius: '6px', whiteSpace: 'nowrap' }}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '12px',
+                      fontWeight: isActive ? '700' : '500',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: isActive ? 'var(--gold)' : 'transparent',
+                      color: isActive ? '#000' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isActive ? '0 2px 8px rgba(212,175,55,0.35)' : 'none',
+                      whiteSpace: 'nowrap'
+                    }}
                     onClick={() => setQuickDate(p)}
                   >
                     {labels[p]}
@@ -778,30 +857,72 @@ export default function ReportsPage() {
                 )
               })}
             </div>
+          </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={from} onChange={e => { setFrom(e.target.value); setQuickDateActive('custom') }} />
-              <span style={{ color: 'var(--text-muted)' }}>—</span>
-              <input type="date" className="input" style={{ flex: '1', minWidth: '110px', padding: '6px 10px', fontSize: '12px' }} value={to} onChange={e => { setTo(e.target.value); setQuickDateActive('custom') }} />
-            </div>
-
-            <div style={{ width: '1px', height: '24px', background: 'var(--black-border)', margin: '0 4px' }} />
-
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={triggerSyncAndRefresh}
-                disabled={syncing || loading}
-                title="Sync & Refresh Data"
-              >
-                <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-                <span style={{ marginLeft: '4px', fontSize: '12px' }}>
-                  {syncing ? 'Syncing...' : 'Sync'}
-                </span>
-              </button>
-              <button className="btn btn-gold btn-sm" onClick={printReport} style={{ fontSize: '12px' }}>
-                <Printer size={15} /> Print
-              </button>
+          {/* Right: Custom Date Range Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(0,0,0,0.5)',
+              padding: '5px 12px',
+              borderRadius: '8px',
+              border: quickDateActive === 'custom' ? '1px solid var(--gold)' : '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <Calendar size={15} color={quickDateActive === 'custom' ? 'var(--gold)' : 'var(--text-muted)'} />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Custom:
+              </span>
+              <input
+                type="date"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                  outline: 'none',
+                  colorScheme: 'dark',
+                  cursor: 'pointer',
+                  padding: '2px 4px'
+                }}
+                value={from}
+                onChange={e => { setFrom(e.target.value); setQuickDateActive('custom') }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>to</span>
+              <input
+                type="date"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                  outline: 'none',
+                  colorScheme: 'dark',
+                  cursor: 'pointer',
+                  padding: '2px 4px'
+                }}
+                value={to}
+                onChange={e => { setTo(e.target.value); setQuickDateActive('custom') }}
+              />
+              {(from || to) && quickDateActive === 'custom' && (
+                <button
+                  type="button"
+                  onClick={() => setQuickDate('all')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--danger-light)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '0 4px',
+                    fontWeight: 'bold'
+                  }}
+                  title="Clear custom range"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
         </div>
