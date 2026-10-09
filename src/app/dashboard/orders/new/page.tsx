@@ -374,7 +374,7 @@ export default function NewOrderPage() {
 
         {/* Menu Items Grid */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: '10px' }}>
             {activeCat?.menuItems.map(item => {
               const inCart = cart.find(c => c.menuItem.id === item.id)
               return (
@@ -385,9 +385,14 @@ export default function NewOrderPage() {
                   style={{
                     padding: '14px 12px',
                     border: inCart ? '1.5px solid var(--gold)' : '1px solid var(--black-border)',
-                    background: inCart ? 'rgba(201,168,76,0.08)' : 'var(--black-card)',
+                    background: inCart ? 'rgba(201,168,76,0.1)' : 'var(--black-card)',
                     position: 'relative',
                     cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    minHeight: '88px',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   {inCart && (
@@ -395,9 +400,12 @@ export default function NewOrderPage() {
                       {inCart.quantity}
                     </div>
                   )}
-                  <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px', paddingRight: inCart ? '20px' : '0' }}>{item.name}</div>
-                  {item.description && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>}
-                  <div style={{ fontSize: '13px', color: 'var(--gold)', fontWeight: '600' }}>{item.price.toFixed(2)} ETB</div>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: '1.25', paddingRight: inCart ? '22px' : '0' }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--gold)', fontWeight: '700', marginTop: '10px' }}>
+                    {item.price.toFixed(2)} ETB
+                  </div>
                 </div>
               )
             })}
