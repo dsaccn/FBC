@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { AlertTriangle, Plus, Minus, Pencil, Trash2, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, Plus, Minus, Pencil, Trash2, RefreshCw, Search, Calendar } from 'lucide-react'
 import Portal from '@/components/Portal'
 import { toast } from '@/components/ToastProvider'
 
@@ -15,6 +15,8 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<'drinks' | 'ingredients' | 'logs' | 'waste'>('drinks')
   const [searchQuery, setSearchQuery] = useState('')
   const [session, setSession] = useState<{ id: string; fullName: string; role: string } | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   // Waste logging state
   const [showWasteModal, setShowWasteModal] = useState(false)
@@ -430,12 +432,27 @@ export default function InventoryPage() {
   const filteredBarQty = filtered.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.barQuantity), 0)
   const filteredTotalQty = filteredStoreQty + filteredBarQty
 
+  const isDateInRange = (dateStr: string | Date) => {
+    if (!dateFrom && !dateTo) return true
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return true
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const localDateStr = `${y}-${m}-${day}`
+    if (dateFrom && localDateStr < dateFrom) return false
+    if (dateTo && localDateStr > dateTo) return false
+    return true
+  }
+
   const isManagerOrAdmin = !session || ['ADMIN', 'MANAGER'].includes(session.role)
   const wasteLogs = logs.filter(l => l.action && typeof l.action === 'string' && l.action.startsWith('WASTE'))
   const filteredWasteLogs = wasteLogs.filter(l => {
+    if (!isDateInRange(l.createdAt)) return false
     if (wasteFilterReason === 'ALL') return true
     return l.action.toLowerCase().includes(wasteFilterReason.toLowerCase())
   })
+  const filteredControlLogs = logs.filter(l => isDateInRange(l.createdAt))
 
   return (
     <div className="animate-fade-in" style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -448,23 +465,47 @@ export default function InventoryPage() {
             {items.length} products · {ingredients.length} ingredients
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Calendar Date Filter */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'var(--black-card)',
+            border: '1px solid var(--black-border)',
+            borderRadius: '10px',
+            padding: '4px 10px',
+          }}>
+            <Calendar size={15} style={{ color: 'var(--gold)' }} />
+            <input
+              type="date"
+              className="input"
+              style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+            />
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+            <input
+              type="date"
+              className="input"
+              style={{ fontSize: '13px', padding: '4px 8px', height: '32px', width: '135px' }}
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
+                title="Clear date filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
           <button className="btn btn-ghost btn-sm" onClick={() => { loadItems(); loadIngredients(); loadLogs() }}><RefreshCw size={14} /> Refresh</button>
           {tab === 'ingredients' && <button className="btn btn-gold btn-sm" onClick={openNewIng}><Plus size={14} /> Add Ingredient</button>}
-          {isManagerOrAdmin && (
-            <button
-              className="btn btn-outline btn-sm"
-              style={{ borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }}
-              onClick={() => {
-                setWasteSelectedId('')
-                setWasteQty('')
-                setWasteNotes('')
-                setShowWasteModal(true)
-              }}
-            >
-              <Trash2 size={14} /> Log Waste
-            </button>
-          )}
         </div>
       </div>
 
@@ -500,16 +541,6 @@ export default function InventoryPage() {
       {/* ── STORE STOCK TAB ── */}
       {tab === 'drinks' && (
         <>
-          {lowDrinkCount > 0 && (
-            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
-              <AlertTriangle size={20} color="var(--danger-light)" style={{ flexShrink: 0 }} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: '600', color: 'var(--danger-light)' }}>{lowDrinkCount} item{lowDrinkCount > 1 ? 's' : ''} running low!</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>Click the item to restock.</div>
-              </div>
-              <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto', borderColor: 'var(--danger-light)', color: 'var(--danger-light)', flexShrink: 0 }} onClick={() => setFilterCat('low')}>View Low Stock</button>
-            </div>
-          )}
 
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
             <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', width: '100%', maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch', flex: '1 1 300px' }}>
@@ -782,16 +813,7 @@ export default function InventoryPage() {
       {/* ── INGREDIENTS TAB ── */}
       {tab === 'ingredients' && (
         <>
-          {lowIngCount > 0 && (
-            <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid var(--danger-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
-              <AlertTriangle size={20} color="var(--danger-light)" style={{ flexShrink: 0 }} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: '600', color: 'var(--danger-light)' }}>{lowIngCount} ingredient{lowIngCount > 1 ? 's' : ''} running low!</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>Restock before serving affected dishes.</div>
-              </div>
-              <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto', borderColor: 'var(--danger-light)', color: 'var(--danger-light)', flexShrink: 0 }} onClick={() => setFilterIng('low')}>View Low Stock</button>
-            </div>
-          )}
+
 
           {/* Search and Filter Buttons Bar */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
@@ -1017,9 +1039,9 @@ export default function InventoryPage() {
                 <tbody>
                   {loadingLogs ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
-                  ) : logs.length === 0 ? (
+                  ) : filteredControlLogs.length === 0 ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>No logs found.</td></tr>
-                  ) : logs.map(log => (
+                  ) : filteredControlLogs.map(log => (
                     <tr key={log.id} style={{ borderTop: '1px solid var(--black-border)' }}>
                       <td style={{ padding: '9px 10px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
@@ -1054,9 +1076,9 @@ export default function InventoryPage() {
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             {loadingLogs ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</div>
-            ) : logs.length === 0 ? (
+            ) : filteredControlLogs.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No logs found.</div>
-            ) : logs.map(log => (
+            ) : filteredControlLogs.map(log => (
               <div key={log.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{log.itemName}</span>
@@ -1088,33 +1110,27 @@ export default function InventoryPage() {
       {/* ── WASTE LOGS TAB (Admin & Manager Only) ── */}
       {tab === 'waste' && isManagerOrAdmin && (
         <>
-          {/* Top Banner / Actions */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(20,15,10,0.6) 100%)',
-            border: '1px solid rgba(239,68,68,0.25)',
-            borderRadius: '12px',
-            padding: '18px 20px',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '14px'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Trash2 size={18} color="#ef4444" />
-                <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-                  Waste & Spoilage Control
-                </h3>
-                <span style={{ fontSize: '11px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>
-                  Admin / Manager Only
-                </span>
-              </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px', marginBottom: 0 }}>
-                Record expired cakes, sour milk, dropped items, or spoiled produce to keep inventory and cost reports accurate.
-              </p>
+          {/* Waste Toolbar: Quick Filters + Single Log Waste Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', flex: 1 }}>
+              {[
+                ['ALL', 'All Waste'],
+                ['Expired', '🕒 Expired / Shelf Life'],
+                ['Spoiled', '⚠️ Quality / Spoiled'],
+                ['Damaged', '💥 Damaged / Broken'],
+                ['Preparation', '👨‍🍳 Prep Error'],
+              ].map(([fKey, fLabel]) => (
+                <button
+                  key={fKey}
+                  className={`btn btn-sm ${wasteFilterReason === fKey ? 'btn-gold' : 'btn-outline'}`}
+                  style={{ whiteSpace: 'nowrap', fontSize: '12px' }}
+                  onClick={() => setWasteFilterReason(fKey)}
+                >
+                  {fLabel}
+                </button>
+              ))}
             </div>
+
             <button
               className="btn btn-sm"
               style={{
@@ -1122,12 +1138,13 @@ export default function InventoryPage() {
                 color: '#ffffff',
                 border: 'none',
                 fontWeight: '700',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
                 padding: '8px 16px',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
               }}
               onClick={() => {
                 setWasteSelectedId('')
@@ -1136,28 +1153,8 @@ export default function InventoryPage() {
                 setShowWasteModal(true)
               }}
             >
-              <Plus size={15} /> Log New Waste
+              <Plus size={15} /> Log Waste
             </button>
-          </div>
-
-          {/* Quick Filter Pills */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {[
-              ['ALL', 'All Waste'],
-              ['Expired', '🕒 Expired / Shelf Life'],
-              ['Spoiled', '⚠️ Quality / Spoiled'],
-              ['Damaged', '💥 Damaged / Broken'],
-              ['Preparation', '👨‍🍳 Prep Error'],
-            ].map(([fKey, fLabel]) => (
-              <button
-                key={fKey}
-                className={`btn btn-sm ${wasteFilterReason === fKey ? 'btn-gold' : 'btn-outline'}`}
-                style={{ whiteSpace: 'nowrap', fontSize: '12px' }}
-                onClick={() => setWasteFilterReason(fKey)}
-              >
-                {fLabel}
-              </button>
-            ))}
           </div>
 
           {/* Desktop Table */}
@@ -1620,13 +1617,28 @@ export default function InventoryPage() {
 
                 {/* Quantity */}
                 <div style={{ marginBottom: '14px' }}>
-                  <label className="input-label">Quantity to Discard</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label className="input-label" style={{ marginBottom: 0 }}>Quantity to Discard</label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[1, 2, 5].map(q => (
+                        <button
+                          key={q}
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '1px 8px', fontSize: '11px', border: '1px solid var(--black-border)', borderRadius: '4px', color: 'var(--gold)' }}
+                          onClick={() => setWasteQty(String(q))}
+                        >
+                          +{q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <input
                     className="input"
                     type="number"
-                    step={wasteItemType === 'INGREDIENT' ? '0.01' : '1'}
-                    min="0.01"
-                    placeholder="e.g. 2"
+                    step="any"
+                    min="0.0001"
+                    placeholder="e.g. 1"
                     value={wasteQty}
                     onChange={e => setWasteQty(e.target.value)}
                     required
