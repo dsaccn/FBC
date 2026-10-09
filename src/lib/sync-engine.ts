@@ -249,6 +249,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         })
       }
 
+      // Delete local categories that were deleted on cloud
+      const cloudCatIds = new Set(cloudCats.map(c => c.id))
+      const localCats = await prisma.category.findMany({ select: { id: true } })
+      for (const lc of localCats) {
+        if (!cloudCatIds.has(lc.id)) {
+          await prisma.menuItem.updateMany({ where: { categoryId: lc.id }, data: { categoryId: null } })
+          await prisma.category.delete({ where: { id: lc.id } }).catch(() => {})
+        }
+      }
 
       // 2. Ingredients
       const { rows: cloudIngs } = await pg.query(
@@ -281,6 +290,16 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               minThreshold: Number(i.minThreshold),
             },
           })
+        }
+      }
+
+      // Delete local ingredients that were deleted on cloud
+      const cloudIngIds = new Set(cloudIngs.map(i => i.id))
+      const localIngs = await prisma.ingredient.findMany({ select: { id: true } })
+      for (const li of localIngs) {
+        if (!cloudIngIds.has(li.id)) {
+          await prisma.recipe.deleteMany({ where: { ingredientId: li.id } })
+          await prisma.ingredient.delete({ where: { id: li.id } }).catch(() => {})
         }
       }
 
@@ -339,6 +358,19 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         }
       }
 
+      // Delete local menu items that were deleted on cloud
+      const cloudItemIds = new Set(cloudItems.map(item => item.id))
+      const localMenuItems = await prisma.menuItem.findMany({ select: { id: true } })
+      for (const lm of localMenuItems) {
+        if (!cloudItemIds.has(lm.id)) {
+          await prisma.menuItem.updateMany({ where: { parentItemId: lm.id }, data: { parentItemId: null } })
+          await prisma.staffMenuItem.updateMany({ where: { linkedMenuItemId: lm.id }, data: { linkedMenuItemId: null } })
+          await prisma.cancellation.deleteMany({ where: { orderItem: { menuItemId: lm.id } } })
+          await prisma.orderItem.deleteMany({ where: { menuItemId: lm.id } })
+          await prisma.recipe.deleteMany({ where: { menuItemId: lm.id } })
+          await prisma.menuItem.delete({ where: { id: lm.id } }).catch(() => {})
+        }
+      }
 
       // 4. Recipes
       const { rows: cloudRecipes } = await pg.query(
@@ -360,6 +392,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             quantity: Number(r.quantity),
           },
         })
+      }
+
+      // Delete local recipes that were deleted on cloud
+      const cloudRecipeIds = new Set(cloudRecipes.map(r => r.id))
+      const localRecipes = await prisma.recipe.findMany({ select: { id: true } })
+      for (const lr of localRecipes) {
+        if (!cloudRecipeIds.has(lr.id)) {
+          await prisma.recipe.delete({ where: { id: lr.id } }).catch(() => {})
+        }
       }
 
 
