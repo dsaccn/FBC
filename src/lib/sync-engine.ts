@@ -47,7 +47,7 @@ export interface SyncResult {
 let _pool: PgPool | null = null
 
 function getPool(): PgPool {
-  if (!_pool) {
+  if (!_pool || (_pool as any).ending) {
     const url = process.env.NEON_DATABASE_URL
     if (!url) throw new Error('NEON_DATABASE_URL is not set in .env')
     _pool = new PgPool({
@@ -71,8 +71,9 @@ function getPool(): PgPool {
  *  Called when a sync fails due to network error so we don't reuse a dead pool. */
 function resetPool() {
   if (_pool) {
-    _pool.end().catch(() => {})
+    const old = _pool
     _pool = null
+    old.end().catch(() => {})
   }
 }
 
@@ -142,6 +143,91 @@ export async function pushMenuItemStockToCloud(id: string, stockQuantity: number
     }
   } catch (err: any) {
     console.warn('[SyncEngine] pushMenuItemStockToCloud error (offline?):', err?.message)
+  }
+}
+
+/**
+ * Push a menu item upsert directly to Neon immediately.
+ */
+export async function pushMenuItemToCloud(item: {
+  id: string
+  categoryId?: string | null
+  name: string
+  description?: string | null
+  price: number
+  available: boolean
+  stockQuantity: number
+  barQuantity: number
+  costPrice: number
+  lowStockThreshold: number
+  parentItemId?: string | null
+  unitMultiplier: number
+  createdAt: Date
+  recipes?: { ingredientId: string; quantity: number }[]
+}): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    await pg.query(
+      `INSERT INTO "MenuItem" (id, "categoryId", name, description, price, available,
+         "stockQuantity", "barQuantity", "costPrice", "lowStockThreshold",
+         "parentItemId", "unitMultiplier", "createdAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (id) DO UPDATE SET
+         "categoryId"       = EXCLUDED."categoryId",
+         name               = EXCLUDED.name,
+         description        = EXCLUDED.description,
+         price              = EXCLUDED.price,
+         available          = EXCLUDED.available,
+         "costPrice"        = EXCLUDED."costPrice",
+         "lowStockThreshold"= EXCLUDED."lowStockThreshold",
+         "unitMultiplier"   = EXCLUDED."unitMultiplier"`,
+      [item.id, item.categoryId ?? null, item.name, item.description ?? null, item.price,
+       item.available, item.stockQuantity, item.barQuantity, item.costPrice,
+       item.lowStockThreshold, item.parentItemId ?? null, item.unitMultiplier, item.createdAt]
+    )
+
+    if (item.recipes && Array.isArray(item.recipes)) {
+      await pg.query(`DELETE FROM "Recipe" WHERE "menuItemId" = $1`, [item.id]).catch(() => {})
+      for (const r of item.recipes) {
+        if (r && r.ingredientId) {
+          const recipeId = `${item.id}_${r.ingredientId}`
+          await pg.query(
+            `INSERT INTO "Recipe" (id, "menuItemId", "ingredientId", quantity)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+            [recipeId, item.id, r.ingredientId, Number(r.quantity) || 0]
+          ).catch(() => {})
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushMenuItemToCloud error (offline?):', err?.message)
+  }
+}
+
+/**
+ * Push a category upsert directly to Neon immediately.
+ */
+export async function pushCategoryToCloud(cat: {
+  id: string
+  name: string
+  type: string
+  createdAt: Date
+}): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    await pg.query(
+      `INSERT INTO "Category" (id, name, type, "createdAt")
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         type = EXCLUDED.type`,
+      [cat.id, cat.name, cat.type, cat.createdAt]
+    )
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushCategoryToCloud error (offline?):', err?.message)
   }
 }
 
@@ -268,28 +354,52 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         const local = await prisma.ingredient.findUnique({ where: { id: i.id } })
         if (!local) {
           // Brand new ingredient from cloud: insert into local SQLite
-          await prisma.ingredient.create({
-            data: {
-              id: i.id,
-              name: i.name,
-              unit: i.unit,
-              quantity: Number(i.quantity),
-              costPerUnit: Number(i.costPerUnit || 0),
-              minThreshold: Number(i.minThreshold),
-              createdAt: new Date(i.createdAt),
-            },
-          })
+          try {
+            await prisma.ingredient.create({
+              data: {
+                id: i.id,
+                name: i.name,
+                unit: i.unit,
+                quantity: Number(i.quantity),
+                costPerUnit: Number(i.costPerUnit || 0),
+                minThreshold: Number(i.minThreshold),
+                createdAt: new Date(i.createdAt),
+              },
+            })
+          } catch {
+            await prisma.ingredient.create({
+              data: {
+                id: i.id,
+                name: i.name,
+                unit: i.unit,
+                quantity: Number(i.quantity),
+                minThreshold: Number(i.minThreshold),
+                createdAt: new Date(i.createdAt),
+              },
+            })
+          }
         } else {
           // Existing ingredient: sync details from cloud but PRESERVE local inventory store stock!
-          await prisma.ingredient.update({
-            where: { id: i.id },
-            data: {
-              name: i.name,
-              unit: i.unit,
-              costPerUnit: Number(i.costPerUnit || 0),
-              minThreshold: Number(i.minThreshold),
-            },
-          })
+          try {
+            await prisma.ingredient.update({
+              where: { id: i.id },
+              data: {
+                name: i.name,
+                unit: i.unit,
+                costPerUnit: Number(i.costPerUnit || 0),
+                minThreshold: Number(i.minThreshold),
+              },
+            })
+          } catch {
+            await prisma.ingredient.update({
+              where: { id: i.id },
+              data: {
+                name: i.name,
+                unit: i.unit,
+                minThreshold: Number(i.minThreshold),
+              },
+            })
+          }
         }
       }
 
@@ -364,10 +474,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       for (const lm of localMenuItems) {
         if (!cloudItemIds.has(lm.id)) {
           await prisma.menuItem.updateMany({ where: { parentItemId: lm.id }, data: { parentItemId: null } })
-          await prisma.staffMenuItem.updateMany({ where: { linkedMenuItemId: lm.id }, data: { linkedMenuItemId: null } })
-          await prisma.cancellation.deleteMany({ where: { orderItem: { menuItemId: lm.id } } })
-          await prisma.orderItem.deleteMany({ where: { menuItemId: lm.id } })
-          await prisma.recipe.deleteMany({ where: { menuItemId: lm.id } })
+          const localOIs = await prisma.orderItem.findMany({ where: { menuItemId: lm.id }, select: { id: true } })
+          const localOIIds = localOIs.map(oi => oi.id)
+          if (localOIIds.length > 0) {
+            await prisma.cancellation.deleteMany({ where: { orderItemId: { in: localOIIds } } }).catch(() => {})
+            await prisma.orderItem.deleteMany({ where: { id: { in: localOIIds } } }).catch(() => {})
+          }
+          await prisma.recipe.deleteMany({ where: { menuItemId: lm.id } }).catch(() => {})
           await prisma.menuItem.delete({ where: { id: lm.id } }).catch(() => {})
         }
       }
@@ -1062,135 +1175,9 @@ export async function syncToCloud(): Promise<SyncResult> {
         }
       }
     }
-
-    // ── Categories (FK target for MenuItem — must push before items) ──────────
-    const allLocalCategories = await prisma.category.findMany()
-    for (const c of allLocalCategories) {
-      try {
-        await pg.query(
-          `INSERT INTO "Category" (id, name, type, "createdAt")
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (id) DO UPDATE SET
-             name = EXCLUDED.name,
-             type = EXCLUDED.type`,
-          [c.id, c.name, c.type, c.createdAt]
-        )
-      } catch (e) {
-        errors.push(`Category ${c.id}: ${String(e)}`)
-      }
-    }
-
-    // ── Ingredients (FK target for Recipe — must push before recipes) ─────────
-    const allLocalIngredients = await prisma.ingredient.findMany()
-    for (const i of allLocalIngredients) {
-      try {
-        await pg.query(
-          `INSERT INTO "Ingredient" (id, name, unit, quantity, "minThreshold", "createdAt")
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (id) DO UPDATE SET
-             name           = EXCLUDED.name,
-             unit           = EXCLUDED.unit,
-             quantity       = EXCLUDED.quantity,
-             "minThreshold" = EXCLUDED."minThreshold"`,
-          [i.id, i.name, i.unit, i.quantity, i.minThreshold, i.createdAt]
-        )
-      } catch (e) {
-        errors.push(`Ingredient ${i.id}: ${String(e)}`)
-      }
-    }
-
-    // ── MenuItems — two-pass to handle self-referential parentItemId FK ────────
-    const allLocalMenuItems = await prisma.menuItem.findMany()
-    // Pass 1: upsert with parentItemId = null so no FK violation on first insert
-    for (const item of allLocalMenuItems) {
-      try {
-        await pg.query(
-          `INSERT INTO "MenuItem" (id, "categoryId", name, description, price, available,
-             "stockQuantity", "barQuantity", "costPrice", "lowStockThreshold",
-             "parentItemId", "unitMultiplier", "createdAt")
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12)
-           ON CONFLICT (id) DO UPDATE SET
-             "categoryId"       = EXCLUDED."categoryId",
-             name               = EXCLUDED.name,
-             description        = EXCLUDED.description,
-             price              = EXCLUDED.price,
-             available          = EXCLUDED.available,
-             "stockQuantity"    = EXCLUDED."stockQuantity",
-             "barQuantity"      = EXCLUDED."barQuantity",
-             "costPrice"        = EXCLUDED."costPrice",
-             "lowStockThreshold"= EXCLUDED."lowStockThreshold",
-             "unitMultiplier"   = EXCLUDED."unitMultiplier"`,
-          [item.id, item.categoryId, item.name, item.description, item.price,
-           item.available, item.stockQuantity, item.barQuantity, item.costPrice,
-           item.lowStockThreshold, item.unitMultiplier, item.createdAt]
-        )
-      } catch (e) {
-        errors.push(`MenuItem ${item.id}: ${String(e)}`)
-      }
-    }
-    // Pass 2: set parentItemId links now that all items exist
-    for (const item of allLocalMenuItems) {
-      if (item.parentItemId) {
-        try {
-          await pg.query(
-            `UPDATE "MenuItem" SET "parentItemId" = $1 WHERE id = $2`,
-            [item.parentItemId, item.id]
-          )
-        } catch (e) {
-          errors.push(`MenuItem parentLink ${item.id}: ${String(e)}`)
-        }
-      }
-    }
-
-    // ── Recipes (push AFTER both MenuItem + Ingredient exist in cloud) ─────────
-    const allLocalRecipes = await prisma.recipe.findMany()
-    for (const r of allLocalRecipes) {
-      try {
-        await pg.query(
-          `INSERT INTO "Recipe" (id, "menuItemId", "ingredientId", quantity)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (id) DO UPDATE SET quantity = EXCLUDED.quantity`,
-          [r.id, r.menuItemId, r.ingredientId, r.quantity]
-        )
-      } catch (e) {
-        errors.push(`Recipe ${r.id}: ${String(e)}`)
-      }
-    }
-
-    // ── Push-diff deletions ────────────────────────────────────────────────────
-    // Items deleted locally while offline won't be caught by the DELETE route's
-    // immediate Neon call. Compare local id sets with cloud and delete orphans.
-    try {
-      const localMenuItemIds = new Set(allLocalMenuItems.map(i => i.id))
-      const { rows: cloudMenuItems } = await pg.query(`SELECT id FROM "MenuItem"`)
-      const orphanMenuItemIds = cloudMenuItems.map(r => r.id).filter(id => !localMenuItemIds.has(id))
-      for (const id of orphanMenuItemIds) {
-        await pg.query(`UPDATE "MenuItem" SET "parentItemId" = NULL WHERE "parentItemId" = $1`, [id]).catch(() => {})
-        await pg.query(`UPDATE "StaffMenuItem" SET "linkedMenuItemId" = NULL WHERE "linkedMenuItemId" = $1`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "menuItemId" = $1)`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "OrderItem" WHERE "menuItemId" = $1`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "Recipe" WHERE "menuItemId" = $1`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "MenuItem" WHERE id = $1`, [id]).catch(() => {})
-      }
-
-      const localIngredientIds = new Set(allLocalIngredients.map(i => i.id))
-      const { rows: cloudIngredients } = await pg.query(`SELECT id FROM "Ingredient"`)
-      const orphanIngredientIds = cloudIngredients.map(r => r.id).filter(id => !localIngredientIds.has(id))
-      for (const id of orphanIngredientIds) {
-        await pg.query(`DELETE FROM "Recipe" WHERE "ingredientId" = $1`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "Ingredient" WHERE id = $1`, [id]).catch(() => {})
-      }
-
-      const localCategoryIds = new Set(allLocalCategories.map(c => c.id))
-      const { rows: cloudCategories } = await pg.query(`SELECT id FROM "Category"`)
-      const orphanCategoryIds = cloudCategories.map(r => r.id).filter(id => !localCategoryIds.has(id))
-      for (const id of orphanCategoryIds) {
-        await pg.query(`UPDATE "MenuItem" SET "categoryId" = NULL WHERE "categoryId" = $1`, [id]).catch(() => {})
-        await pg.query(`DELETE FROM "Category" WHERE id = $1`, [id]).catch(() => {})
-      }
-    } catch (e) {
-      errors.push(`Push-diff cleanup: ${String(e)}`)
-    }
+    // Note: Catalog items (Categories, Ingredients, MenuItems, Recipes) are synced from
+    // cloud via pullFromCloud(), and local mutations are pushed explicitly via their API routes.
+    // They are intentionally not blind-inserted here on every tick to prevent resurrecting cloud deletions.
 
     // ── Tables (must push BEFORE Orders so foreign keys exist in cloud) ──────
     const allLocalTables = await prisma.table.findMany()

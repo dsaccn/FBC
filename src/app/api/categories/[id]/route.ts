@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+import { backgroundSync, deleteFromCloud, pushCategoryToCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await req.json()
     const category = await prisma.category.update({ where: { id }, data: body })
+    await pushCategoryToCloud(category)
+    backgroundSync()
     return NextResponse.json(category)
   } catch (err) {
     console.error('[PATCH /api/categories/[id]]', err)

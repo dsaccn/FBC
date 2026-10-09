@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, pushCategoryToCloud } from '@/lib/sync-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +32,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json()
   const category = await prisma.category.create({ data: body })
+  await pushCategoryToCloud(category)
   backgroundSync()
   return NextResponse.json(category)
 }

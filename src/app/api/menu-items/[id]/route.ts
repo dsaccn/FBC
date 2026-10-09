@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
-import { backgroundSync, deleteFromCloud, pushMenuItemStockToCloud } from '@/lib/sync-engine'
+import { backgroundSync, deleteFromCloud, pushMenuItemStockToCloud, pushMenuItemToCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -100,6 +100,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await pushMenuItemStockToCloud(id, item.stockQuantity, item.barQuantity)
     }
 
+    await pushMenuItemToCloud(item)
     backgroundSync()
 
     return NextResponse.json(item)
@@ -125,23 +126,28 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       data: { linkedMenuItemId: null },
     })
 
-    // 3. Remove cancellations linked to order items of this menu item
-    await prisma.cancellation.deleteMany({
-      where: { orderItem: { menuItemId: id } },
+    // 3. Remove cancellations and order items linked to this menu item
+    const orderItems = await prisma.orderItem.findMany({
+      where: { menuItemId: id },
+      select: { id: true },
     })
+    const orderItemIds = orderItems.map((oi) => oi.id)
+    if (orderItemIds.length > 0) {
+      await prisma.cancellation.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      })
+      await prisma.orderItem.deleteMany({
+        where: { id: { in: orderItemIds } },
+      })
+    }
 
-    // 4. Remove order items that reference this menu item
-    await prisma.orderItem.deleteMany({ where: { menuItemId: id } })
-
-    // 5. Remove recipes referencing this menu item
+    // 4. Remove recipes referencing this menu item
     await prisma.recipe.deleteMany({ where: { menuItemId: id } })
 
-    // 6. Safe to delete the menu item itself
+    // 5. Safe to delete the menu item itself
     await prisma.menuItem.delete({ where: { id } })
 
     // Also delete from Neon immediately so the next pull doesn't resurrect it.
-    // If offline, deleteFromCloud is a no-op; the push-diff in syncToCloud will
-    // reconcile on the next successful sync.
     await deleteFromCloud(`UPDATE "MenuItem" SET "parentItemId" = NULL WHERE "parentItemId" = $1`, [id])
     await deleteFromCloud(`UPDATE "StaffMenuItem" SET "linkedMenuItemId" = NULL WHERE "linkedMenuItemId" = $1`, [id])
     await deleteFromCloud(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "menuItemId" = $1)`, [id])

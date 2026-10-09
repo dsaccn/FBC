@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, pushMenuItemToCloud } from '@/lib/sync-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +68,7 @@ export async function POST(req: Request) {
       include: { recipes: true, category: true }
     })
 
+    await pushMenuItemToCloud(item)
     backgroundSync()
 
     return NextResponse.json(item)
