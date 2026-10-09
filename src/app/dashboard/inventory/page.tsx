@@ -137,6 +137,17 @@ export default function InventoryPage() {
     }
   }, [loadItems, loadIngredients, loadCategories, loadLogs])
 
+  const handleTableWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollWidth > el.clientWidth && !e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      const atLeft = el.scrollLeft <= 0 && e.deltaY < 0
+      const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 && e.deltaY > 0
+      if (!atLeft && !atRight) {
+        el.scrollLeft += e.deltaY
+      }
+    }
+  }
+
   // Drink stock functions
   async function adjustStock(delta: number) {
     setAdjustQty(prev => String(Math.max(0, parseInt(prev || '0') + delta)))
@@ -433,7 +444,7 @@ export default function InventoryPage() {
 
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+            <div className="table-scrollbar" onWheel={handleTableWheel} style={{ width: '100%' }}>
               <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
@@ -711,7 +722,7 @@ export default function InventoryPage() {
 
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+            <div className="table-scrollbar" onWheel={handleTableWheel} style={{ width: '100%' }}>
               <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
@@ -897,7 +908,7 @@ export default function InventoryPage() {
         <>
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+            <div className="table-scrollbar" onWheel={handleTableWheel} style={{ width: '100%' }}>
               <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
