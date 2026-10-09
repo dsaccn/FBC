@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Plus, Pencil, Trash2, Eye, EyeOff, Search } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
@@ -31,8 +31,9 @@ export default function MenuPage() {
   const [catDeleteTarget, setCatDeleteTarget] = useState<Category | null>(null)
   const [deletingCat, setDeletingCat] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const hasLoadedRef = useRef(false)
+  const load = useCallback(async (isSilent = false) => {
+    if (!isSilent && !hasLoadedRef.current) setLoading(true)
     try {
       const [iRes, cRes, ingRes] = await Promise.all([
         fetch('/api/menu-items', { cache: 'no-store' }),
@@ -42,8 +43,9 @@ export default function MenuPage() {
       if (iRes.ok) setItems(await iRes.json())
       if (cRes.ok) setCategories(await cRes.json())
       if (ingRes.ok) setIngredients(await ingRes.json())
+      hasLoadedRef.current = true
     } catch {
-      toast.error('Failed to load menu items')
+      if (!isSilent) toast.error('Failed to load menu items')
     } finally {
       setLoading(false)
     }
@@ -52,7 +54,7 @@ export default function MenuPage() {
   useEffect(() => {
     load()
 
-    const handleSync = () => { load() }
+    const handleSync = () => { load(true) }
     window.addEventListener('cloud-pull-complete', handleSync)
     window.addEventListener('sync-complete', handleSync)
     const interval = setInterval(handleSync, 20_000)

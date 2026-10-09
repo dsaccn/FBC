@@ -45,8 +45,8 @@ export default function RecipesPage() {
     }
   }, [])
 
-  const loadRecipe = useCallback(async (item: MenuItem) => {
-    setLoading(true)
+  const loadRecipe = useCallback(async (item: MenuItem, isSilent = false) => {
+    if (!isSilent) setLoading(true)
     setError('')
     setSelected(item)
     try {
@@ -55,13 +55,13 @@ export default function RecipesPage() {
         setRecipe(await res.json())
       } else {
         console.error('Failed to load recipe:', res.statusText)
-        setError('Failed to load recipe')
+        if (!isSilent) setError('Failed to load recipe')
       }
     } catch (err) {
       console.error('Error loading recipe:', err)
-      setError('Error loading recipe')
+      if (!isSilent) setError('Error loading recipe')
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [])
 
@@ -70,7 +70,7 @@ export default function RecipesPage() {
 
     const handleSync = () => {
       loadBase()
-      if (selected) loadRecipe(selected)
+      if (selected) loadRecipe(selected, true)
     }
 
     window.addEventListener('cloud-pull-complete', handleSync)

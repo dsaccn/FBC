@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { AlertTriangle, Plus, Minus, Pencil, Trash2, RefreshCw, Search } from 'lucide-react'
 import Portal from '@/components/Portal'
 import { toast } from '@/components/ToastProvider'
@@ -45,12 +45,17 @@ export default function InventoryPage() {
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
 
-  const loadItems = useCallback(async () => {
-    setLoadingItems(true)
+  const hasLoadedItemsRef = useRef(false)
+  const hasLoadedIngsRef = useRef(false)
+  const hasLoadedLogsRef = useRef(false)
+
+  const loadItems = useCallback(async (isSilent = false) => {
+    if (!isSilent && !hasLoadedItemsRef.current) setLoadingItems(true)
     try {
       const res = await fetch('/api/menu-items', { cache: 'no-store' })
       if (res.ok) {
         setItems(await res.json())
+        hasLoadedItemsRef.current = true
       } else {
         console.error('Failed to load menu items:', res.statusText)
       }
@@ -61,12 +66,13 @@ export default function InventoryPage() {
     }
   }, [])
 
-  const loadIngredients = useCallback(async () => {
-    setLoadingIngs(true)
+  const loadIngredients = useCallback(async (isSilent = false) => {
+    if (!isSilent && !hasLoadedIngsRef.current) setLoadingIngs(true)
     try {
       const res = await fetch('/api/ingredients', { cache: 'no-store' })
       if (res.ok) {
         setIngredients(await res.json())
+        hasLoadedIngsRef.current = true
       } else {
         console.error('Failed to load ingredients:', res.statusText)
       }
@@ -90,12 +96,13 @@ export default function InventoryPage() {
     }
   }, [])
 
-  const loadLogs = useCallback(async () => {
-    setLoadingLogs(true)
+  const loadLogs = useCallback(async (isSilent = false) => {
+    if (!isSilent && !hasLoadedLogsRef.current) setLoadingLogs(true)
     try {
       const res = await fetch('/api/inventory/logs', { cache: 'no-store' })
       if (res.ok) {
         setLogs(await res.json())
+        hasLoadedLogsRef.current = true
       } else {
         console.error('Failed to load inventory logs:', res.statusText)
       }
@@ -113,10 +120,10 @@ export default function InventoryPage() {
     loadLogs()
 
     const handleSync = () => {
-      loadItems()
-      loadIngredients()
+      loadItems(true)
+      loadIngredients(true)
       loadCategories()
-      loadLogs()
+      loadLogs(true)
     }
 
     window.addEventListener('cloud-pull-complete', handleSync)
@@ -162,7 +169,7 @@ export default function InventoryPage() {
         body: JSON.stringify(updateData),
       })
     }
-    setAdjustTarget(null); setAdjustQty(''); setAdjustCostPrice(''); loadItems(); loadLogs()
+    setAdjustTarget(null); setAdjustQty(''); setAdjustCostPrice(''); loadItems(true); loadLogs(true)
   }
 
   async function handleTransfer(qtyOverride?: number) {
@@ -181,7 +188,7 @@ export default function InventoryPage() {
       alert(error || 'Failed to transfer')
       return
     }
-    setTransferTarget(null); setTransferQty(''); loadItems(); loadLogs()
+    setTransferTarget(null); setTransferQty(''); loadItems(true); loadLogs(true)
   }
 
   // Ingredient functions
@@ -260,8 +267,8 @@ export default function InventoryPage() {
       setAdjustIngTarget(null)
       setAdjustIngQty('')
       setAdjustIngCost('')
-      loadIngredients()
-      loadLogs()
+      loadIngredients(true)
+      loadLogs(true)
     } catch {
       toast.error('Network error updating ingredient stock')
     } finally {
@@ -300,8 +307,8 @@ export default function InventoryPage() {
       }
       return [...prev, saved].sort((a, b) => a.name.localeCompare(b.name))
     })
-    loadIngredients()
-    loadLogs()
+    loadIngredients(true)
+    loadLogs(true)
   }
 
   async function deleteIngredient(id: string) {
@@ -311,7 +318,7 @@ export default function InventoryPage() {
       if (res.ok) {
         toast.success('Ingredient deleted')
         setIngredients(prev => prev.filter(i => i.id !== id))
-        loadIngredients()
+        loadIngredients(true)
       } else {
         toast.error('Failed to delete ingredient')
       }
