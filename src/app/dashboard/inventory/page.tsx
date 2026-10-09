@@ -656,11 +656,6 @@ export default function InventoryPage() {
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
             <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', width: '100%', maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch', flex: '1 1 300px' }}>
               <button className={`btn btn-sm ${!filterIng ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterIng('')}>All Ingredients</button>
-              {Array.from(new Set(ingredients.map(i => i.unit))).filter(Boolean).map(u => (
-                <button key={u} className={`btn btn-sm ${filterIng === u ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' }} onClick={() => setFilterIng(u)}>
-                  {u}
-                </button>
-              ))}
               <button className={`btn btn-sm ${filterIng === 'low' ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterIng('low')}>⚠ Low Stock</button>
             </div>
             <div style={{ position: 'relative', width: '100%', maxWidth: '320px', minWidth: 0, flex: '1 1 200px' }}>
