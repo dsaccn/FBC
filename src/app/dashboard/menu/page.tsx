@@ -26,6 +26,10 @@ export default function MenuPage() {
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [catDeleteTarget, setCatDeleteTarget] = useState<Category | null>(null)
+  const [deletingCat, setDeletingCat] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -131,23 +135,30 @@ export default function MenuPage() {
     }
   }
 
-  async function deleteItem(id: string, name?: string) {
-    if (!confirm(`Delete ${name || 'this menu item'}?`)) return
+  async function confirmDeleteItem() {
+    if (!deleteTarget) return
+    setDeleting(true)
     setErrorMsg('')
+    const targetId = deleteTarget.id
+    const targetName = deleteTarget.name
     try {
-      const res = await fetch(`/api/menu-items/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/menu-items/${targetId}`, { method: 'DELETE' })
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}))
         const msg = error || 'Failed to delete item'
         setErrorMsg(msg)
         toast.error(msg)
+        setDeleting(false)
         return
       }
-      toast.success('Menu item deleted')
-      setItems(prev => prev.filter(i => i.id !== id))
+      toast.success(`"${targetName}" deleted successfully`)
+      setItems(prev => prev.filter(i => i.id !== targetId))
+      setDeleteTarget(null)
       load()
     } catch {
       toast.error('Network error deleting item')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -208,22 +219,30 @@ export default function MenuPage() {
     }
   }
 
-  async function deleteCategory(id: string) {
-    if (!confirm('Delete this category?')) return
+  async function confirmDeleteCategory() {
+    if (!catDeleteTarget) return
+    setDeletingCat(true)
     setErrorMsg('')
+    const targetId = catDeleteTarget.id
+    const targetName = catDeleteTarget.name
     try {
-      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/categories/${targetId}`, { method: 'DELETE' })
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}))
         const msg = error || 'Failed to delete category'
         setErrorMsg(msg)
         toast.error(msg)
+        setDeletingCat(false)
         return
       }
-      toast.success('Category deleted')
+      toast.success(`Category "${targetName}" deleted`)
+      setCategories(prev => prev.filter(c => c.id !== targetId))
+      setCatDeleteTarget(null)
       load()
     } catch {
       toast.error('Network error deleting category')
+    } finally {
+      setDeletingCat(false)
     }
   }
 
@@ -316,8 +335,8 @@ export default function MenuPage() {
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEdit(item)}><Pencil size={13} /></button>
-                      <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={() => deleteItem(item.id, item.name)}><Trash2 size={13} /></button>
+                      <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEdit(item)} title="Edit item"><Pencil size={13} /></button>
+                      <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={() => setDeleteTarget(item)} title="Delete item"><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -389,12 +408,11 @@ export default function MenuPage() {
                 </div>
               </div>
 
-              {/* Action buttons */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => openEdit(item)}>
                   <Pencil size={14} /> Edit
                 </button>
-                <button className="btn btn-danger btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => deleteItem(item.id, item.name)}>
+                <button className="btn btn-danger btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }} onClick={() => setDeleteTarget(item)}>
                   <Trash2 size={14} /> Delete
                 </button>
               </div>
@@ -514,7 +532,7 @@ export default function MenuPage() {
                     <div style={{ fontSize: '14px', fontWeight: '500' }}>{c.type === 'FOOD' ? '🍽' : '🍹'} {c.name}</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setCatForm({ id: c.id, name: c.name, type: c.type })}><Pencil size={13} /></button>
-                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--danger-light)' }} onClick={() => deleteCategory(c.id)}><Trash2 size={13} /></button>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--danger-light)' }} onClick={() => setCatDeleteTarget(c)}><Trash2 size={13} /></button>
                     </div>
                   </div>
                 ))}
@@ -543,6 +561,77 @@ export default function MenuPage() {
           </div>
         </div></Portal>
       )}
+
+      {/* Delete Item Confirmation Modal */}
+      {deleteTarget && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => !deleting && setDeleteTarget(null)}>
+            <div className="modal" style={{ maxWidth: '420px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(230,57,70,0.1)', color: 'var(--danger-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Trash2 size={24} />
+              </div>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>Delete Menu Item</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
+                Are you sure you want to delete <strong style={{ color: 'var(--text-primary)' }}>"{deleteTarget.name}"</strong>? This will permanently remove it from the menu and inventory.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  className="btn btn-danger"
+                  style={{ flex: 1, padding: '12px 0' }}
+                  onClick={confirmDeleteItem}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Yes, Delete Item'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ flex: 1 }}
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* Delete Category Confirmation Modal */}
+      {catDeleteTarget && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => !deletingCat && setCatDeleteTarget(null)}>
+            <div className="modal" style={{ maxWidth: '420px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(230,57,70,0.1)', color: 'var(--danger-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Trash2 size={24} />
+              </div>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>Delete Category</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
+                Are you sure you want to delete category <strong style={{ color: 'var(--text-primary)' }}>"{catDeleteTarget.name}"</strong>?
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  className="btn btn-danger"
+                  style={{ flex: 1, padding: '12px 0' }}
+                  onClick={confirmDeleteCategory}
+                  disabled={deletingCat}
+                >
+                  {deletingCat ? 'Deleting...' : 'Yes, Delete Category'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ flex: 1 }}
+                  onClick={() => setCatDeleteTarget(null)}
+                  disabled={deletingCat}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
     </div>
   )
 }
