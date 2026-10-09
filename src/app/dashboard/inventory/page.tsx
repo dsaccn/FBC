@@ -424,7 +424,7 @@ export default function InventoryPage() {
               <button className={`btn btn-sm ${!filterCat ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat('')}>All Items</button>
               {categories.map(c => (
                 <button key={c.id} className={`btn btn-sm ${filterCat === c.id ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat(c.id)}>
-                  {c.type === 'FOOD' ? '🍽' : '🍹'} {c.name}
+                  {c.type === 'FOOD' ? '🍽' : c.type === 'DRINK' ? '🍹' : '📦'} {c.name}
                 </button>
               ))}
               <button className={`btn btn-sm ${filterCat === 'low' ? 'btn-gold' : 'btn-outline'}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => setFilterCat('low')}>⚠ Low Stock</button>
@@ -490,7 +490,7 @@ export default function InventoryPage() {
                               )}
                             </td>
                             <td style={{ padding: '9px 8px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {isDrink ? '🍹' : '🍽'} {item.category?.name || '—'}
+                              {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'} {item.category?.name || '—'}
                             </td>
                             
                             {/* Store Qty Cell - Shaded */}
@@ -611,7 +611,7 @@ export default function InventoryPage() {
                     <div>
                       <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {isDrink ? '🍹' : '🍽'} {item.category?.name}
+                        {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'} {item.category?.name}
                       </div>
                     </div>
                     {isLow ? (

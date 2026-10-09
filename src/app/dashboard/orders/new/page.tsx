@@ -367,7 +367,7 @@ export default function NewOrderPage() {
               onClick={() => setActiveCategory(cat.id)}
               style={{ whiteSpace: 'nowrap' }}
             >
-              {cat.type === 'FOOD' ? '🍽' : '🍹'} {cat.name}
+              {cat.type === 'FOOD' ? '🍽' : cat.type === 'DRINK' ? '🍹' : '📦'} {cat.name}
             </button>
           ))}
         </div>

@@ -227,7 +227,7 @@ export default function OrderDetailPage() {
                   {item.status}
                 </span>
                 {item.menuItem.category?.type && (
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.menuItem.category.type === 'FOOD' ? '🍳' : '🍹'}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.menuItem.category.type === 'FOOD' ? '🍳' : item.menuItem.category.type === 'DRINK' ? '🍹' : '📦'}</span>
                 )}
               </div>
               {item.notes && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Note: {item.notes}</div>}

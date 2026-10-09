@@ -198,7 +198,7 @@ export default function RecipesPage() {
                 }}
               >
                 <div style={{ fontSize: '14px', fontWeight: '500', color: selected?.id === item.id ? 'var(--gold)' : 'var(--text-primary)' }}>
-                  {item.category?.type === 'FOOD' ? '🍽' : '🍹'} {item.name}
+                  {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'} {item.name}
                 </div>
                 {item.category && (
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{item.category.name}</div>
@@ -362,7 +362,7 @@ export default function RecipesPage() {
                   }}
                 >
                   <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(201,168,76,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
-                    {item.category?.type === 'FOOD' ? '🍽' : '🍹'}
+                    {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>

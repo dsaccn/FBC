@@ -1492,7 +1492,7 @@ export default function ReportsPage() {
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category}</div>
                         </td>
                         <td style={{ padding: '14px 20px' }}>
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', background: item.type === 'FOOD' ? 'rgba(245,158,11,0.15)' : 'rgba(56,189,248,0.15)', color: item.type === 'FOOD' ? '#f59e0b' : '#38bdf8' }}>
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', background: item.type === 'FOOD' ? 'rgba(245,158,11,0.15)' : item.type === 'DRINK' ? 'rgba(56,189,248,0.15)' : 'rgba(168,85,247,0.15)', color: item.type === 'FOOD' ? '#f59e0b' : item.type === 'DRINK' ? '#38bdf8' : '#c084fc' }}>
                             {item.type}
                           </span>
                         </td>
@@ -1546,7 +1546,7 @@ export default function ReportsPage() {
                               )}
                             </div>
                             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              {item.category} · <span style={{ color: item.type === 'FOOD' ? '#f59e0b' : '#38bdf8', fontWeight: '600' }}>{item.type}</span>
+                              {item.category} · <span style={{ color: item.type === 'FOOD' ? '#f59e0b' : item.type === 'DRINK' ? '#38bdf8' : '#c084fc', fontWeight: '600' }}>{item.type}</span>
                             </div>
                           </div>
                           <span style={{ fontSize: '12px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>

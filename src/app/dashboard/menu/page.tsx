@@ -292,7 +292,7 @@ export default function MenuPage() {
           <button className={`btn btn-sm ${!filterCat ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilterCat('')}>All</button>
           {categories.map(c => (
             <button key={c.id} className={`btn btn-sm ${filterCat === c.id ? 'btn-gold' : 'btn-outline'}`} onClick={() => setFilterCat(c.id)}>
-              {c.type === 'FOOD' ? '🍽' : '🍹'} {c.name}
+              {c.type === 'FOOD' ? '🍽' : c.type === 'DRINK' ? '🍹' : '📦'} {c.name}
             </button>
           ))}
         </div>
@@ -333,7 +333,7 @@ export default function MenuPage() {
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      {item.category?.type === 'FOOD' ? '🍽' : '🍹'} {item.category?.name || '—'}
+                      {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'} {item.category?.name || '—'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--gold)', fontWeight: '600' }}>{item.price.toFixed(2)}</td>
@@ -387,7 +387,7 @@ export default function MenuPage() {
                   <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</div>
                   {item.description && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>}
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    {item.category?.type === 'FOOD' ? '🍽' : '🍹'} {item.category?.name || '—'}
+                    {item.category?.type === 'FOOD' ? '🍽' : item.category?.type === 'DRINK' ? '🍹' : '📦'} {item.category?.name || '—'}
                   </div>
                 </div>
                 <button
@@ -544,7 +544,7 @@ export default function MenuPage() {
                 {categories.length === 0 && <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>No categories yet</div>}
                 {categories.map(c => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '500' }}>{c.type === 'FOOD' ? '🍽' : '🍹'} {c.name}</div>
+                    <div style={{ fontSize: '14px', fontWeight: '500' }}>{c.type === 'FOOD' ? '🍽' : c.type === 'DRINK' ? '🍹' : '📦'} {c.name}</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setCatForm({ id: c.id, name: c.name, type: c.type })}><Pencil size={13} /></button>
                       <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--danger-light)' }} onClick={() => setCatDeleteTarget(c)}><Trash2 size={13} /></button>
@@ -563,8 +563,9 @@ export default function MenuPage() {
               <div style={{ marginBottom: '20px' }}>
                 <label className="input-label">Type</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className={`btn btn-sm ${catForm.type === 'FOOD' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setCatForm(f => ({ ...f, type: 'FOOD' }))}>🍽 Food</button>
-                  <button className={`btn btn-sm ${catForm.type === 'DRINK' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setCatForm(f => ({ ...f, type: 'DRINK' }))}>🍹 Drink</button>
+                  <button type="button" className={`btn btn-sm ${catForm.type === 'FOOD' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setCatForm(f => ({ ...f, type: 'FOOD' }))}>🍽 Food</button>
+                  <button type="button" className={`btn btn-sm ${catForm.type === 'DRINK' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setCatForm(f => ({ ...f, type: 'DRINK' }))}>🍹 Drink</button>
+                  <button type="button" className={`btn btn-sm ${catForm.type === 'OTHER' ? 'btn-gold' : 'btn-outline'}`} onClick={() => setCatForm(f => ({ ...f, type: 'OTHER' }))}>📦 Other</button>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
