@@ -179,6 +179,8 @@ export async function pushMenuItemToCloud(item: {
          description        = EXCLUDED.description,
          price              = EXCLUDED.price,
          available          = EXCLUDED.available,
+         "stockQuantity"    = EXCLUDED."stockQuantity",
+         "barQuantity"      = EXCLUDED."barQuantity",
          "costPrice"        = EXCLUDED."costPrice",
          "lowStockThreshold"= EXCLUDED."lowStockThreshold",
          "unitMultiplier"   = EXCLUDED."unitMultiplier"`,
@@ -379,13 +381,14 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             })
           }
         } else {
-          // Existing ingredient: sync details from cloud but PRESERVE local inventory store stock!
+          // Existing ingredient: sync details from cloud including inventory quantity
           try {
             await prisma.ingredient.update({
               where: { id: i.id },
               data: {
                 name: i.name,
                 unit: i.unit,
+                quantity: Number(i.quantity),
                 costPerUnit: Number(i.costPerUnit || 0),
                 minThreshold: Number(i.minThreshold),
               },
@@ -396,6 +399,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               data: {
                 name: i.name,
                 unit: i.unit,
+                quantity: Number(i.quantity),
                 minThreshold: Number(i.minThreshold),
               },
             })
@@ -441,7 +445,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             },
           })
         } else {
-          // Existing product: sync pricing, category, availability from cloud but PRESERVE local store/bar stock!
+          // Existing product: sync pricing, category, store & bar stock from cloud
           await prisma.menuItem.update({
             where: { id: item.id },
             data: {
@@ -450,6 +454,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               description: item.description,
               price: Number(item.price),
               available: Boolean(item.available),
+              stockQuantity: Number(item.stockQuantity),
+              barQuantity: Number(item.barQuantity),
               costPrice: Number(item.costPrice),
               lowStockThreshold: Number(item.lowStockThreshold),
               unitMultiplier: Number(item.unitMultiplier),

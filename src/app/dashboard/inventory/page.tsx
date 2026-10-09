@@ -106,7 +106,29 @@ export default function InventoryPage() {
     }
   }, [])
 
-  useEffect(() => { loadItems(); loadIngredients(); loadCategories(); loadLogs(); }, [loadItems, loadIngredients, loadCategories, loadLogs])
+  useEffect(() => {
+    loadItems()
+    loadIngredients()
+    loadCategories()
+    loadLogs()
+
+    const handleSync = () => {
+      loadItems()
+      loadIngredients()
+      loadCategories()
+      loadLogs()
+    }
+
+    window.addEventListener('cloud-pull-complete', handleSync)
+    window.addEventListener('sync-complete', handleSync)
+    const interval = setInterval(handleSync, 20_000)
+
+    return () => {
+      window.removeEventListener('cloud-pull-complete', handleSync)
+      window.removeEventListener('sync-complete', handleSync)
+      clearInterval(interval)
+    }
+  }, [loadItems, loadIngredients, loadCategories, loadLogs])
 
   // Drink stock functions
   async function adjustStock(delta: number) {

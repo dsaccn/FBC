@@ -49,7 +49,20 @@ export default function MenuPage() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+
+    const handleSync = () => { load() }
+    window.addEventListener('cloud-pull-complete', handleSync)
+    window.addEventListener('sync-complete', handleSync)
+    const interval = setInterval(handleSync, 20_000)
+
+    return () => {
+      window.removeEventListener('cloud-pull-complete', handleSync)
+      window.removeEventListener('sync-complete', handleSync)
+      clearInterval(interval)
+    }
+  }, [load])
 
   function openNew() { setEditItem(null); setForm(EMPTY_FORM); setFormRecipes([]); setErrorMsg(''); setShowForm(true) }
   function openEdit(item: MenuItem) {
