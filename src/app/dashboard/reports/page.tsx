@@ -674,11 +674,11 @@ export default function ReportsPage() {
             <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Avg bill: {formatMoney(avgOrderValue)}</div>
           </div>
 
-          {/* Cancellations / Voids */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '8px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cancellations</div>
-            <div style={{ fontSize: '14px', fontWeight: '700', color: data.cancellations.length > 0 ? 'var(--danger-light)' : 'var(--text-primary)', margin: '2px 0', lineHeight: 1.2 }}>{data.cancellations.length}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Voided tickets</div>
+          {/* Profit Margin */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(20,20,20,0.8) 100%)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '10px', padding: '8px 11px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Profit Margin</div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: '#c084fc', margin: '2px 0', lineHeight: 1.2 }}>{(data.profitMargin ?? 0).toFixed(1)}%</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Return on sales</div>
           </div>
         </div>
 
@@ -860,18 +860,6 @@ export default function ReportsPage() {
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Return on sales</div>
           </div>
 
-          {/* Completed Orders */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(82,183,136,0.15) 0%, rgba(82,183,136,0.02) 100%)', border: '1px solid rgba(82,183,136,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Completed Orders</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.totalOrders}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(82,183,136,0.2)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Paid guest checks</div>
-          </div>
-
           {/* Average Order Value */}
           <div className="card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.15) 0%, rgba(244,162,97,0.02) 100%)', border: '1px solid rgba(244,162,97,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -882,18 +870,6 @@ export default function ReportsPage() {
               <div style={{ padding: '8px', background: 'rgba(244,162,97,0.2)', borderRadius: '10px', color: 'var(--warning-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Average bill size</div>
-          </div>
-
-          {/* Cancellations */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(230,57,70,0.15) 0%, rgba(230,57,70,0.02) 100%)', border: '1px solid rgba(230,57,70,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '600' }}>Cancellations</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>{data.cancellations.length}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(230,57,70,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><XCircle size={18}/></div>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Voided items in period</div>
           </div>
 
           {/* Stock Asset Valuation */}
