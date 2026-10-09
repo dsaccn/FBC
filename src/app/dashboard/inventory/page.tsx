@@ -12,8 +12,20 @@ interface Ingredient { id: string; name: string; unit: string; quantity: number;
 const UNITS = ['grams', 'kg', 'ml', 'liters', 'pieces', 'cups', 'tbsp', 'tsp']
 
 export default function InventoryPage() {
-  const [tab, setTab] = useState<'drinks' | 'ingredients' | 'logs'>('drinks')
+  const [tab, setTab] = useState<'drinks' | 'ingredients' | 'logs' | 'waste'>('drinks')
   const [searchQuery, setSearchQuery] = useState('')
+  const [session, setSession] = useState<{ id: string; fullName: string; role: string } | null>(null)
+
+  // Waste logging state
+  const [showWasteModal, setShowWasteModal] = useState(false)
+  const [wasteItemType, setWasteItemType] = useState<'ITEM' | 'INGREDIENT'>('ITEM')
+  const [wasteSelectedId, setWasteSelectedId] = useState('')
+  const [wasteLocation, setWasteLocation] = useState<'STORE' | 'BAR'>('STORE')
+  const [wasteQty, setWasteQty] = useState('')
+  const [wasteReason, setWasteReason] = useState('Expired / Past Shelf Life')
+  const [wasteNotes, setWasteNotes] = useState('')
+  const [wasteSubmitting, setWasteSubmitting] = useState(false)
+  const [wasteFilterReason, setWasteFilterReason] = useState('ALL')
 
   // Drink stock state
   const [items, setItems] = useState<MenuItem[]>([])
@@ -114,6 +126,11 @@ export default function InventoryPage() {
   }, [])
 
   useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setSession(data) })
+      .catch(() => {})
+
     loadItems()
     loadIngredients()
     loadCategories()
@@ -145,6 +162,54 @@ export default function InventoryPage() {
       if (!atLeft && !atRight) {
         el.scrollLeft += e.deltaY
       }
+    }
+  }
+
+  // Waste logging submit handler
+  async function handleLogWaste(e: React.FormEvent) {
+    e.preventDefault()
+    if (!wasteSelectedId) {
+      toast.error('Please select an item or ingredient')
+      return
+    }
+    const qty = parseFloat(wasteQty)
+    if (isNaN(qty) || qty <= 0) {
+      toast.error('Please enter a valid quantity greater than 0')
+      return
+    }
+
+    setWasteSubmitting(true)
+    try {
+      const res = await fetch('/api/inventory/waste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemType: wasteItemType,
+          itemId: wasteSelectedId,
+          location: wasteLocation,
+          quantity: qty,
+          reason: wasteReason,
+          notes: wasteNotes.trim(),
+        }),
+      })
+
+      if (res.ok) {
+        toast.success(`Waste logged: ${qty} discarded (${wasteReason})`)
+        setShowWasteModal(false)
+        setWasteQty('')
+        setWasteNotes('')
+        setWasteSelectedId('')
+        loadItems(true)
+        loadIngredients(true)
+        loadLogs(true)
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Failed to log waste')
+      }
+    } catch {
+      toast.error('Network error logging waste')
+    } finally {
+      setWasteSubmitting(false)
     }
   }
 
@@ -365,6 +430,13 @@ export default function InventoryPage() {
   const filteredBarQty = filtered.reduce((sum, item) => sum + (item.parentItemId ? 0 : item.barQuantity), 0)
   const filteredTotalQty = filteredStoreQty + filteredBarQty
 
+  const isManagerOrAdmin = !session || ['ADMIN', 'MANAGER'].includes(session.role)
+  const wasteLogs = logs.filter(l => l.action && typeof l.action === 'string' && l.action.startsWith('WASTE'))
+  const filteredWasteLogs = wasteLogs.filter(l => {
+    if (wasteFilterReason === 'ALL') return true
+    return l.action.toLowerCase().includes(wasteFilterReason.toLowerCase())
+  })
+
   return (
     <div className="animate-fade-in" style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
       {/* Header */}
@@ -377,17 +449,36 @@ export default function InventoryPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => { loadItems(); loadIngredients() }}><RefreshCw size={14} /> Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { loadItems(); loadIngredients(); loadLogs() }}><RefreshCw size={14} /> Refresh</button>
           {tab === 'ingredients' && <button className="btn btn-gold btn-sm" onClick={openNewIng}><Plus size={14} /> Add Ingredient</button>}
+          {isManagerOrAdmin && (
+            <button
+              className="btn btn-outline btn-sm"
+              style={{ borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }}
+              onClick={() => {
+                setWasteSelectedId('')
+                setWasteQty('')
+                setWasteNotes('')
+                setShowWasteModal(true)
+              }}
+            >
+              <Trash2 size={14} /> Log Waste
+            </button>
+          )}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--black-border)', paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-        {([['drinks', '📦 Store Stock'], ['ingredients', '🥩 Ingredients'], ['logs', '📋 Control Logs']] as const).map(([key, label]) => (
+        {([
+          ['drinks', '📦 Store Stock'],
+          ['ingredients', '🥩 Ingredients'],
+          ['logs', '📋 Control Logs'],
+          ...(isManagerOrAdmin ? [['waste', '🗑 Waste Logs'] as const] : [])
+        ] as [string, string][]).map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => setTab(key as any)}
             style={{
               padding: '10px 20px', fontSize: '14px', fontWeight: '600',
               background: 'none', border: 'none', cursor: 'pointer',
@@ -401,6 +492,7 @@ export default function InventoryPage() {
             {label}
             {key === 'drinks' && lowDrinkCount > 0 && <span style={{ marginLeft: '6px', background: 'var(--danger-light)', color: '#fff', borderRadius: '10px', padding: '1px 6px', fontSize: '11px' }}>{lowDrinkCount}</span>}
             {key === 'ingredients' && lowIngCount > 0 && <span style={{ marginLeft: '6px', background: 'var(--danger-light)', color: '#fff', borderRadius: '10px', padding: '1px 6px', fontSize: '11px' }}>{lowIngCount}</span>}
+            {key === 'waste' && wasteLogs.length > 0 && <span style={{ marginLeft: '6px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '10px', padding: '1px 6px', fontSize: '11px', fontWeight: '700' }}>{wasteLogs.length}</span>}
           </button>
         ))}
       </div>
@@ -938,14 +1030,15 @@ export default function InventoryPage() {
                       </td>
                       <td style={{ padding: '9px 8px', textAlign: 'center' }}>
                         <span className={`badge ${
+                          log.action.startsWith('WASTE') ? 'badge-cancelled' :
                           log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
                           log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
                         }`} style={{ fontSize: '11px' }}>
                           {log.action}
                         </span>
                       </td>
-                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: '700', color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
-                        {(log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
+                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: '700', color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
+                        {log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
                       </td>
                       <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>{log.prevQty}</td>
                       <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{log.newQty}</td>
@@ -968,6 +1061,7 @@ export default function InventoryPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{log.itemName}</span>
                   <span className={`badge ${
+                    log.action.startsWith('WASTE') ? 'badge-cancelled' :
                     log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
                     log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
                   }`} style={{ fontSize: '11px' }}>{log.action}</span>
@@ -981,9 +1075,186 @@ export default function InventoryPage() {
                     {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
-                    Qty: <b style={{ color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'inherit' }}>{(log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}</b> 
+                    Qty: <b style={{ color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'inherit' }}>{log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}</b> 
                     <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '6px' }}>({log.prevQty} → {log.newQty})</span>
                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── WASTE LOGS TAB (Admin & Manager Only) ── */}
+      {tab === 'waste' && isManagerOrAdmin && (
+        <>
+          {/* Top Banner / Actions */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(20,15,10,0.6) 100%)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Trash2 size={18} color="#ef4444" />
+                <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                  Waste & Spoilage Control
+                </h3>
+                <span style={{ fontSize: '11px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>
+                  Admin / Manager Only
+                </span>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px', marginBottom: 0 }}>
+                Record expired cakes, sour milk, dropped items, or spoiled produce to keep inventory and cost reports accurate.
+              </p>
+            </div>
+            <button
+              className="btn btn-sm"
+              style={{
+                background: '#ef4444',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+              onClick={() => {
+                setWasteSelectedId('')
+                setWasteQty('')
+                setWasteNotes('')
+                setShowWasteModal(true)
+              }}
+            >
+              <Plus size={15} /> Log New Waste
+            </button>
+          </div>
+
+          {/* Quick Filter Pills */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {[
+              ['ALL', 'All Waste'],
+              ['Expired', '🕒 Expired / Shelf Life'],
+              ['Spoiled', '⚠️ Quality / Spoiled'],
+              ['Damaged', '💥 Damaged / Broken'],
+              ['Preparation', '👨‍🍳 Prep Error'],
+            ].map(([fKey, fLabel]) => (
+              <button
+                key={fKey}
+                className={`btn btn-sm ${wasteFilterReason === fKey ? 'btn-gold' : 'btn-outline'}`}
+                style={{ whiteSpace: 'nowrap', fontSize: '12px' }}
+                onClick={() => setWasteFilterReason(fKey)}
+              >
+                {fLabel}
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop Table */}
+          <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
+            <div className="table-scrollbar" onWheel={handleTableWheel} style={{ width: '100%' }}>
+              <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)' }}>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Date & Time</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Item Name</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Source/Type</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Wasted Qty</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Prev Qty</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>New Qty</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Reason / Notes</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Logged By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingLogs ? (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading waste logs...</td></tr>
+                  ) : filteredWasteLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>
+                        <Trash2 size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                        <div style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>No waste records found</div>
+                        <div style={{ fontSize: '12px', marginTop: '4px' }}>All items and ingredients are currently accounted for without recorded spoilage.</div>
+                      </td>
+                    </tr>
+                  ) : filteredWasteLogs.map(log => (
+                    <tr key={log.id} style={{ borderTop: '1px solid var(--black-border)' }}>
+                      <td style={{ padding: '9px 10px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </td>
+                      <td style={{ padding: '9px 8px', fontWeight: '700', color: 'var(--text-primary)', fontSize: '13px' }}>
+                        {log.itemName}
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                        <span className="badge badge-outline" style={{ fontSize: '11px' }}>
+                          {log.type === 'INGREDIENT' ? '🥩 INGREDIENT' : log.type === 'BAR' ? '🍸 BAR' : '📦 STORE'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: '700', color: 'var(--danger-light)' }}>
+                        -{log.quantity}
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        {log.prevQty}
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>
+                        {log.newQty}
+                      </td>
+                      <td style={{ padding: '9px 8px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(239,68,68,0.12)',
+                          color: '#ef4444',
+                          border: '1px solid rgba(239,68,68,0.25)'
+                        }}>
+                          {log.action.replace('WASTE: ', '')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '9px 10px', fontWeight: '600', color: 'var(--text-primary)', fontSize: '12px' }}>
+                        {log.userName}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile View Cards */}
+          <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+            {loadingLogs ? (
+              <div className="card" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</div>
+            ) : filteredWasteLogs.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>No waste records found.</div>
+            ) : filteredWasteLogs.map(log => (
+              <div key={log.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{log.itemName}</span>
+                  <span style={{ color: 'var(--danger-light)', fontWeight: '800', fontSize: '14px' }}>-{log.quantity}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>Source: <b>{log.type}</b></span>
+                  <span>Stock: {log.prevQty} → <b>{log.newQty}</b></span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  Reason: {log.action.replace('WASTE: ', '')}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', paddingTop: '4px' }}>
+                  <span>By: {log.userName}</span>
+                  <span>{new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'short', timeStyle: 'short' })}</span>
                 </div>
               </div>
             ))}
@@ -1254,6 +1525,175 @@ export default function InventoryPage() {
             )}
           </div>
         </div></Portal>
+      )}
+
+      {/* ── LOG WASTE MODAL (Admin & Manager) ── */}
+      {showWasteModal && isManagerOrAdmin && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowWasteModal(false)}>
+            <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <Trash2 size={18} color="#ef4444" />
+                <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: 'var(--text-primary)' }}>
+                  Log Waste / Spoilage
+                </h3>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '18px' }}>
+                Deduct expired or spoiled items and record a verified write-off log.
+              </p>
+
+              <form onSubmit={handleLogWaste}>
+                {/* Item Type Switch */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label className="input-label">Inventory Category</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${wasteItemType === 'ITEM' ? 'btn-gold' : 'btn-outline'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => { setWasteItemType('ITEM'); setWasteSelectedId(''); }}
+                    >
+                      🍰 Store / Menu Items
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${wasteItemType === 'INGREDIENT' ? 'btn-gold' : 'btn-outline'}`}
+                      style={{ flex: 1 }}
+                      onClick={() => { setWasteItemType('INGREDIENT'); setWasteSelectedId(''); }}
+                    >
+                      🥩 Raw Ingredients
+                    </button>
+                  </div>
+                </div>
+
+                {/* Item Select */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label className="input-label">Select {wasteItemType === 'ITEM' ? 'Product' : 'Ingredient'}</label>
+                  <select
+                    className="input"
+                    value={wasteSelectedId}
+                    onChange={e => setWasteSelectedId(e.target.value)}
+                    required
+                    style={{ width: '100%', background: 'var(--black)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="">-- Choose {wasteItemType === 'ITEM' ? 'Item' : 'Ingredient'} --</option>
+                    {wasteItemType === 'ITEM' ? (
+                      items.map(i => (
+                        <option key={i.id} value={i.id}>
+                          {i.name} (Store: {i.stockQuantity}, Bar: {i.barQuantity})
+                        </option>
+                      ))
+                    ) : (
+                      ingredients.map(ing => (
+                        <option key={ing.id} value={ing.id}>
+                          {ing.name} ({ing.quantity} {ing.unit})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {/* Location (Store vs Bar for Menu items) */}
+                {wasteItemType === 'ITEM' && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <label className="input-label">Stock Location</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${wasteLocation === 'STORE' ? 'btn-gold' : 'btn-outline'}`}
+                        style={{ flex: 1 }}
+                        onClick={() => setWasteLocation('STORE')}
+                      >
+                        📦 Store Stock
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${wasteLocation === 'BAR' ? 'btn-gold' : 'btn-outline'}`}
+                        style={{ flex: 1 }}
+                        onClick={() => setWasteLocation('BAR')}
+                      >
+                        🍸 Bar Stock
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Quantity */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label className="input-label">Quantity to Discard</label>
+                  <input
+                    className="input"
+                    type="number"
+                    step={wasteItemType === 'INGREDIENT' ? '0.01' : '1'}
+                    min="0.01"
+                    placeholder="e.g. 2"
+                    value={wasteQty}
+                    onChange={e => setWasteQty(e.target.value)}
+                    required
+                    style={{ width: '100%', fontSize: '16px', fontWeight: '700' }}
+                  />
+                </div>
+
+                {/* Reason Dropdown */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label className="input-label">Reason for Disposal</label>
+                  <select
+                    className="input"
+                    value={wasteReason}
+                    onChange={e => setWasteReason(e.target.value)}
+                    style={{ width: '100%', background: 'var(--black)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="Expired / Past Shelf Life">🕒 Expired / Past Shelf Life (Cakes, Dairy)</option>
+                    <option value="Quality / Sour / Spoiled">⚠️ Quality / Sour / Spoiled</option>
+                    <option value="Damaged / Dropped / Broken">💥 Damaged / Dropped / Broken</option>
+                    <option value="Preparation / Cooking Error">👨‍🍳 Preparation / Cooking Error</option>
+                    <option value="Contaminated">🚫 Contaminated / Unsafe</option>
+                  </select>
+                </div>
+
+                {/* Notes */}
+                <div style={{ marginBottom: '20px' }}>
+                  <label className="input-label">Notes (Optional)</label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="e.g. Left out overnight, cake was dry, etc."
+                    value={wasteNotes}
+                    onChange={e => setWasteNotes(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                {/* Modal Buttons */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-sm"
+                    style={{
+                      flex: 1,
+                      background: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: '700',
+                      padding: '10px'
+                    }}
+                    disabled={wasteSubmitting || !wasteSelectedId || !wasteQty}
+                  >
+                    {wasteSubmitting ? 'Recording...' : 'Confirm Waste'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setShowWasteModal(false)}
+                    disabled={wasteSubmitting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Portal>
       )}
 
     </div>
