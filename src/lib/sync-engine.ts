@@ -233,6 +233,30 @@ export async function pushCategoryToCloud(cat: {
   }
 }
 
+/**
+ * Push a recipe line upsert directly to Neon immediately.
+ */
+export async function pushRecipeToCloud(r: {
+  id: string
+  menuItemId: string
+  ingredientId: string
+  quantity: number
+}): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    await pg.query(
+      `INSERT INTO "Recipe" (id, "menuItemId", "ingredientId", quantity)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT ("menuItemId", "ingredientId") DO UPDATE SET
+         quantity = EXCLUDED.quantity`,
+      [r.id, r.menuItemId, r.ingredientId, Number(r.quantity) || 0]
+    )
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushRecipeToCloud error (offline?):', err?.message)
+  }
+}
+
 // ─── Sync state ───────────────────────────────────────────────────────────────
 
 let isSyncing = false
@@ -492,34 +516,43 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       }
 
       // 4. Recipes
-      const { rows: cloudRecipes } = await pg.query(
-        `SELECT id, "menuItemId", "ingredientId", quantity FROM "Recipe"`
-      )
+      try {
+        const { rows: cloudRecipes } = await pg.query(
+          `SELECT id, "menuItemId", "ingredientId", quantity FROM "Recipe"`
+        )
 
-      for (const r of cloudRecipes) {
-        await prisma.recipe.upsert({
-          where: { id: r.id },
-          update: {
-            menuItemId: r.menuItemId,
-            ingredientId: r.ingredientId,
-            quantity: Number(r.quantity),
-          },
-          create: {
-            id: r.id,
-            menuItemId: r.menuItemId,
-            ingredientId: r.ingredientId,
-            quantity: Number(r.quantity),
-          },
-        })
-      }
-
-      // Delete local recipes that were deleted on cloud
-      const cloudRecipeIds = new Set(cloudRecipes.map(r => r.id))
-      const localRecipes = await prisma.recipe.findMany({ select: { id: true } })
-      for (const lr of localRecipes) {
-        if (!cloudRecipeIds.has(lr.id)) {
-          await prisma.recipe.delete({ where: { id: lr.id } }).catch(() => {})
+        for (const r of cloudRecipes) {
+          const existing = await prisma.recipe.findUnique({
+            where: { menuItemId_ingredientId: { menuItemId: r.menuItemId, ingredientId: r.ingredientId } }
+          })
+          if (existing) {
+            await prisma.recipe.update({
+              where: { id: existing.id },
+              data: { quantity: Number(r.quantity) },
+            })
+          } else {
+            await prisma.recipe.create({
+              data: {
+                id: r.id,
+                menuItemId: r.menuItemId,
+                ingredientId: r.ingredientId,
+                quantity: Number(r.quantity),
+              },
+            }).catch(() => {})
+          }
         }
+
+        // Delete local recipes that were deleted on cloud
+        const cloudRecipeKeys = new Set(cloudRecipes.map(r => `${r.menuItemId}_${r.ingredientId}`))
+        const localRecipes = await prisma.recipe.findMany()
+        for (const lr of localRecipes) {
+          const key = `${lr.menuItemId}_${lr.ingredientId}`
+          if (!cloudRecipeKeys.has(key)) {
+            await prisma.recipe.delete({ where: { id: lr.id } }).catch(() => {})
+          }
+        }
+      } catch (recipeErr) {
+        console.warn('[Pull recipes warning]', String(recipeErr))
       }
 
 

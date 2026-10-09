@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { backgroundSync, pushRecipeToCloud } from '@/lib/sync-engine'
 
 export async function GET(req: Request) {
   try {
@@ -24,6 +25,10 @@ export async function POST(req: Request) {
       data: body,
       include: { ingredient: true },
     })
+
+    await pushRecipeToCloud(recipe)
+    backgroundSync()
+
     return NextResponse.json(recipe)
   } catch (err: any) {
     console.error('[POST /api/recipes]', err)

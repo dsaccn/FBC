@@ -45,8 +45,6 @@ export default function RecipesPage() {
     }
   }, [])
 
-  useEffect(() => { loadBase() }, [loadBase])
-
   const loadRecipe = useCallback(async (item: MenuItem) => {
     setLoading(true)
     setError('')
@@ -66,6 +64,23 @@ export default function RecipesPage() {
       setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadBase()
+
+    const handleSync = () => {
+      loadBase()
+      if (selected) loadRecipe(selected)
+    }
+
+    window.addEventListener('cloud-pull-complete', handleSync)
+    window.addEventListener('sync-complete', handleSync)
+
+    return () => {
+      window.removeEventListener('cloud-pull-complete', handleSync)
+      window.removeEventListener('sync-complete', handleSync)
+    }
+  }, [loadBase, selected, loadRecipe])
 
   async function addLine() {
     if (!selected || !addIngForm.ingredientId || !addIngForm.quantity) return
