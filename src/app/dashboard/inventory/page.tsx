@@ -433,32 +433,33 @@ export default function InventoryPage() {
 
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+              <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
-                    {['Item', 'Category'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(201,168,76,0.08)', borderLeft: '1px solid rgba(201,168,76,0.15)', borderRight: '1px solid rgba(201,168,76,0.15)' }}>
-                      Store Qty <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--gold)', marginLeft: '6px', background: 'rgba(201,168,76,0.1)', padding: '2px 8px', borderRadius: '8px' }}>{filteredStoreQty}</span>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Item</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Category</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(201,168,76,0.08)', borderLeft: '1px solid rgba(201,168,76,0.15)', borderRight: '1px solid rgba(201,168,76,0.15)' }}>
+                      Store <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--gold)', marginLeft: '3px', background: 'rgba(201,168,76,0.15)', padding: '1px 5px', borderRadius: '6px' }}>{filteredStoreQty}</span>
                     </th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(82,183,136,0.08)', borderRight: '1px solid rgba(82,183,136,0.15)' }}>
-                      Bar Qty <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--success-light)', marginLeft: '6px', background: 'rgba(82,183,136,0.1)', padding: '2px 8px', borderRadius: '8px' }}>{filteredBarQty}</span>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(82,183,136,0.08)', borderRight: '1px solid rgba(82,183,136,0.15)' }}>
+                      Bar <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--success-light)', marginLeft: '3px', background: 'rgba(82,183,136,0.15)', padding: '1px 5px', borderRadius: '6px' }}>{filteredBarQty}</span>
                     </th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(59,130,246,0.08)', borderRight: '1px solid rgba(59,130,246,0.15)' }}>
-                      Total Qty <span style={{ fontSize: '13px', fontWeight: '800', color: '#60a5fa', marginLeft: '6px', background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '8px' }}>{filteredTotalQty}</span>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(59,130,246,0.08)', borderRight: '1px solid rgba(59,130,246,0.15)' }}>
+                      Total <span style={{ fontSize: '11px', fontWeight: '800', color: '#60a5fa', marginLeft: '3px', background: 'rgba(59,130,246,0.15)', padding: '1px 5px', borderRadius: '6px' }}>{filteredTotalQty}</span>
                     </th>
-                    {['Cost Price', 'Sell Price', 'Margin', 'Low Alert At', 'Status', 'Action'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
+                    <th style={{ padding: '10px 6px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Cost</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Sell</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Margin</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Status</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingItems ? (
-                    <tr><td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
                   ) : filtered.length === 0 ? (
-                    <tr><td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No items found.</td></tr>
+                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>No items found.</td></tr>
                   ) : (
                     <>
                       {filtered.map(item => {
@@ -469,66 +470,96 @@ export default function InventoryPage() {
                         const totalQty = storeQty + barQty
                         return (
                           <tr key={item.id} style={{ borderTop: '1px solid var(--black-border)', background: isLow ? 'rgba(230,57,70,0.03)' : 'transparent' }}>
-                            <td style={{ padding: '12px 16px', fontWeight: '500' }}>
-                              {item.name}
+                            <td style={{ padding: '9px 10px', fontWeight: '500' }}>
+                              <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px', lineHeight: 1.25 }}>{item.name}</div>
                               {item.parentItemId && (
-                                <div style={{ fontSize: '11px', color: 'var(--gold)', marginTop: '2px' }}>
-                                  → linked to {items.find(i => i.id === item.parentItemId)?.name} ×{item.unitMultiplier}
+                                <div style={{ fontSize: '11px', color: 'var(--gold)', marginTop: '1px' }}>
+                                  → {items.find(i => i.id === item.parentItemId)?.name} (×{item.unitMultiplier})
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>{isDrink ? '🍹' : '🍽'} {item.category?.name}</td>
+                            <td style={{ padding: '9px 8px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              {isDrink ? '🍹' : '🍽'} {item.category?.name || '—'}
+                            </td>
                             
                             {/* Store Qty Cell - Shaded */}
-                            <td style={{ padding: '12px 16px', background: 'rgba(201,168,76,0.03)', borderLeft: '1px solid rgba(201,168,76,0.1)', borderRight: '1px solid rgba(201,168,76,0.1)' }}>
+                            <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(201,168,76,0.03)', borderLeft: '1px solid rgba(201,168,76,0.1)', borderRight: '1px solid rgba(201,168,76,0.1)' }}>
                               {item.parentItemId ? (
-                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>see {items.find(i => i.id === item.parentItemId)?.name}</span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>linked</span>
                               ) : (
-                                <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--text-primary)' }}>{item.stockQuantity}</span>
+                                <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>{item.stockQuantity}</span>
                               )}
                             </td>
                             
                             {/* Bar Qty Cell - Shaded */}
-                            <td style={{ padding: '12px 16px', background: 'rgba(82,183,136,0.03)', borderRight: '1px solid rgba(82,183,136,0.1)' }}>
-                              <span style={{ fontWeight: '700', fontSize: '16px', color: (isDrink && isLow) ? 'var(--danger-light)' : 'var(--success-light)' }}>{barQty}</span>
+                            <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(82,183,136,0.03)', borderRight: '1px solid rgba(82,183,136,0.1)' }}>
+                              <span style={{ fontWeight: '700', fontSize: '14px', color: (isDrink && isLow) ? 'var(--danger-light)' : 'var(--success-light)' }}>{barQty}</span>
                             </td>
                             
                             {/* Total Qty Cell - Shaded */}
-                            <td style={{ padding: '12px 16px', background: 'rgba(59,130,246,0.03)', borderRight: '1px solid rgba(59,130,246,0.1)' }}>
-                              <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--text-primary)' }}>{totalQty}</span>
+                            <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(59,130,246,0.03)', borderRight: '1px solid rgba(59,130,246,0.1)' }}>
+                              <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>{totalQty}</span>
                             </td>
 
-                            <td style={{ padding: '12px 16px' }}>
-                              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                                {item.costPrice > 0 ? `${item.costPrice.toFixed(2)} ETB` : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Not set</span>}
-                              </span>
+                            {/* Cost Price */}
+                            <td style={{ padding: '9px 6px', textAlign: 'right', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                              {item.costPrice > 0 ? (
+                                <span style={{ color: 'var(--text-secondary)' }}>{item.costPrice.toFixed(2)}</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                              )}
                             </td>
-                            <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-primary)' }}>
-                              {item.price.toFixed(2)} ETB
+
+                            {/* Sell Price */}
+                            <td style={{ padding: '9px 6px', textAlign: 'right', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                              {item.price.toFixed(2)}
                             </td>
-                            <td style={{ padding: '12px 16px' }}>
+
+                            {/* Margin */}
+                            <td style={{ padding: '9px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               {item.costPrice > 0 ? (() => {
                                 const margin = item.price - item.costPrice
                                 const pct = ((margin / item.price) * 100).toFixed(0)
-                                return <span style={{ fontSize: '13px', fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                                  {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ETB ({pct}%)
-                                </span>
-                              })() : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                return (
+                                  <span style={{ fontSize: '11px', fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                                    {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ({pct}%)
+                                  </span>
+                                )
+                              })() : <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>}
                             </td>
-                            <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-secondary)' }}>{item.lowStockThreshold}</td>
-                            <td style={{ padding: '12px 16px' }}>
+
+                            {/* Status & Min threshold */}
+                            <td style={{ padding: '9px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {isLow ? (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '3px 8px', borderRadius: '8px', fontWeight: '600' }}>
-                                  <AlertTriangle size={11} /> LOW STOCK
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.12)', padding: '2px 6px', borderRadius: '6px', fontWeight: '700' }}>
+                                  <AlertTriangle size={11} /> LOW (≤{item.lowStockThreshold})
                                 </span>
                               ) : (
-                                <span style={{ fontSize: '12px', color: 'var(--success-light)', background: 'rgba(82,183,136,0.1)', padding: '3px 8px', borderRadius: '8px' }}>OK</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: 'var(--success-light)', background: 'rgba(82,183,136,0.1)', padding: '2px 6px', borderRadius: '6px', fontWeight: '600' }}>
+                                  OK <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '400' }}>(min {item.lowStockThreshold})</span>
+                                </span>
                               )}
                             </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn btn-gold btn-sm" onClick={() => { setTransferTarget(item); setTransferQty('') }}>Transfer to Bar</button>
-                                <button className="btn btn-outline btn-sm" onClick={() => { setAdjustTarget(item); setAdjustQty(''); setAdjustCostPrice(item.costPrice > 0 ? String(item.costPrice) : '') }}>Update Store</button>
+
+                            {/* Actions */}
+                            <td style={{ padding: '9px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
+                                <button
+                                  className="btn btn-gold btn-sm"
+                                  style={{ padding: '4px 9px', fontSize: '12px', height: 'auto', minHeight: 'unset', lineHeight: '1.2' }}
+                                  onClick={() => { setTransferTarget(item); setTransferQty('') }}
+                                  title="Transfer to Bar"
+                                >
+                                  Transfer
+                                </button>
+                                <button
+                                  className="btn btn-outline btn-sm"
+                                  style={{ padding: '4px 9px', fontSize: '12px', height: 'auto', minHeight: 'unset', lineHeight: '1.2' }}
+                                  onClick={() => { setAdjustTarget(item); setAdjustQty(''); setAdjustCostPrice(item.costPrice > 0 ? String(item.costPrice) : '') }}
+                                  title="Update Store Stock"
+                                >
+                                  Update
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -680,20 +711,24 @@ export default function InventoryPage() {
 
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+              <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
-                    {['Ingredient', 'Unit', 'In Stock', 'Cost / Unit', 'Stock Value', 'Min Threshold', 'Status', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Ingredient</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Unit</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>In Stock</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Cost / Unit</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Stock Value</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Status</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingIngs ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
                   ) : filteredIngredients.length === 0 ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
                     </td></tr>
                   ) : filteredIngredients.map(ing => {
@@ -702,58 +737,61 @@ export default function InventoryPage() {
                     const totalVal = Math.round(ing.quantity * costVal * 100) / 100
                     return (
                       <tr key={ing.id} style={{ borderTop: '1px solid var(--black-border)', background: isLow ? 'rgba(230,57,70,0.03)' : 'transparent' }}>
-                        <td style={{ padding: '12px 16px', fontWeight: '500' }}>
+                        <td style={{ padding: '9px 10px', fontWeight: '500' }}>
                           {isLow && <span style={{ color: 'var(--danger-light)', marginRight: '6px' }}>⚠</span>}
-                          {ing.name}
+                          <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{ing.name}</span>
                         </td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>{ing.unit}</td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '16px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
+                        <td style={{ padding: '9px 8px', fontSize: '12px', color: 'var(--text-secondary)' }}>{ing.unit}</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                          <span style={{ fontWeight: '700', fontSize: '14px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
                             {ing.quantity}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', fontSize: '12px' }}>
                           {costVal > 0 ? (
-                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{costVal.toFixed(2)} ETB</span>
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{costVal.toFixed(2)}</span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
                           )}
                         </td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', fontSize: '12px' }}>
                           {costVal > 0 ? (
-                            <span style={{ fontWeight: '700', color: 'var(--gold-light)' }}>{totalVal.toFixed(2)} ETB</span>
+                            <span style={{ fontWeight: '700', color: 'var(--gold-light)' }}>{totalVal.toFixed(2)}</span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
                           )}
                         </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-secondary)' }}>{ing.minThreshold}</td>
-                        <td style={{ padding: '12px 16px' }}>
+                        <td style={{ padding: '9px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           {isLow ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '3px 8px', borderRadius: '8px', fontWeight: '600' }}>
-                              <AlertTriangle size={11} /> LOW
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.12)', padding: '2px 6px', borderRadius: '6px', fontWeight: '700' }}>
+                              <AlertTriangle size={11} /> LOW (≤{ing.minThreshold})
                             </span>
                           ) : (
-                            <span style={{ fontSize: '12px', color: 'var(--success-light)', background: 'rgba(82,183,136,0.1)', padding: '3px 8px', borderRadius: '8px' }}>OK</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: 'var(--success-light)', background: 'rgba(82,183,136,0.1)', padding: '2px 6px', borderRadius: '6px', fontWeight: '600' }}>
+                              OK <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '400' }}>(min {ing.minThreshold})</span>
+                            </span>
                           )}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <td style={{ padding: '9px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
                             <button
                               className="btn btn-outline btn-sm"
+                              style={{ padding: '4px 9px', fontSize: '12px', height: 'auto', minHeight: 'unset', lineHeight: '1.2' }}
                               onClick={() => {
                                 setAdjustIngTarget(ing)
                                 setAdjustIngQty('')
                                 setAdjustIngCost(ing.costPerUnit ? String(ing.costPerUnit) : '')
                                 setAdjustIngMode('add')
                               }}
+                              title="Update Store Stock"
                             >
-                              Update Store
+                              Update
                             </button>
-                            <button className="btn btn-outline btn-sm" style={{ padding: '6px 10px' }} onClick={() => openEditIng(ing)} title="Edit ingredient">
-                              <Pencil size={13} />
+                            <button className="btn btn-outline btn-sm" style={{ padding: '4px 7px', height: 'auto', minHeight: 'unset' }} onClick={() => openEditIng(ing)} title="Edit ingredient">
+                              <Pencil size={12} />
                             </button>
-                            <button className="btn btn-ghost btn-sm" style={{ padding: '6px 10px', color: 'var(--danger-light)' }} onClick={() => deleteIngredient(ing.id)} title="Delete ingredient">
-                              <Trash2 size={13} />
+                            <button className="btn btn-ghost btn-sm" style={{ padding: '4px 7px', height: 'auto', minHeight: 'unset', color: 'var(--danger-light)' }} onClick={() => deleteIngredient(ing.id)} title="Delete ingredient">
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         </td>
@@ -859,30 +897,35 @@ export default function InventoryPage() {
         <>
           {/* Desktop Table View */}
           <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="hide-scrollbar" style={{ width: '100%', overflowX: 'auto' }}>
+              <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--black-hover)' }}>
-                    {['Date & Time', 'Item Name', 'Source/Type', 'Action', 'Qty Changed', 'Prev Qty', 'New Qty', 'User'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Date & Time</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Item Name</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Source/Type</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Action</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Qty Changed</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Prev Qty</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>New Qty</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>User</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingLogs ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
                   ) : logs.length === 0 ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No logs found.</td></tr>
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>No logs found.</td></tr>
                   ) : logs.map(log => (
                     <tr key={log.id} style={{ borderTop: '1px solid var(--black-border)' }}>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      <td style={{ padding: '9px 10px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
                       </td>
-                      <td style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>{log.itemName}</td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '9px 8px', fontWeight: '700', color: 'var(--text-primary)', fontSize: '13px' }}>{log.itemName}</td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center' }}>
                         <span className="badge badge-outline" style={{ fontSize: '11px' }}>{log.type}</span>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '9px 8px', textAlign: 'center' }}>
                         <span className={`badge ${
                           log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
                           log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
@@ -890,12 +933,12 @@ export default function InventoryPage() {
                           {log.action}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 16px', fontWeight: '700', color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
+                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: '700', color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
                         {(log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{log.prevQty}</td>
-                      <td style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-primary)' }}>{log.newQty}</td>
-                      <td style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-primary)' }}>{log.userName}</td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>{log.prevQty}</td>
+                      <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{log.newQty}</td>
+                      <td style={{ padding: '9px 10px', fontWeight: '600', color: 'var(--text-primary)', fontSize: '12px' }}>{log.userName}</td>
                     </tr>
                   ))}
                 </tbody>
