@@ -199,6 +199,59 @@ export async function GET(req: Request) {
   const grossProfit = Math.round((totalRevenue - totalCOGS) * 100) / 100
   const profitMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 1000) / 10 : 0
 
+  // --- Waste & Spoilage Cost Calculations ---
+  const ingredientCostMap = new Map<string, number>()
+  allIngredients.forEach(ing => {
+    ingredientCostMap.set(ing.name.toLowerCase().trim(), Number(ing.costPerUnit || 0))
+  })
+
+  const menuItemCostMap = new Map<string, number>()
+  inventory.forEach(item => {
+    const { cost } = getItemCost(item)
+    menuItemCostMap.set(item.name.toLowerCase().trim(), cost)
+  })
+
+  let totalWasteCost = 0
+  let totalWasteQty = 0
+
+  const wasteLogs = inventoryLogs.filter(
+    l => l.action && typeof l.action === 'string' && l.action.startsWith('WASTE')
+  )
+
+  const wasteBreakdown = wasteLogs.map(log => {
+    const cleanName = log.itemName.toLowerCase().trim()
+    let unitCost = 0
+    if (log.type === 'INGREDIENT') {
+      unitCost = ingredientCostMap.get(cleanName) ?? menuItemCostMap.get(cleanName) ?? 0
+    } else {
+      unitCost = menuItemCostMap.get(cleanName) ?? ingredientCostMap.get(cleanName) ?? 0
+    }
+
+    const qty = Number(log.quantity || 0)
+    const lineCost = Math.round(qty * unitCost * 100) / 100
+    totalWasteCost += lineCost
+    totalWasteQty += qty
+
+    const reason = log.action.replace(/^WASTE:\s*/i, '')
+
+    return {
+      id: log.id,
+      itemName: log.itemName,
+      type: log.type,
+      quantity: qty,
+      unitCost,
+      totalCost: lineCost,
+      reason,
+      userName: log.userName,
+      createdAt: log.createdAt,
+    }
+  })
+
+  totalWasteCost = Math.round(totalWasteCost * 100) / 100
+  totalWasteQty = Math.round(totalWasteQty * 100) / 100
+  const netProfit = Math.round((grossProfit - totalWasteCost) * 100) / 100
+  const netProfitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 1000) / 10 : 0
+
   // Best selling items
   const itemSales: Record<string, { 
     name: string; 
@@ -438,6 +491,11 @@ export async function GET(req: Request) {
     totalCOGS,
     grossProfit,
     profitMargin,
+    totalWasteCost,
+    totalWasteQty,
+    netProfit,
+    netProfitMargin,
+    wasteBreakdown,
     profitByCategory,
     profitByItem,
     totalOrders: orders.length,

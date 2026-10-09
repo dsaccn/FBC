@@ -19,7 +19,8 @@ import {
   Layers,
   Package,
   Boxes,
-  Calendar
+  Calendar,
+  Trash2
 } from 'lucide-react'
 
 export interface ProfitCategory {
@@ -52,6 +53,21 @@ interface ReportData {
   totalCOGS?: number
   grossProfit?: number
   profitMargin?: number
+  totalWasteCost?: number
+  totalWasteQty?: number
+  netProfit?: number
+  netProfitMargin?: number
+  wasteBreakdown?: {
+    id: string
+    itemName: string
+    type: string
+    quantity: number
+    unitCost: number
+    totalCost: number
+    reason: string
+    userName: string
+    createdAt: string
+  }[]
   totalOrders: number
   revenueByMethod: Record<string, number>
   bestSelling: { 
@@ -445,8 +461,10 @@ export default function ReportsPage() {
           </tr>
           <tr><td style="${tdBase}">Gross Revenue</td><td style="${numTd}font-weight:bold;">${data.totalRevenue.toFixed(2)}</td></tr>
           <tr><td style="${tdBase}">Cost of Goods Sold (COGS)</td><td style="${numTd}color:#B91C1C;">${(data.totalCOGS || 0).toFixed(2)}</td></tr>
-          <tr style="background-color:#F0FDF4;"><td style="${tdBase}font-weight:bold;">Gross Profit</td><td style="${numTd}font-weight:bold;color:#047857;">${(data.grossProfit || 0).toFixed(2)}</td></tr>
-          <tr><td style="${tdBase}">Overall Profit Margin</td><td style="${numTd}font-weight:bold;">${(data.profitMargin ?? 0).toFixed(1)}%</td></tr>
+          <tr style="background-color:#F0FDF4;"><td style="${tdBase}font-weight:bold;">Gross Profit (Sales)</td><td style="${numTd}font-weight:bold;color:#047857;">${(data.grossProfit || 0).toFixed(2)}</td></tr>
+          <tr><td style="${tdBase}color:#B91C1C;">Waste & Spoilage Loss</td><td style="${numTd}font-weight:bold;color:#B91C1C;">-${(data.totalWasteCost || 0).toFixed(2)}</td></tr>
+          <tr style="background-color:#ECFDF5;"><td style="${tdBase}font-weight:bold;color:#065F46;">Net Profit (After Waste)</td><td style="${numTd}font-weight:bold;color:#065F46;">${(data.netProfit !== undefined ? data.netProfit : ((data.grossProfit || 0) - (data.totalWasteCost || 0))).toFixed(2)}</td></tr>
+          <tr><td style="${tdBase}">Net Profit Margin</td><td style="${numTd}font-weight:bold;color:#065F46;">${(data.netProfitMargin ?? (data.totalRevenue > 0 ? (((data.netProfit ?? 0) / data.totalRevenue) * 100) : 0)).toFixed(1)}%</td></tr>
           ${data.inventoryValuation ? `
           <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Store Raw Ingredients Valuation</td><td style="${numTd}">${data.inventoryValuation.ingredientValue.toFixed(2)}</td></tr>
           <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Retail Finished Stock Valuation</td><td style="${numTd}">${data.inventoryValuation.retailValue.toFixed(2)}</td></tr>
@@ -485,6 +503,46 @@ export default function ReportsPage() {
             </tr>
           </tbody>
         </table>
+
+        <!-- Waste & Spoilage Detail Table -->
+        ${(data.wasteBreakdown && data.wasteBreakdown.length > 0) ? `
+        <p style="font-size:13pt;font-weight:bold;font-family:Arial,sans-serif;margin-top:28px;margin-bottom:8px;color:#991B1B;">
+          Waste & Spoilage Audit Log (${data.wasteBreakdown.length} items · Total Spoilage Loss: ETB ${(data.totalWasteCost || 0).toFixed(2)})
+        </p>
+        <table>
+          <thead>
+            <tr style="background-color:#991B1B;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Date & Time</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Item Name</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Type</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Reason / Notes</th>
+              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Qty Discarded</th>
+              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Unit Cost</th>
+              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Total Loss</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Logged By</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.wasteBreakdown.map(wb => `<tr>
+              <td style="${tdBase}">${new Date(wb.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+              <td style="${tdBase};font-weight:bold;">${wb.itemName}</td>
+              <td style="${tdBase}">${wb.type}</td>
+              <td style="${tdBase}">${wb.reason}</td>
+              <td style="${numTd}">${wb.quantity}</td>
+              <td style="${numTd}">${wb.unitCost.toFixed(2)}</td>
+              <td style="${numTd};color:#B91C1C;font-weight:bold;">-${wb.totalCost.toFixed(2)}</td>
+              <td style="${tdBase}">${wb.userName}</td>
+            </tr>`).join('')}
+            <tr style="background-color:#FEE2E2;font-weight:bold;border-top:2px solid #991B1B;">
+              <td colspan="4" style="${tdBase}">TOTAL SPOILAGE LOSS</td>
+              <td style="${numTd}">${(data.totalWasteQty || 0)}</td>
+              <td style="${tdBase}">-</td>
+              <td style="${numTd};color:#B91C1C;">-${(data.totalWasteCost || 0).toFixed(2)}</td>
+              <td style="${tdBase}">-</td>
+            </tr>
+          </tbody>
+        </table>
+        ` : ''}
       </body>
       </html>`
 
@@ -1217,7 +1275,13 @@ export default function ReportsPage() {
           const totalCost = data.totalCOGS || 0
           const grossProf = data.grossProfit || 0
           const overallMargin = data.profitMargin ?? 0
+          const wasteCost = data.totalWasteCost || 0
+          const netProf = data.netProfit !== undefined ? data.netProfit : (grossProf - wasteCost)
+          const netMargin = data.netProfitMargin ?? (totalRev > 0 ? (netProf / totalRev) * 100 : 0)
+
           const cogsPct = totalRev > 0 ? Math.min(100, Math.max(0, (totalCost / totalRev) * 100)) : 0
+          const wastePct = totalRev > 0 ? Math.min(100, Math.max(0, (wasteCost / totalRev) * 100)) : 0
+          const netPct = totalRev > 0 ? Math.max(0, 100 - cogsPct - wastePct) : 0
           const profitPct = totalRev > 0 ? Math.max(0, 100 - cogsPct) : 0
 
           const filteredItems = (data.profitByItem || []).filter(item => {
@@ -1247,7 +1311,7 @@ export default function ReportsPage() {
                     <PieChart size={22} color="var(--gold)" /> Profit & Loss Statement (P&L)
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                    Cost of Goods Sold (COGS), Gross Profit, and Margin breakdown across items and categories
+                    Cost of Goods Sold (COGS), Waste & Spoilage Loss, Gross/Net Profit and Margins
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -1263,7 +1327,7 @@ export default function ReportsPage() {
                   Executive Financial Summary
                 </div>
 
-                {/* 5 Mini Cards in Grid */}
+                {/* Mini Cards in Grid */}
                 <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                   <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales Revenue</div>
@@ -1278,17 +1342,29 @@ export default function ReportsPage() {
                   </div>
 
                   <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(160,185,129,0.25)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit</div>
+                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit (Sales)</div>
                     <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: grossProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
                       {formatMoney(grossProf)}
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{profitPct.toFixed(1)}% of revenue</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{overallMargin.toFixed(1)}% gross margin</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(168,85,247,0.25)' }}>
-                    <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', marginBottom: '4px' }}>Gross Profit Margin</div>
-                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: '#c084fc' }}>{overallMargin.toFixed(1)}%</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Net return rate</div>
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.35)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Trash2 size={12} color="var(--danger-light)" /> Waste / Spoilage Loss
+                    </div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: 'var(--danger-light)' }}>
+                      -{formatMoney(wasteCost)}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{data.wasteBreakdown?.length || 0} discarded logs</div>
+                  </div>
+
+                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.35)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px' }}>Net Profit (After Waste)</div>
+                    <div className="reports-pl-value" style={{ fontSize: '22px', fontWeight: '700', color: netProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                      {formatMoney(netProf)}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{netMargin.toFixed(1)}% net margin</div>
                   </div>
 
                   <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(212,175,55,0.25)' }}>
@@ -1302,11 +1378,14 @@ export default function ReportsPage() {
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
                     <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>Revenue Allocation</span>
-                    <span style={{ color: 'var(--text-muted)' }}>Cost ({cogsPct.toFixed(1)}%) vs Profit ({profitPct.toFixed(1)}%)</span>
+                    <span style={{ color: 'var(--text-muted)' }}>COGS ({cogsPct.toFixed(1)}%) {wastePct > 0 ? `· Waste (${wastePct.toFixed(1)}%) ` : ''}· Net Profit ({netPct.toFixed(1)}%)</span>
                   </div>
                   <div style={{ height: '22px', borderRadius: '11px', overflow: 'hidden', display: 'flex', background: 'var(--black-card)', border: '1px solid var(--black-border)' }}>
                     <div style={{ width: `${cogsPct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)', transition: 'width 0.4s' }} title={`COGS: ${formatMoney(totalCost)} (${cogsPct.toFixed(1)}%)`} />
-                    <div style={{ width: `${profitPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Gross Profit: ${formatMoney(grossProf)} (${profitPct.toFixed(1)}%)`} />
+                    {wastePct > 0 && (
+                      <div style={{ width: `${wastePct}%`, background: 'linear-gradient(90deg, #b91c1c, #7f1d1d)', transition: 'width 0.4s' }} title={`Waste / Spoilage Loss: -${formatMoney(wasteCost)} (${wastePct.toFixed(1)}%)`} />
+                    )}
+                    <div style={{ width: `${netPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Net Profit: ${formatMoney(netProf)} (${netPct.toFixed(1)}%)`} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1314,10 +1393,17 @@ export default function ReportsPage() {
                       <span style={{ color: 'var(--text-secondary)' }}>COGS:</span>
                       <b style={{ color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</b>
                     </div>
+                    {wasteCost > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#7f1d1d' }} />
+                        <span style={{ color: 'var(--text-secondary)' }}>Waste Loss:</span>
+                        <b style={{ color: 'var(--danger-light)' }}>-{formatMoney(wasteCost)}</b>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#10b981' }} />
-                      <span style={{ color: 'var(--text-secondary)' }}>Gross Profit:</span>
-                      <b style={{ color: 'var(--success-light)' }}>{formatMoney(grossProf)}</b>
+                      <span style={{ color: 'var(--text-secondary)' }}>Net Profit:</span>
+                      <b style={{ color: 'var(--success-light)' }}>{formatMoney(netProf)}</b>
                     </div>
                   </div>
                 </div>
@@ -1590,6 +1676,76 @@ export default function ReportsPage() {
                     )
                   },
                   'No profit items match your filter criteria.'
+                )}
+              </div>
+
+              {/* Section D: Waste & Spoilage Audit Log */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Trash2 size={16} color="var(--danger-light)" /> Waste & Spoilage Cost Impact ({data.wasteBreakdown?.length || 0} items)
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Total Spoilage Loss: <b style={{ color: 'var(--danger-light)' }}>-{formatMoney(wasteCost)}</b>
+                  </div>
+                </div>
+
+                {data.wasteBreakdown && data.wasteBreakdown.length > 0 ? (
+                  <>
+                    <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
+                      <div className="table-scrollbar">
+                        <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.2)' }}>
+                              {['Date & Time', 'Item Name', 'Source', 'Reason / Notes', 'Qty Discarded', 'Unit Cost', 'Financial Loss', 'Logged By'].map(h => (
+                                <th key={h} style={{ padding: '12px 16px', textAlign: h === 'Qty Discarded' || h === 'Unit Cost' || h === 'Financial Loss' ? 'right' : 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.wasteBreakdown.map(wb => (
+                              <tr key={wb.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
+                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                  {new Date(wb.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
+                                </td>
+                                <td style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>{wb.itemName}</td>
+                                <td style={{ padding: '12px 16px' }}><span className="badge badge-outline" style={{ fontSize: '11px' }}>{wb.type}</span></td>
+                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>{wb.reason}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--danger-light)' }}>-{wb.quantity}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', color: 'var(--text-muted)' }}>{formatMoney(wb.unitCost)}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--danger-light)' }}>-{formatMoney(wb.totalCost)}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>{wb.userName}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile Cards for Waste */}
+                    <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {data.wasteBreakdown.map(wb => (
+                        <div key={wb.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid rgba(239,68,68,0.25)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>{wb.itemName}</span>
+                            <span style={{ fontWeight: '700', color: 'var(--danger-light)', fontSize: '14px' }}>-{formatMoney(wb.totalCost)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            <span>{wb.reason}</span>
+                            <span>Qty: <b style={{ color: 'var(--danger-light)' }}>-{wb.quantity}</b> ({formatMoney(wb.unitCost)}/u)</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--black-border)', paddingTop: '6px' }}>
+                            <span>{new Date(wb.createdAt).toLocaleDateString('en-ET')}</span>
+                            <span>{wb.userName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'rgba(16,185,129,0.03)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                    ✅ No waste or spoilage logged during this period.
+                  </div>
                 )}
               </div>
             </div>
@@ -2417,14 +2573,15 @@ export default function ReportsPage() {
               </td>
               <td style={{ padding: '16px 20px' }}>
                 <span className={`badge ${
+                  log.action.startsWith('WASTE') ? 'badge-cancelled' :
                   log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
                   log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
                 }`}>
                   {log.action}
                 </span>
               </td>
-              <td style={{ padding: '16px 20px', fontWeight: '700', color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
-                {(log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
+              <td style={{ padding: '16px 20px', fontWeight: '700', color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
+                {log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
               </td>
               <td style={{ padding: '16px 20px', color: 'var(--text-muted)' }}>{log.prevQty}</td>
               <td style={{ padding: '16px 20px', fontWeight: '600' }}>{log.newQty}</td>
@@ -2436,6 +2593,7 @@ export default function ReportsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: '700', fontSize: '14px' }}>{log.itemName}</span>
                 <span className={`badge ${
+                  log.action.startsWith('WASTE') ? 'badge-cancelled' :
                   log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
                   log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
                 }`} style={{ fontSize: '10px' }}>{log.action}</span>
@@ -2449,7 +2607,7 @@ export default function ReportsPage() {
                   {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
                 <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
-                  Qty: <b style={{ color: (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'inherit' }}>{(log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}</b> 
+                  Qty: <b style={{ color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'inherit' }}>{log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}</b> 
                   <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '6px' }}>({log.prevQty} → {log.newQty})</span>
                 </div>
               </div>
