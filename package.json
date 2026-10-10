@@ -6,7 +6,7 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "vercel-build": "npx prisma generate --schema=prisma/schema.postgres.prisma && npx prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss && next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint",
     "db:migrate": "npx prisma migrate dev --name init",
     "db:seed": "npx ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",

@@ -62,7 +62,7 @@ echo.
 start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:3000"
 
 :: Start Next.js production server
-call npm run start -- -H 0.0.0.0 -p 3000
+call npm run start
 
 if %errorlevel% neq 0 (
     echo.
@@ -77,4 +77,4 @@ exit /b
 :: =========================================================
 :BACKGROUND_MODE
 echo [%date% %time%] Starting Kogna Coffee POS background server... >> "%POS_DIR%pos-server.log"
-call npm run start -- -H 0.0.0.0 -p 3000 >> "%POS_DIR%pos-server.log" 2>&1
+call npm run start >> "%POS_DIR%pos-server.log" 2>&1
