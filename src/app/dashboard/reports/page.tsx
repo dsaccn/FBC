@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { 
-  Printer, 
   RefreshCw, 
   TrendingUp, 
   DollarSign, 
@@ -252,7 +251,6 @@ export default function ReportsPage() {
     }
   }, [load])
 
-  function printReport() { window.print() }
 
   function exportCategorizedToExcel() {
     if (!data || !data.categorizedReport) return
@@ -612,14 +610,7 @@ export default function ReportsPage() {
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
               <span>{syncing ? '...' : 'Sync'}</span>
             </button>
-            <button
-              className="btn btn-gold btn-sm"
-              onClick={printReport}
-              style={{ padding: '6px 10px', height: '32px', minHeight: '32px', fontSize: '11px' }}
-              title="Print report"
-            >
-              <Printer size={13} />
-            </button>
+
           </div>
         </div>
 
@@ -840,23 +831,7 @@ export default function ReportsPage() {
               <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} color="var(--gold)" />
               <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>
             </button>
-            <button
-              className="btn btn-gold btn-sm"
-              onClick={printReport}
-              style={{
-                height: '38px',
-                padding: '0 18px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 8px rgba(212,175,55,0.25)'
-              }}
-            >
-              <Printer size={15} /> Print Report
-            </button>
+
           </div>
         </div>
 
