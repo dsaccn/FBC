@@ -76,5 +76,5 @@ exit /b
 :: Background Mode (Task Scheduler / System Startup)
 :: =========================================================
 :BACKGROUND_MODE
-echo [%date% %time%] Starting Diva Addis POS background server... >> "%POS_DIR%pos-server.log"
+echo [%date% %time%] Starting Kogna Coffee POS background server... >> "%POS_DIR%pos-server.log"
 call npm run start -- -H 0.0.0.0 -p 3000 >> "%POS_DIR%pos-server.log" 2>&1

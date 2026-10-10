@@ -10,9 +10,9 @@ set "DIST_DIR=%POS_DIR%kogna-coffee-pos-dist"
 set "ZIP_FILE=%POS_DIR%kogna-coffee-pos-offline.zip"
 
 echo.
-echo ==========================================
-echo  Kogna Coffee POS — Create Offline Package
-echo ==========================================
+echo =========================================================
+echo       KOGNA COFFEE POS — CREATE OFFLINE PACKAGE
+echo =========================================================
 echo.
 
 :: Clean up previous runs
@@ -40,11 +40,13 @@ mkdir "%DIST_DIR%"
 mkdir "%DIST_DIR%\prisma"
 mkdir "%DIST_DIR%\public"
 mkdir "%DIST_DIR%\src"
+mkdir "%DIST_DIR%\scripts"
 
 :: Copy code and configs
 xcopy /E /I /Y "public" "%DIST_DIR%\public" >nul
 xcopy /E /I /Y "src" "%DIST_DIR%\src" >nul
 xcopy /E /I /Y "prisma" "%DIST_DIR%\prisma" >nul
+xcopy /E /I /Y "scripts" "%DIST_DIR%\scripts" >nul
 
 copy ".env" "%DIST_DIR%\" >nul
 copy "package.json" "%DIST_DIR%\" >nul
@@ -108,10 +110,10 @@ echo.
 echo  Instructions for the Offline PC:
 echo   1. Copy %ZIP_FILE% to a USB drive.
 echo   2. Plug USB into the target offline PC.
-echo   3. Extract %ZIP_FILE% to C:\DivaAddisPOS (or Desktop).
+echo   3. Extract %ZIP_FILE% to C:\KognaCoffeePOS (or Desktop).
 echo   4. If Node.js is not installed, double-click node-v22.14.0-x64.msi.
-echo   5. Right-click install-offline.bat and choose "Run as administrator".
-echo   6. Double-click start-pos.bat to run the POS!
+echo   5. Right-click install-offline.bat and choose 'Run as administrator'.
+echo   6. Double-click the 'Start Kogna POS' desktop shortcut to run!
 echo =========================================================
 echo.
 pause

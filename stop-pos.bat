@@ -13,9 +13,10 @@ echo.
 set "STOPPED=0"
 
 :: 1. Stop Windows Task Scheduler task if running
+schtasks /end /tn "Kogna Coffee POS Server" >nul 2>&1
 schtasks /end /tn "DivaAddis POS Server" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [OK] Stopped background Windows Task "DivaAddis POS Server".
+    echo [OK] Stopped background Windows Task "Kogna Coffee POS Server".
     set "STOPPED=1"
 )
 
