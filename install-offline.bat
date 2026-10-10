@@ -137,25 +137,13 @@ if %errorlevel% neq 0 (
     echo    Auto-start registered: OK (starts automatically on computer boot)
 )
 
-:: Create Desktop Shortcuts via PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ws = New-Object -ComObject WScript.Shell; " ^
-  "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
-  "$s1 = $ws.CreateShortcut(\"$desktop\Start Kogna POS.lnk\"); " ^
-  "$s1.TargetPath = '%BAT_FILE%'; " ^
-  "$s1.WorkingDirectory = '%POS_DIR%'; " ^
-  "$s1.Description = 'Start Kogna Coffee POS Server'; " ^
-  "$s1.Save(); " ^
-  "$s2 = $ws.CreateShortcut(\"$desktop\Stop Kogna POS.lnk\"); " ^
-  "$s2.TargetPath = '%POS_DIR%stop-pos.bat'; " ^
-  "$s2.WorkingDirectory = '%POS_DIR%'; " ^
-  "$s2.Description = 'Stop Kogna Coffee POS Server'; " ^
-  "$s2.Save(); " ^
-  "$s3 = $ws.CreateShortcut(\"$desktop\Open Kogna POS.url\"); " ^
-  "$s3.TargetPath = 'http://localhost:3000'; " ^
-  "$s3.Save();" >nul 2>&1
-
-echo    Desktop shortcuts created (Start Kogna POS, Stop Kogna POS, Open Kogna POS): OK
+:: Create Desktop Shortcut
+set "DESKTOP=%USERPROFILE%\Desktop"
+if exist "%DESKTOP%" (
+    echo [InternetShortcut] > "%DESKTOP%\Open Kogna POS.url"
+    echo URL=http://localhost:3000 >> "%DESKTOP%\Open Kogna POS.url"
+    echo    Desktop shortcut 'Open Kogna POS' created: OK
+)
 echo.
 
 :: ── Done ────────────────────────────────────────────────
@@ -165,12 +153,12 @@ echo =========================================================
 echo.
 echo  The Kogna Coffee POS is now installed on this computer.
 echo.
-echo  To start the POS server right now:
-echo    1. Double-click the desktop shortcut: 'Start Kogna POS'
-echo    2. Open your browser: http://localhost:3000
+echo  To start the POS server:
+echo    1. Double-click: start-pos.bat
+echo    2. Double-click 'Open Kogna POS' on Desktop (or open http://localhost:3000)
 echo.
 echo  To stop the server:
-echo    Double-click the desktop shortcut: 'Stop Kogna POS'
+echo    Double-click: stop-pos.bat
 echo.
 echo =========================================================
 pause
