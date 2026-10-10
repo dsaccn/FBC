@@ -3,22 +3,22 @@
 @import "tailwindcss";
 
 :root {
-  --gold: #C9A84C;
-  --gold-light: #D4B95E;
-  --gold-dark: #8B7332;
-  --black: #1A1408;
-  --black-card: #241C0E;
-  --black-hover: #2E2413;
-  --black-border: #3D3118;
-  --text-primary: #F5F0E6;
-  --text-secondary: #BFB49A;
-  --text-muted: #7A7060;
-  --success: #047857;
+  --gold: #E5C058;
+  --gold-light: #F6D878;
+  --gold-dark: #A68028;
+  --black: #0F1217;
+  --black-card: #181D26;
+  --black-hover: #222836;
+  --black-border: #2D3748;
+  --text-primary: #FFFFFF;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --success: #059669;
   --success-light: #10B981;
-  --warning: #B45309;
-  --warning-light: #F59E0B;
-  --danger: #B91C1C;
-  --danger-light: #EF4444;
+  --warning: #D97706;
+  --warning-light: #FBBF24;
+  --danger: #DC2626;
+  --danger-light: #F87171;
 }
 
 * {
@@ -57,11 +57,13 @@ html, body {
 }
 
 /* Cards */
+/* Cards */
 .card {
   background: var(--black-card);
   border: 1px solid var(--black-border);
   border-radius: 12px;
   padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .card-hover {
@@ -72,7 +74,7 @@ html, body {
 .card-hover:hover {
   border-color: var(--gold);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(201, 168, 76, 0.15);
+  box-shadow: 0 8px 24px rgba(229, 192, 88, 0.2);
 }
 
 /* Buttons */
@@ -95,17 +97,18 @@ html, body {
 
 .btn-gold {
   background: linear-gradient(135deg, var(--gold-light), var(--gold));
-  color: white;
+  color: #0F1217;
+  font-weight: 700;
 }
-.btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201, 168, 76, 0.3); }
+.btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(229, 192, 88, 0.35); }
 .btn-gold:active { transform: translateY(0); }
 
 .btn-outline {
   background: transparent;
-  border: 1px solid var(--gold-dark);
+  border: 1px solid var(--gold);
   color: var(--gold);
 }
-.btn-outline:hover { background: rgba(201, 168, 76, 0.08); border-color: var(--gold); }
+.btn-outline:hover { background: rgba(229, 192, 88, 0.12); border-color: var(--gold-light); color: var(--gold-light); }
 
 .btn-danger {
   background: var(--danger);
@@ -145,11 +148,11 @@ html, body {
   font-size: 15px;
   width: 100%;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   font-family: 'Inter', sans-serif;
 }
 
-.input:focus { border-color: var(--gold-dark); }
+.input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(229, 192, 88, 0.25); }
 .input::placeholder { color: var(--text-muted); }
 
 .input-label {
@@ -174,12 +177,12 @@ html, body {
   letter-spacing: 0.5px;
 }
 
-.badge-free { background: rgba(16, 185, 129, 0.12); color: var(--success); }
-.badge-occupied { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
-.badge-waiting { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
-.badge-open { background: rgba(201, 168, 76, 0.12); color: var(--gold); }
-.badge-paid { background: rgba(16, 185, 129, 0.12); color: var(--success); }
-.badge-cancelled { background: rgba(90,80,64,0.2); color: var(--text-muted); }
+.badge-free { background: rgba(16, 185, 129, 0.18); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.35); }
+.badge-occupied { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.35); }
+.badge-waiting { background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.35); }
+.badge-open { background: rgba(229, 192, 88, 0.18); color: var(--gold-light); border: 1px solid rgba(229, 192, 88, 0.35); }
+.badge-paid { background: rgba(16, 185, 129, 0.18); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.35); }
+.badge-cancelled { background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.35); }
 
 /* Divider */
 .divider {
@@ -248,12 +251,20 @@ html, body {
 .animate-slide-in { animation: slideIn 0.3s ease forwards; }
 .animate-pulse { animation: pulse 2s ease-in-out infinite; }
 
+/* Table Row Hover */
+.table-row-hover {
+  transition: background-color 0.15s ease;
+}
+.table-row-hover:hover {
+  background-color: var(--black-hover) !important;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10,8,3,0.85);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 18, 23, 0.85);
+  backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -271,6 +282,7 @@ html, body {
   max-height: 90vh;
   overflow-y: auto;
   animation: fadeIn 0.2s ease;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
 /* Toast */
