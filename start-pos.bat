@@ -1,80 +1,53 @@
 @echo off
-:: =========================================================
-:: Diva Addis / Kogna Coffee POS — Start Server
-:: Can be run interactively by double-clicking, or
-:: automatically on boot via Task Scheduler (--background).
-:: =========================================================
-
-set "POS_DIR=%~dp0"
-cd /d "%POS_DIR%"
-
-:: Ensure Node.js is in PATH even if recently installed
-set "PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm"
-
-if "%1"=="--background" goto BACKGROUND_MODE
-
-:: =========================================================
-:: Interactive Mode (Double-clicked by user)
-:: =========================================================
 title Kogna Coffee POS Server
+cd /d "%~dp0"
 
-echo.
 echo =========================================================
 echo             KOGNA COFFEE — POS SERVER
 echo =========================================================
 echo.
+echo Location: %CD%
+echo.
 
-:: 1. Check for Node.js
+:: 1. Check if package.json is present in this directory
+if not exist "package.json" (
+    echo [ERROR] package.json was not found in this directory!
+    echo Directory: %CD%
+    echo.
+    pause
+    exit /b 1
+)
+
+:: 2. Ensure Node.js is accessible
+set "PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm;C:\Program Files (x86)\nodejs"
+
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not detected on this computer.
-    if exist "%POS_DIR%node-v22.14.0-x64.msi" (
-        echo.
-        echo Found Node.js installer: node-v22.14.0-x64.msi
-        echo Please run node-v22.14.0-x64.msi to install Node.js first,
-        echo then restart start-pos.bat!
-    ) else (
-        echo Please install Node.js (LTS version) from https://nodejs.org
+    echo [ERROR] Node.js is not installed or not in PATH!
+    if exist "node-v22.14.0-x64.msi" (
+        echo Found installer node-v22.14.0-x64.msi in this folder.
+        echo Please double-click node-v22.14.0-x64.msi to install it first!
     )
     echo.
     pause
     exit /b 1
 )
 
-:: 2. Detect Local IP Address for other devices
-set "LOCAL_IP=localhost"
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address" /c:"IP-Adresse"') do (
-    for /f "tokens=1" %%b in ("%%a") do (
-        set "LOCAL_IP=%%b"
-    )
-)
+:: 3. Open the browser to the POS
+echo Opening http://localhost:3000 in your browser...
+start http://localhost:3000
 
-echo  Local PC Browser:     http://localhost:3000
-echo  Waiter Phones / Tabs: http://%LOCAL_IP%:3000
+:: 4. Start Next.js production server
 echo.
-echo =========================================================
-echo  Starting server on 0.0.0.0:3000...
-echo  (Keep this window open while using the POS)
+echo Starting POS server on port 3000...
+echo (Keep this window open while using the POS!)
 echo =========================================================
 echo.
 
-:: Launch browser in background after 3 seconds
-start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:3000"
+call npm start
 
-:: Start Next.js production server
-call npm run start
-
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] Server exited with an error. Check if port 3000 is already in use.
-    echo You can run stop-pos.bat and then try starting again.
-    pause
-)
-exit /b
-
-:: =========================================================
-:: Background Mode (Task Scheduler / System Startup)
-:: =========================================================
-:BACKGROUND_MODE
-echo [%date% %time%] Starting Kogna Coffee POS background server... >> "%POS_DIR%pos-server.log"
-call npm run start >> "%POS_DIR%pos-server.log" 2>&1
+echo.
+echo =========================================================
+echo The POS server has stopped.
+echo =========================================================
+pause
