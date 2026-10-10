@@ -49,7 +49,7 @@ export default function NexoraLogo({
             style={{
               fontFamily: 'Inter, system-ui, sans-serif',
               letterSpacing: '0.05em',
-              color: '#F0F4F8',
+              color: 'var(--text-primary)',
             }}
           >
             MEBA

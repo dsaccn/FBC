@@ -641,11 +641,11 @@ export default function ReportsPage() {
                     whiteSpace: 'nowrap',
                     fontWeight: isActive ? '700' : '600',
                     background: isActive ? 'var(--gold)' : 'transparent',
-                    color: isActive ? '#0F1217' : 'var(--text-secondary)',
+                    color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
                     border: isActive ? '1px solid var(--gold)' : '1px solid transparent',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    boxShadow: isActive ? '0 2px 8px rgba(229,192,88,0.4)' : 'none'
+                    boxShadow: isActive ? '0 2px 6px rgba(180,138,30,0.3)' : 'none'
                   }}
                 >
                   {p.label}
@@ -661,8 +661,8 @@ export default function ReportsPage() {
                 borderRadius: '6px',
                 whiteSpace: 'nowrap',
                 fontWeight: quickDateActive === 'custom' || showCustomDate ? '700' : '600',
-                background: quickDateActive === 'custom' || showCustomDate ? 'rgba(229,192,88,0.2)' : 'transparent',
-                color: quickDateActive === 'custom' || showCustomDate ? 'var(--gold-light)' : 'var(--text-secondary)',
+                background: quickDateActive === 'custom' || showCustomDate ? 'rgba(180,138,30,0.12)' : 'transparent',
+                color: quickDateActive === 'custom' || showCustomDate ? 'var(--gold-dark)' : 'var(--text-secondary)',
                 border: quickDateActive === 'custom' || showCustomDate ? '1px solid var(--gold)' : '1px solid var(--black-border)',
                 cursor: 'pointer'
               }}
@@ -677,7 +677,7 @@ export default function ReportsPage() {
               <input
                 type="date"
                 className="input"
-                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', colorScheme: 'dark' }}
+                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', background: '#FFFFFF' }}
                 value={from}
                 onChange={e => {
                   setFrom(e.target.value)
@@ -688,7 +688,7 @@ export default function ReportsPage() {
               <input
                 type="date"
                 className="input"
-                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', colorScheme: 'dark' }}
+                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', background: '#FFFFFF' }}
                 value={to}
                 onChange={e => {
                   setTo(e.target.value)
@@ -702,32 +702,32 @@ export default function ReportsPage() {
         {/* Mobile 2x2 Micro-Metric Summary Grid (~95px total height!) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px', marginBottom: '12px', width: '100%', maxWidth: '100%' }}>
           {/* Revenue */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(229,192,88,0.18) 0%, var(--black-card) 100%)', border: '1px solid rgba(229,192,88,0.35)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Total Revenue</div>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: '#FFFFFF', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalRevenue)}</div>
+          <div style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Total Revenue</div>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: 'var(--text-primary)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalRevenue)}</div>
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>{data.totalOrders} paid orders</div>
           </div>
 
           {/* Gross Profit */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, var(--black-card) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Gross Profit</div>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>
+          <div style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Gross Profit</div>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>
               {formatMoney(data.grossProfit || 0)}
             </div>
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>{(data.profitMargin ?? 0).toFixed(0)}% return</div>
           </div>
 
           {/* Cost / COGS */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(248,113,113,0.16) 0%, var(--black-card) 100%)', border: '1px solid rgba(248,113,113,0.35)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cost of Goods</div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--danger-light)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalCOGS || 0)}</div>
+          <div style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cost of Goods</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--danger)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalCOGS || 0)}</div>
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>Avg bill: {formatMoney(avgOrderValue)}</div>
           </div>
 
           {/* Profit Margin */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.16) 0%, var(--black-card) 100%)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Profit Margin</div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#c084fc', margin: '2px 0', lineHeight: 1.2 }}>{(data.profitMargin ?? 0).toFixed(1)}%</div>
+          <div style={{ background: 'linear-gradient(135deg, #FAF5FF 0%, #FFFFFF 100%)', border: '1px solid #E9D5FF', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <div style={{ fontSize: '9px', fontWeight: '700', color: '#7E22CE', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Profit Margin</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#7E22CE', margin: '2px 0', lineHeight: 1.2 }}>{(data.profitMargin ?? 0).toFixed(1)}%</div>
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>Return on sales</div>
           </div>
         </div>
@@ -735,8 +735,8 @@ export default function ReportsPage() {
         {/* Mobile Stock Asset Valuation Banner */}
         {data.inventoryValuation && (
           <div style={{ 
-            background: 'linear-gradient(135deg, rgba(229,192,88,0.15) 0%, var(--black-card) 100%)', 
-            border: '1px solid rgba(229,192,88,0.35)', 
+            background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', 
+            border: '1px solid #FEF08A', 
             borderRadius: '10px', 
             padding: '10px 14px', 
             marginBottom: '12px', 
@@ -744,27 +744,27 @@ export default function ReportsPage() {
             justifyContent: 'space-between', 
             alignItems: 'center', 
             fontSize: '11px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.25)'
+            boxShadow: '0 1px 3px rgba(15,23,42,0.04)'
           }}>
             <div>
-              <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Package size={11} color="var(--gold-light)" /> Stock Asset Valuation
+              <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Package size={11} color="var(--gold-dark)" /> Stock Asset Valuation
               </div>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', marginTop: '2px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
                 {formatMoney(data.inventoryValuation.totalValue)}
               </div>
             </div>
             <div style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '10px', lineHeight: 1.4, fontWeight: '500' }}>
-              <div>Raw Store: <b style={{ color: 'var(--gold-light)' }}>{formatMoney(data.inventoryValuation.ingredientValue)}</b></div>
-              <div>Retail Stock: <b style={{ color: '#FFFFFF' }}>{formatMoney(data.inventoryValuation.retailValue)}</b></div>
+              <div>Raw Store: <b style={{ color: 'var(--gold-dark)' }}>{formatMoney(data.inventoryValuation.ingredientValue)}</b></div>
+              <div>Retail Stock: <b style={{ color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation.retailValue)}</b></div>
             </div>
           </div>
         )}
 
         {/* Mobile Sticky Section Selector */}
-        <div style={{ position: 'sticky', top: '60px', zIndex: 120, background: 'rgba(15,18,23,0.96)', backdropFilter: 'blur(10px)', padding: '6px 0', borderBottom: '1px solid var(--black-border)', marginBottom: '14px' }}>
+        <div style={{ position: 'sticky', top: '60px', zIndex: 120, background: 'rgba(248,250,252,0.96)', backdropFilter: 'blur(8px)', padding: '6px 0', borderBottom: '1px solid var(--black-border)', marginBottom: '14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--gold-light)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--gold-dark)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
               📊 Selected Report:
             </span>
             <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
@@ -781,14 +781,14 @@ export default function ReportsPage() {
               fontSize: '14px',
               fontWeight: '700',
               borderRadius: '8px',
-              background: 'var(--black-card)',
-              color: 'var(--gold-light)',
-              border: '1.5px solid var(--gold-dark)',
+              background: '#FFFFFF',
+              color: 'var(--text-primary)',
+              border: '1.5px solid var(--gold)',
               outline: 'none'
             }}
           >
             {tabs.map(t => (
-              <option key={t.id} value={t.id} style={{ background: 'var(--black-card)', color: '#FFFFFF' }}>
+              <option key={t.id} value={t.id} style={{ background: '#FFFFFF', color: 'var(--text-primary)' }}>
                 {t.label}
               </option>
             ))}
@@ -822,7 +822,8 @@ export default function ReportsPage() {
                 padding: '0 16px',
                 borderRadius: '8px',
                 border: '1px solid var(--black-border)',
-                background: 'rgba(20,20,20,0.6)',
+                background: 'var(--black-card)',
+                color: 'var(--text-primary)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -849,11 +850,11 @@ export default function ReportsPage() {
           borderRadius: '12px',
           marginBottom: '24px',
           flexWrap: 'wrap',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.35)'
+          boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)'
         }}>
           {/* Left: Period Presets (Segmented Pill Switcher) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>
+            <span style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>
               Period:
             </span>
             <div style={{
@@ -878,10 +879,10 @@ export default function ReportsPage() {
                       borderRadius: '6px',
                       border: 'none',
                       background: isActive ? 'var(--gold)' : 'transparent',
-                      color: isActive ? '#0F1217' : 'var(--text-secondary)',
+                      color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
-                      boxShadow: isActive ? '0 2px 10px rgba(229,192,88,0.4)' : 'none',
+                      boxShadow: isActive ? '0 2px 6px rgba(180,138,30,0.3)' : 'none',
                       whiteSpace: 'nowrap'
                     }}
                     onClick={() => setQuickDate(p)}
@@ -902,9 +903,9 @@ export default function ReportsPage() {
               background: 'var(--black-hover)',
               padding: '6px 14px',
               borderRadius: '8px',
-              border: quickDateActive === 'custom' ? '1px solid var(--gold)' : '1px solid var(--black-border)'
+              border: quickDateActive === 'custom' ? '1.5px solid var(--gold)' : '1px solid var(--black-border)'
             }}>
-              <Calendar size={15} color={quickDateActive === 'custom' ? 'var(--gold)' : 'var(--gold-light)'} />
+              <Calendar size={15} color={quickDateActive === 'custom' ? 'var(--gold)' : 'var(--gold-dark)'} />
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>
                 Custom:
               </span>
@@ -917,7 +918,6 @@ export default function ReportsPage() {
                   fontSize: '13px',
                   fontWeight: '600',
                   outline: 'none',
-                  colorScheme: 'dark',
                   cursor: 'pointer',
                   padding: '2px 4px'
                 }}
@@ -934,7 +934,6 @@ export default function ReportsPage() {
                   fontSize: '13px',
                   fontWeight: '600',
                   outline: 'none',
-                  colorScheme: 'dark',
                   cursor: 'pointer',
                   padding: '2px 4px'
                 }}
@@ -948,7 +947,7 @@ export default function ReportsPage() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: 'var(--danger-light)',
+                    color: 'var(--danger)',
                     cursor: 'pointer',
                     fontSize: '13px',
                     padding: '0 4px',
@@ -966,77 +965,77 @@ export default function ReportsPage() {
         {/* 7 KPI Cards for Desktop */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '28px' }}>
           {/* Total Revenue */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(229,192,88,0.14) 0%, var(--black-card) 100%)', border: '1px solid rgba(229,192,88,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Revenue</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#FFFFFF', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.totalRevenue)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Revenue</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.totalRevenue)}</div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(229,192,88,0.22)', borderRadius: '10px', color: 'var(--gold-light)', flexShrink: 0 }}><DollarSign size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(180,138,30,0.12)', borderRadius: '10px', color: 'var(--gold-dark)', flexShrink: 0 }}><DollarSign size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Gross sales collected</div>
           </div>
 
           {/* Total Cost (COGS) */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(248,113,113,0.14) 0%, var(--black-card) 100%)', border: '1px solid rgba(248,113,113,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Cost (COGS)</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--danger-light)' }}>{formatMoney(data.totalCOGS || 0)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Cost (COGS)</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--danger)' }}>{formatMoney(data.totalCOGS || 0)}</div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(248,113,113,0.2)', borderRadius: '10px', color: 'var(--danger-light)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(220,38,38,0.1)', borderRadius: '10px', color: 'var(--danger)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Purchased item expense</div>
           </div>
 
           {/* Gross Profit */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.16) 0%, var(--black-card) 100%)', border: '1px solid rgba(16,185,129,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Gross Profit</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Gross Profit</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                   {formatMoney(data.grossProfit || 0)}
                 </div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(16,185,129,0.22)', borderRadius: '10px', color: 'var(--success-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(5,150,105,0.1)', borderRadius: '10px', color: 'var(--success)', flexShrink: 0 }}><TrendingUp size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Revenue minus costs</div>
           </div>
 
           {/* Profit Margin */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.14) 0%, var(--black-card) 100%)', border: '1px solid rgba(168,85,247,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #FAF5FF 0%, #FFFFFF 100%)', border: '1px solid #E9D5FF', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Profit Margin</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#c084fc' }}>
+                <div style={{ fontSize: '11px', color: '#7E22CE', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Profit Margin</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: '#7E22CE' }}>
                   {(data.profitMargin ?? 0).toFixed(1)}%
                 </div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(168,85,247,0.22)', borderRadius: '10px', color: '#c084fc', flexShrink: 0 }}><Percent size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(126,34,206,0.1)', borderRadius: '10px', color: '#7E22CE', flexShrink: 0 }}><Percent size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Return on sales</div>
           </div>
 
           {/* Average Order Value */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(244,162,97,0.14) 0%, var(--black-card) 100%)', border: '1px solid rgba(244,162,97,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FFFFFF 100%)', border: '1px solid #FED7AA', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--warning-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Avg Order Value</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#FFFFFF' }}>{formatMoney(avgOrderValue)}</div>
+                <div style={{ fontSize: '11px', color: '#C2410C', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Avg Order Value</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: '#C2410C' }}>{formatMoney(avgOrderValue)}</div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(244,162,97,0.22)', borderRadius: '10px', color: 'var(--warning-light)', flexShrink: 0 }}><TrendingUp size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(194,65,12,0.1)', borderRadius: '10px', color: '#C2410C', flexShrink: 0 }}><TrendingUp size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Average bill size</div>
           </div>
 
           {/* Stock Asset Valuation */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(229,192,88,0.16) 0%, var(--black-card) 100%)', border: '1px solid rgba(229,192,88,0.35)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Stock Assets Valuation</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#FFFFFF', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
+                <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Stock Assets Valuation</div>
+                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
               </div>
-              <div style={{ padding: '8px', background: 'rgba(229,192,88,0.22)', borderRadius: '10px', color: 'var(--gold-light)', flexShrink: 0 }}><Package size={18}/></div>
+              <div style={{ padding: '8px', background: 'rgba(180,138,30,0.12)', borderRadius: '10px', color: 'var(--gold-dark)', flexShrink: 0 }}><Package size={18}/></div>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>
               Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
@@ -1057,11 +1056,11 @@ export default function ReportsPage() {
                   borderRadius: '8px 8px 0 0',
                   borderBottom: isActive ? '3px solid var(--gold)' : '3px solid transparent',
                   padding: '10px 18px',
-                  background: isActive ? 'rgba(229,192,88,0.16)' : 'var(--black-card)',
+                  background: isActive ? '#FFFFFF' : 'var(--black-hover)',
                   borderTop: '1px solid var(--black-border)',
                   borderLeft: '1px solid var(--black-border)',
                   borderRight: '1px solid var(--black-border)',
-                  color: isActive ? 'var(--gold-light)' : 'var(--text-secondary)',
+                  color: isActive ? 'var(--gold-dark)' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
@@ -1085,7 +1084,7 @@ export default function ReportsPage() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
             <h3 style={{ fontWeight: '700', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: 'var(--text-primary)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={20} color="var(--gold)" /> Daily Revenue Trends
+                <TrendingUp size={20} color="var(--gold-dark)" /> Daily Revenue Trends
               </span>
               <span className="mobile-only" style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: 'auto' }}>
                 Swipe ↔ to view
@@ -1101,10 +1100,10 @@ export default function ReportsPage() {
                       return (
                         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', position: 'relative' }} title={`${new Date(day.date).toLocaleDateString()} — ${formatMoney(day.revenue)}`}>
                           {/* Amount Label on Top of Bar */}
-                          <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--gold-light)', marginBottom: '6px', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px', whiteSpace: 'nowrap' }}>
                             {formatMoney(day.revenue)}
                           </div>
-                          <div style={{ width: '100%', maxWidth: '44px', height: `${heightPct}%`, background: 'linear-gradient(to top, rgba(229,192,88,0.7), var(--gold-light))', borderRadius: '6px 6px 0 0', boxShadow: '0 0 14px rgba(229,192,88,0.25)', transition: 'all 0.2s', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.25)')} onMouseLeave={e => (e.currentTarget.style.filter = 'none')} />
+                          <div style={{ width: '100%', maxWidth: '44px', height: `${heightPct}%`, background: 'linear-gradient(to top, var(--gold), #F3DA8C)', borderRadius: '6px 6px 0 0', boxShadow: '0 2px 6px rgba(180,138,30,0.2)', transition: 'all 0.2s', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.1)')} onMouseLeave={e => (e.currentTarget.style.filter = 'none')} />
                         </div>
                       )
                     })}
@@ -1122,21 +1121,21 @@ export default function ReportsPage() {
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No daily sales data yet.</div>
             )}
             <style dangerouslySetInnerHTML={{__html: `
-              .bar-hover:hover { filter: brightness(1.3); }
+              .bar-hover:hover { filter: brightness(1.15); }
             `}} />
           </div>
 
           {/* Payment Method Donut Chart */}
           <div className="card">
             <h3 style={{ fontWeight: '700', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-              <DollarSign size={20} color="var(--gold)" /> Revenue by Method
+              <DollarSign size={20} color="var(--gold-dark)" /> Revenue by Method
             </h3>
             
             {Object.keys(data.revenueByMethod).length > 0 ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px', position: 'relative' }}>
                   {/* CSS Donut Chart */}
-                  <div style={{ width: '180px', height: '180px', borderRadius: '50%', position: 'relative', boxShadow: '0 0 20px rgba(0,0,0,0.4)', background: (() => {
+                  <div style={{ width: '180px', height: '180px', borderRadius: '50%', position: 'relative', boxShadow: '0 2px 12px rgba(15,23,42,0.08)', background: (() => {
                     let acc = 0;
                     const segments = Object.entries(data.revenueByMethod).map(([method, amt], i) => {
                       const pct = (amt / data.totalRevenue) * 100;
@@ -1147,9 +1146,9 @@ export default function ReportsPage() {
                     return `conic-gradient(${segments})`;
                   })() }}>
                     {/* Inner hole for donut */}
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '110px', height: '110px', background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '110px', height: '110px', background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Total</span>
-                      <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--gold-light)' }}>{data.totalRevenue > 9999 ? (data.totalRevenue/1000).toFixed(1)+'k' : data.totalRevenue.toFixed(0)}</span>
+                      <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--gold-dark)' }}>{data.totalRevenue > 9999 ? (data.totalRevenue/1000).toFixed(1)+'k' : data.totalRevenue.toFixed(0)}</span>
                     </div>
                   </div>
                 </div>
@@ -1158,13 +1157,13 @@ export default function ReportsPage() {
                   {Object.entries(data.revenueByMethod).map(([method, amount], i) => {
                     const pct = data.totalRevenue > 0 ? (amount / data.totalRevenue) * 100 : 0
                     return (
-                      <div key={method} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderRadius: '8px', background: 'var(--black-hover)' }}>
+                      <div key={method} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '8px', background: 'var(--black-hover)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: methodColors[i % methodColors.length], boxShadow: `0 0 8px ${methodColors[i % methodColors.length]}66` }} />
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF' }}>{method}</span>
+                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: methodColors[i % methodColors.length] }} />
+                          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{method}</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#FFFFFF' }}>{formatMoney(amount)}</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(amount)}</div>
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>{pct.toFixed(1)}%</div>
                         </div>
                       </div>
@@ -1182,7 +1181,7 @@ export default function ReportsPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h3 style={{ fontWeight: '700', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-                  <PieChart size={20} color="var(--gold)" /> Profit & Expense Allocation
+                  <PieChart size={20} color="var(--gold-dark)" /> Profit & Expense Allocation
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
                   Visual split between cost of goods sold (purchase expense) and gross profit
@@ -1206,14 +1205,14 @@ export default function ReportsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ef4444' }} />
                       <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Cost of Goods (COGS):</span>
-                      <b style={{ color: '#FFFFFF' }}>{formatMoney(data.totalCOGS || 0)}</b>
-                      <span style={{ color: 'var(--danger-light)', fontSize: '12px', fontWeight: '700' }}>({cogsPct.toFixed(1)}%)</span>
+                      <b style={{ color: 'var(--danger)' }}>{formatMoney(data.totalCOGS || 0)}</b>
+                      <span style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: '700' }}>({cogsPct.toFixed(1)}%)</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }} />
                       <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Gross Profit:</span>
-                      <b style={{ color: '#FFFFFF' }}>{formatMoney(data.grossProfit || 0)}</b>
-                      <span style={{ color: 'var(--success-light)', fontSize: '12px', fontWeight: '700' }}>({profitPct.toFixed(1)}%)</span>
+                      <b style={{ color: 'var(--success)' }}>{formatMoney(data.grossProfit || 0)}</b>
+                      <span style={{ color: 'var(--success)', fontSize: '12px', fontWeight: '700' }}>({profitPct.toFixed(1)}%)</span>
                     </div>
                   </div>
                 </div>
@@ -1238,7 +1237,7 @@ export default function ReportsPage() {
           return (
             <>
               {/* Desktop Table View */}
-              <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--black-border)', background: 'var(--black-card)', boxShadow: '0 4px 20px rgba(0,0,0,0.35)', width: '100%' }}>
+              <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--black-border)', background: 'var(--black-card)', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)', width: '100%' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -1311,7 +1310,7 @@ export default function ReportsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                   <h2 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <PieChart size={22} color="var(--gold)" /> Profit & Loss Statement (P&L)
+                    <PieChart size={22} color="var(--gold-dark)" /> Profit & Loss Statement (P&L)
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
                     Cost of Goods Sold (COGS), Waste & Spoilage Loss, Gross/Net Profit and Margins
@@ -1325,55 +1324,55 @@ export default function ReportsPage() {
               </div>
 
               {/* Section A: Financial Executive Overview Card */}
-              <div className="card" style={{ background: 'linear-gradient(135deg, var(--black-card) 0%, #1c222c 100%)', border: '1px solid var(--black-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
-                <div style={{ fontSize: '12px', color: 'var(--gold-light)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700', marginBottom: '16px' }}>
+              <div className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700', marginBottom: '16px' }}>
                   Executive Financial Summary
                 </div>
 
                 {/* Mini Cards in Grid */}
                 <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--black-border)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Total Sales Revenue</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: '#FFFFFF' }}>{formatMoney(totalRev)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-light)', marginTop: '4px', fontWeight: '600' }}>100% of income</div>
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FEF08A' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Total Sales Revenue</div>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', marginTop: '4px', fontWeight: '600' }}>100% of income</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(248,113,113,0.35)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Cost of Goods (COGS)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</div>
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Cost of Goods (COGS)</div>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger)' }}>{formatMoney(totalCost)}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{cogsPct.toFixed(1)}% of revenue</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.35)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Gross Profit (Sales)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: grossProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #A7F3D0' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Gross Profit (Sales)</div>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: grossProf >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                       {formatMoney(grossProf)}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{overallMargin.toFixed(1)}% gross margin</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(248,113,113,0.4)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                      <Trash2 size={12} color="var(--danger-light)" /> Waste / Spoilage Loss
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                      <Trash2 size={12} color="var(--danger)" /> Waste / Spoilage Loss
                     </div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger-light)' }}>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger)' }}>
                       -{formatMoney(wasteCost)}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{data.wasteBreakdown?.length || 0} discarded logs</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.4)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Net Profit (After Waste)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: netProf >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #A7F3D0' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Net Profit (After Waste)</div>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: netProf >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                       {formatMoney(netProf)}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{netMargin.toFixed(1)}% net margin</div>
                   </div>
 
-                  <div className="reports-pl-card" style={{ background: 'var(--black-card)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(229,192,88,0.35)' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-light)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Stock Valuation</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--gold-light)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)}</div>
+                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FEF08A' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Stock Valuation</div>
+                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', marginTop: '4px' }}>Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)}</div>
                   </div>
                 </div>
 
@@ -2308,27 +2307,27 @@ export default function ReportsPage() {
 
               {/* 4 Asset Valuation KPI Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.18) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(212,175,55,0.35)', padding: '16px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Total Inventory Assets</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '6px 0 2px' }}>{formatMoney(val.totalValue)}</div>
+                <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Total Inventory Assets</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', margin: '6px 0 2px' }}>{formatMoney(val.totalValue)}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ingredients + Retail Stock</div>
                 </div>
 
-                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(56,189,248,0.3)', padding: '16px' }}>
-                  <div style={{ fontSize: '11px', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Raw Store Ingredients</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#38bdf8', margin: '6px 0 2px' }}>{formatMoney(val.ingredientValue)}</div>
+                <div className="card" style={{ background: 'linear-gradient(135deg, #F0F9FF 0%, #FFFFFF 100%)', border: '1px solid #BAE6FD', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+                  <div style={{ fontSize: '11px', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Raw Store Ingredients</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284C7', margin: '6px 0 2px' }}>{formatMoney(val.ingredientValue)}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{allIngs.length} raw ingredients in stock</div>
                 </div>
 
-                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--success-light)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Retail Products Stock</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--success-light)', margin: '6px 0 2px' }}>{formatMoney(val.retailValue)}</div>
+                <div className="card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Retail Products Stock</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--success)', margin: '6px 0 2px' }}>{formatMoney(val.retailValue)}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stand-alone goods (bar + store)</div>
                 </div>
 
-                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(20,20,20,0.9) 100%)', border: '1px solid rgba(239,68,68,0.3)', padding: '16px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Low Stock Items</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: lowStockList.length > 0 ? 'var(--danger-light)' : 'var(--text-primary)', margin: '6px 0 2px' }}>{lowStockList.length}</div>
+                <div className="card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Low Stock Items</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: lowStockList.length > 0 ? 'var(--danger)' : 'var(--text-primary)', margin: '6px 0 2px' }}>{lowStockList.length}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Items needing reorder</div>
                 </div>
               </div>
