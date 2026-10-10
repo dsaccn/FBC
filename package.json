@@ -13,6 +13,7 @@
     "db:seed:menu": "npx tsx scripts/seed_kogna_menu.ts",
     "db:studio": "npx prisma studio",
     "clear:all": "npx tsx scripts/clear_all.ts",
+    "clear:orders": "node scripts/clear_orders_keep_menu_inventory.js",
     "clear:offline": "npx tsx scripts/clear_offline.ts",
     "clear:cloud": "npx tsx scripts/clear_cloud.ts",
     "postinstall": "prisma generate"
