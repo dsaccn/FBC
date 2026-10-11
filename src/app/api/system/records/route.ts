@@ -105,40 +105,39 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Auto-backfill WasteLog from historical InventoryLog if empty
+    // Auto-backfill WasteLog from historical InventoryLog if any are missing
     if (model === 'WasteLog') {
-      const existingWasteCount = await delegate.count().catch(() => 0)
-      if (existingWasteCount === 0) {
-        try {
-          const historicalWaste = await prisma.inventoryLog.findMany({
-            where: { action: { startsWith: 'WASTE' } },
-          }).catch(() => [])
+      try {
+        const historicalWaste = await prisma.inventoryLog.findMany({
+          where: { action: { startsWith: 'WASTE' } },
+        }).catch(() => [])
 
-          for (const log of historicalWaste) {
-            const reason = (log.action || '').replace(/^WASTE:\s*/i, '')
-            const isIng = log.type === 'INGREDIENT'
-            const loc = isIng ? null : (log.type === 'BAR' ? 'BAR' : 'STORE')
-            await delegate.create({
-              data: {
-                id: log.id,
-                itemName: log.itemName,
-                itemType: isIng ? 'INGREDIENT' : 'MENU_ITEM',
-                location: loc,
-                quantity: log.quantity,
-                unit: null,
-                costPerUnit: 0,
-                totalCost: 0,
-                reason: reason || 'Waste',
-                notes: 'Imported from historical inventory log',
-                loggedBy: log.userName || 'System',
-                createdAt: log.createdAt,
-                pendingSync: false,
-              },
-            }).catch(() => {})
-          }
-        } catch {
-          // Non-critical auto-backfill failure
+        for (const log of historicalWaste) {
+          const reason = (log.action || '').replace(/^WASTE:\s*/i, '')
+          const isIng = log.type === 'INGREDIENT'
+          const loc = isIng ? null : (log.type === 'BAR' ? 'BAR' : 'STORE')
+          await delegate.upsert({
+            where: { id: log.id },
+            update: {},
+            create: {
+              id: log.id,
+              itemName: log.itemName,
+              itemType: isIng ? 'INGREDIENT' : 'MENU_ITEM',
+              location: loc,
+              quantity: log.quantity,
+              unit: null,
+              costPerUnit: 0,
+              totalCost: 0,
+              reason: reason || 'Waste',
+              notes: 'Imported from historical inventory log',
+              loggedBy: log.userName || 'System',
+              createdAt: log.createdAt,
+              pendingSync: false,
+            },
+          }).catch(() => {})
         }
+      } catch {
+        // Non-critical auto-backfill failure
       }
     }
 

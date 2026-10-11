@@ -1119,6 +1119,51 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       errors.push(`Pull inventory logs warning: ${String(e)}`)
     }
 
+    // ── WasteLogs ─────────────────────────────────────────────────────────────
+    try {
+      const { rows: cloudWaste } = await pg.query(
+        `SELECT id, "itemName", "itemType", "itemId", location, quantity, unit, "costPerUnit", "totalCost", reason, notes, "loggedBy", "createdAt" FROM "WasteLog"`
+      )
+      for (const w of cloudWaste) {
+        await prisma.wasteLog.upsert({
+          where: { id: w.id },
+          update: {
+            itemName: w.itemName,
+            itemType: w.itemType,
+            itemId: w.itemId,
+            location: w.location,
+            quantity: Number(w.quantity),
+            unit: w.unit,
+            costPerUnit: Number(w.costPerUnit || 0),
+            totalCost: Number(w.totalCost || 0),
+            reason: w.reason,
+            notes: w.notes,
+            loggedBy: w.loggedBy,
+            createdAt: new Date(w.createdAt),
+            pendingSync: false,
+          },
+          create: {
+            id: w.id,
+            itemName: w.itemName,
+            itemType: w.itemType,
+            itemId: w.itemId,
+            location: w.location,
+            quantity: Number(w.quantity),
+            unit: w.unit,
+            costPerUnit: Number(w.costPerUnit || 0),
+            totalCost: Number(w.totalCost || 0),
+            reason: w.reason,
+            notes: w.notes,
+            loggedBy: w.loggedBy,
+            createdAt: new Date(w.createdAt),
+            pendingSync: false,
+          },
+        })
+      }
+    } catch (e) {
+      console.warn('[Pull waste logs warning]', String(e))
+    }
+
     return { pulled, errors }
   } catch (e) {
     // Network/connection failed — reset pool so next attempt starts fresh
@@ -1412,6 +1457,35 @@ export async function syncToCloud(): Promise<SyncResult> {
         synced.inventoryLogs++
       } catch (e) {
         errors.push(`InventoryLog ${log.id}: ${String(e)}`)
+      }
+    }
+
+    // ── WasteLogs ─────────────────────────────────────────────────────────────
+    const pendingWasteLogs = await prisma.wasteLog.findMany({ where: { pendingSync: true } })
+    for (const wl of pendingWasteLogs) {
+      try {
+        await pg.query(
+          `INSERT INTO "WasteLog" (id, "itemName", "itemType", "itemId", location, quantity, unit, "costPerUnit", "totalCost", reason, notes, "loggedBy", "createdAt", "pendingSync")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (id) DO UPDATE SET
+             "itemName" = EXCLUDED."itemName",
+             "itemType" = EXCLUDED."itemType",
+             location = EXCLUDED.location,
+             quantity = EXCLUDED.quantity,
+             unit = EXCLUDED.unit,
+             "costPerUnit" = EXCLUDED."costPerUnit",
+             "totalCost" = EXCLUDED."totalCost",
+             reason = EXCLUDED.reason,
+             notes = EXCLUDED.notes,
+             "loggedBy" = EXCLUDED."loggedBy"`,
+          [wl.id, wl.itemName, wl.itemType, wl.itemId, wl.location, wl.quantity, wl.unit, wl.costPerUnit, wl.totalCost, wl.reason, wl.notes, wl.loggedBy, toUtcIso(wl.createdAt), false]
+        )
+        await prisma.wasteLog.update({
+          where: { id: wl.id },
+          data: { pendingSync: false },
+        })
+      } catch (e) {
+        errors.push(`WasteLog ${wl.id}: ${String(e)}`)
       }
     }
 

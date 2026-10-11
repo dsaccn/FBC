@@ -20,6 +20,7 @@ export async function GET() {
       pendingPayments,
       pendingCancellations,
       pendingInventoryLogs,
+      pendingWasteLogs,
       pendingStaffMeals,
       pendingStaffMealItems,
       pendingStaffMembers,
@@ -33,6 +34,7 @@ export async function GET() {
       prisma.payment.count({ where: { pendingSync: true } }).catch(() => 0),
       prisma.cancellation.count({ where: { pendingSync: true } }).catch(() => 0),
       prisma.inventoryLog.count({ where: { pendingSync: true } }).catch(() => 0),
+      prisma.wasteLog.count({ where: { pendingSync: true } }).catch(() => 0),
       prisma.staffMeal.count({ where: { pendingSync: true } }).catch(() => 0),
       prisma.staffMealItem.count({ where: { pendingSync: true } }).catch(() => 0),
       prisma.staffMember.count({ where: { pendingSync: true } }).catch(() => 0),
@@ -48,6 +50,7 @@ export async function GET() {
       pendingPayments +
       pendingCancellations +
       pendingInventoryLogs +
+      pendingWasteLogs +
       pendingStaffMeals +
       pendingStaffMealItems +
       pendingStaffMembers +
