@@ -17,7 +17,14 @@ function createPrismaClient() {
   })
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+function getPrismaInstance(): PrismaClient {
+  if (globalForPrisma.prisma && (globalForPrisma.prisma as any).wasteLog) {
+    return globalForPrisma.prisma
+  }
+  const newClient = createPrismaClient()
+  globalForPrisma.prisma = newClient
+  return newClient
+}
 
-// Cache on globalThis in all environments so warm serverless instances reuse connection pool
-globalForPrisma.prisma = prisma
+export const prisma = getPrismaInstance()
+
