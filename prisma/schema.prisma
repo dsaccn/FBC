@@ -278,3 +278,61 @@ model DevAuditLog {
   @@index([action])
 }
 
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  username  String
+  success   Boolean
+  ipAddress String?
+  userAgent String?
+  reason    String?  // SUCCESS, INVALID_PASSWORD, ACCOUNT_INACTIVE, USER_NOT_FOUND, RATE_LIMITED, INVALID_INPUT
+  portal    String   @default("POS") // POS, ABEBE_CONSOLE
+  createdAt DateTime @default(now())
+
+  @@index([username])
+  @@index([createdAt])
+  @@index([success])
+}
+
+model LoginHistory {
+  id        String    @id @default(cuid())
+  userId    String?
+  username  String
+  fullName  String?
+  role      String?
+  ipAddress String?
+  userAgent String?
+  portal    String    @default("POS") // POS, ABEBE_CONSOLE
+  status    String    @default("ACTIVE") // ACTIVE, LOGGED_OUT, EXPIRED
+  loginAt   DateTime  @default(now())
+  logoutAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([username])
+  @@index([userId])
+  @@index([loginAt])
+  @@index([status])
+}
+
+model WasteLog {
+  id          String   @id @default(cuid())
+  itemName    String
+  itemType    String   // INGREDIENT, MENU_ITEM
+  itemId      String?
+  location    String?  // STORE, BAR
+  quantity    Float
+  unit        String?
+  costPerUnit Float    @default(0)
+  totalCost   Float    @default(0)
+  reason      String
+  notes       String?
+  loggedBy    String
+  createdAt   DateTime @default(now())
+  pendingSync Boolean  @default(true)
+
+  @@index([itemName])
+  @@index([itemType])
+  @@index([createdAt])
+  @@index([pendingSync])
+}
+
+

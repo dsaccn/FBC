@@ -4,7 +4,9 @@ import { getSession } from '@/lib/session'
 export const dynamic = 'force-dynamic'
 
 export const AVAILABLE_MODELS = [
-  { id: 'User', name: 'Users (Staff & Admins)', category: 'Auth & Staff', primaryKey: 'id', description: 'System logins, roles, and credentials' },
+  { id: 'User', name: 'Users (Staff & Admins)', category: 'Auth & Security', primaryKey: 'id', description: 'System logins, roles, and credentials' },
+  { id: 'LoginAttempt', name: 'Login Attempts', category: 'Auth & Security', primaryKey: 'id', description: 'Security audit trail of successful and failed authentication attempts' },
+  { id: 'LoginHistory', name: 'Login History', category: 'Auth & Security', primaryKey: 'id', description: 'User login sessions, active states, and logout timestamps' },
   { id: 'Table', name: 'Tables', category: 'Floor & Orders', primaryKey: 'id', description: 'Restaurant floor tables and occupancy statuses' },
   { id: 'Order', name: 'Orders', category: 'Floor & Orders', primaryKey: 'id', description: 'Customer dining & takeaway orders' },
   { id: 'OrderItem', name: 'Order Items', category: 'Floor & Orders', primaryKey: 'id', description: 'Individual line items with quantities and notes' },
@@ -15,13 +17,7 @@ export const AVAILABLE_MODELS = [
   { id: 'Ingredient', name: 'Ingredients', category: 'Inventory', primaryKey: 'id', description: 'Raw materials (coffee beans, milk, sugar) with cost' },
   { id: 'Recipe', name: 'Recipes', category: 'Inventory', primaryKey: 'id', description: 'Depletion formulas mapping items to ingredients' },
   { id: 'InventoryLog', name: 'Inventory Logs', category: 'Inventory', primaryKey: 'id', description: 'Stock movement and adjustment history' },
-  { id: 'ShiftLog', name: 'Shift Logs', category: 'Auth & Staff', primaryKey: 'id', description: 'Clock in and clock out records' },
-  { id: 'StaffMember', name: 'Staff Members', category: 'Staff Meals', primaryKey: 'id', description: 'Employees eligible for kitchen meal rations' },
-  { id: 'StaffMenuItem', name: 'Staff Menu Items', category: 'Staff Meals', primaryKey: 'id', description: 'Dishes prepared exclusively for staff' },
-  { id: 'StaffIngredient', name: 'Staff Ingredients', category: 'Staff Meals', primaryKey: 'id', description: 'Separate inventory for staff kitchen' },
-  { id: 'StaffRecipe', name: 'Staff Recipes', category: 'Staff Meals', primaryKey: 'id', description: 'Formulas for staff meal preparation' },
-  { id: 'StaffMeal', name: 'Staff Meals', category: 'Staff Meals', primaryKey: 'id', description: 'Served staff meal sessions' },
-  { id: 'StaffMealItem', name: 'Staff Meal Items', category: 'Staff Meals', primaryKey: 'id', description: 'Dishes logged within a staff meal session' },
+  { id: 'WasteLog', name: 'Waste Logs', category: 'Inventory', primaryKey: 'id', description: 'Dedicated waste, spoilage, and damage loss audit records' },
   { id: 'DevAuditLog', name: 'Developer Audit Logs', category: 'System', primaryKey: 'id', description: 'Self-audit trail of portal mutations' },
 ]
 

@@ -29,6 +29,8 @@ export async function POST(req: Request) {
 
       const prevQty = ing.quantity
       const newQty = Math.max(0, prevQty - qty)
+      const costPerUnit = ing.costPerUnit || 0
+      const totalCost = Math.round(qty * costPerUnit * 100) / 100
 
       const updated = await prisma.ingredient.update({
         where: { id: itemId },
@@ -47,10 +49,30 @@ export async function POST(req: Request) {
         },
       })
 
+      const wasteLog = await prisma.wasteLog.create({
+        data: {
+          itemName: ing.name,
+          itemType: 'INGREDIENT',
+          itemId: ing.id,
+          location: null,
+          quantity: qty,
+          unit: ing.unit || null,
+          costPerUnit,
+          totalCost,
+          reason,
+          notes: notes || null,
+          loggedBy: userName,
+          pendingSync: true,
+        },
+      }).catch(err => {
+        console.warn('Failed to insert wasteLog:', err)
+        return null
+      })
+
       await pushIngredientToCloud(updated)
       backgroundSync()
 
-      return NextResponse.json({ success: true, updated, log })
+      return NextResponse.json({ success: true, updated, log, wasteLog })
     } else {
       // Menu item (Cakes, Drinks, Store / Bar items)
       const item = await prisma.menuItem.findUnique({ where: { id: itemId } })
@@ -61,6 +83,8 @@ export async function POST(req: Request) {
       const isBar = location === 'BAR'
       const prevQty = isBar ? item.barQuantity : item.stockQuantity
       const newQty = Math.max(0, prevQty - qty)
+      const costPerUnit = item.costPrice || 0
+      const totalCost = Math.round(qty * costPerUnit * 100) / 100
 
       const updated = await prisma.menuItem.update({
         where: { id: itemId },
@@ -79,10 +103,30 @@ export async function POST(req: Request) {
         },
       })
 
+      const wasteLog = await prisma.wasteLog.create({
+        data: {
+          itemName: item.name,
+          itemType: 'MENU_ITEM',
+          itemId: item.id,
+          location: isBar ? 'BAR' : 'STORE',
+          quantity: qty,
+          unit: null,
+          costPerUnit,
+          totalCost,
+          reason,
+          notes: notes || null,
+          loggedBy: userName,
+          pendingSync: true,
+        },
+      }).catch(err => {
+        console.warn('Failed to insert wasteLog:', err)
+        return null
+      })
+
       await pushMenuItemStockToCloud(item.id, updated.stockQuantity, updated.barQuantity)
       backgroundSync()
 
-      return NextResponse.json({ success: true, updated, log })
+      return NextResponse.json({ success: true, updated, log, wasteLog })
     }
   } catch (err) {
     console.error('[POST /api/inventory/waste]', err)

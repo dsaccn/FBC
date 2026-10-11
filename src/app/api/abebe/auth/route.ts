@@ -38,14 +38,39 @@ export async function GET() {
 
 // POST: Standalone login to /abebe console
 export async function POST(req: NextRequest) {
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const realIp = req.headers.get('x-real-ip')
+  const userAgent = req.headers.get('user-agent') || 'unknown'
+  const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
+
   try {
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== 'object') {
+      await prisma.loginAttempt.create({
+        data: {
+          username: 'unknown',
+          success: false,
+          ipAddress: ip,
+          userAgent,
+          reason: 'INVALID_PAYLOAD',
+          portal: 'ABEBE_CONSOLE',
+        },
+      }).catch(() => {})
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
 
     const { username, password } = body
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
+      await prisma.loginAttempt.create({
+        data: {
+          username: typeof username === 'string' ? username.slice(0, 64) : 'unknown',
+          success: false,
+          ipAddress: ip,
+          userAgent,
+          reason: 'MISSING_CREDENTIALS',
+          portal: 'ABEBE_CONSOLE',
+        },
+      }).catch(() => {})
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 })
     }
 
@@ -64,6 +89,17 @@ export async function POST(req: NextRequest) {
     })
 
     if (!user || !user.active) {
+      const failReason = !user ? 'USER_NOT_FOUND_OR_NOT_ADMIN' : 'ACCOUNT_INACTIVE'
+      await prisma.loginAttempt.create({
+        data: {
+          username: trimmedUsername,
+          success: false,
+          ipAddress: ip,
+          userAgent,
+          reason: failReason,
+          portal: 'ABEBE_CONSOLE',
+        },
+      }).catch(() => {})
       return NextResponse.json({ error: 'Invalid credentials or account inactive' }, { status: 401 })
     }
 
@@ -78,6 +114,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (!passwordMatch) {
+      await prisma.loginAttempt.create({
+        data: {
+          username: trimmedUsername,
+          success: false,
+          ipAddress: ip,
+          userAgent,
+          reason: 'INVALID_PASSWORD',
+          portal: 'ABEBE_CONSOLE',
+        },
+      }).catch(() => {})
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
     }
 
@@ -89,12 +135,34 @@ export async function POST(req: NextRequest) {
       role: user.role,
     })
 
+    // Record successful login attempt
+    await prisma.loginAttempt.create({
+      data: {
+        username: user.username,
+        success: true,
+        ipAddress: ip,
+        userAgent,
+        reason: 'SUCCESS',
+        portal: 'ABEBE_CONSOLE',
+      },
+    }).catch(() => {})
+
+    // Record login session history
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        ipAddress: ip,
+        userAgent,
+        portal: 'ABEBE_CONSOLE',
+        status: 'ACTIVE',
+      },
+    }).catch(() => {})
+
     // Log login to DevAuditLog
     try {
-      const forwardedFor = req.headers.get('x-forwarded-for')
-      const realIp = req.headers.get('x-real-ip')
-      const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
-
       await prisma.devAuditLog.create({
         data: {
           developerUsername: user.username,
@@ -126,6 +194,22 @@ export async function POST(req: NextRequest) {
 
 // DELETE: Standalone logout from /abebe console
 export async function DELETE() {
+  try {
+    const session = await getSession()
+    if (session?.id) {
+      const activeSession = await prisma.loginHistory.findFirst({
+        where: { userId: session.id, status: 'ACTIVE', portal: 'ABEBE_CONSOLE' },
+        orderBy: { loginAt: 'desc' },
+      })
+      if (activeSession) {
+        await prisma.loginHistory.update({
+          where: { id: activeSession.id },
+          data: { status: 'LOGGED_OUT', logoutAt: new Date() },
+        }).catch(() => {})
+      }
+    }
+  } catch {}
+
   await deleteAbebeSession()
   return NextResponse.json({ success: true, message: 'Logged out of standalone console' })
 }

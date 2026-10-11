@@ -50,7 +50,39 @@ export async function GET(req: NextRequest) {
             { id: { contains: search } },
           ],
         }
-      } else if (['MenuItem', 'Category', 'Ingredient', 'StaffMember', 'StaffMenuItem', 'StaffIngredient'].includes(model)) {
+      } else if (['LoginAttempt'].includes(model)) {
+        where = {
+          OR: [
+            { username: { contains: search } },
+            { reason: { contains: search } },
+            { ipAddress: { contains: search } },
+            { portal: { contains: search } },
+            { id: { contains: search } },
+          ],
+        }
+      } else if (['LoginHistory'].includes(model)) {
+        where = {
+          OR: [
+            { username: { contains: search } },
+            { fullName: { contains: search } },
+            { role: { contains: search } },
+            { ipAddress: { contains: search } },
+            { status: { contains: search } },
+            { portal: { contains: search } },
+            { id: { contains: search } },
+          ],
+        }
+      } else if (['WasteLog'].includes(model)) {
+        where = {
+          OR: [
+            { itemName: { contains: search } },
+            { reason: { contains: search } },
+            { loggedBy: { contains: search } },
+            { notes: { contains: search } },
+            { id: { contains: search } },
+          ],
+        }
+      } else if (['MenuItem', 'Category', 'Ingredient'].includes(model)) {
         where = {
           OR: [
             { name: { contains: search } },

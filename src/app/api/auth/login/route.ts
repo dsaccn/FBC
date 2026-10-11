@@ -10,10 +10,22 @@ export async function POST(req: NextRequest) {
   // Rate limit by IP
   const forwardedFor = req.headers.get('x-forwarded-for')
   const realIp = req.headers.get('x-real-ip')
+  const userAgent = req.headers.get('user-agent') || 'unknown'
   const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
   const { success } = limiter.check(ip)
 
   if (!success) {
+    await prisma.loginAttempt.create({
+      data: {
+        username: 'unknown',
+        success: false,
+        ipAddress: ip,
+        userAgent,
+        reason: 'RATE_LIMITED',
+        portal: 'POS',
+      },
+    }).catch(() => {})
+
     return NextResponse.json(
       { error: 'Too many login attempts. Try again in 1 minute.' },
       { status: 429 }
@@ -28,7 +40,7 @@ export async function POST(req: NextRequest) {
   const { username, password } = body
 
   // Input validation & sanitization
-  const trimmedUsername = username.trim()
+  const trimmedUsername = typeof username === 'string' ? username.trim() : ''
   const USERNAME_REGEX = /^[a-zA-Z0-9_.\-@]+$/
 
   if (
@@ -40,6 +52,17 @@ export async function POST(req: NextRequest) {
     password.length > 128 ||
     !USERNAME_REGEX.test(trimmedUsername)
   ) {
+    await prisma.loginAttempt.create({
+      data: {
+        username: trimmedUsername || 'invalid_input',
+        success: false,
+        ipAddress: ip,
+        userAgent,
+        reason: 'INVALID_INPUT',
+        portal: 'POS',
+      },
+    }).catch(() => {})
+
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
@@ -67,8 +90,46 @@ export async function POST(req: NextRequest) {
   }
 
   if (!user || !user.active || !passwordMatch) {
+    const failReason = !user ? 'USER_NOT_FOUND' : (!user.active ? 'ACCOUNT_INACTIVE' : 'INVALID_PASSWORD')
+    await prisma.loginAttempt.create({
+      data: {
+        username: trimmedUsername,
+        success: false,
+        ipAddress: ip,
+        userAgent,
+        reason: failReason,
+        portal: 'POS',
+      },
+    }).catch(() => {})
+
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }
+
+  // Record successful login attempt
+  await prisma.loginAttempt.create({
+    data: {
+      username: user.username,
+      success: true,
+      ipAddress: ip,
+      userAgent,
+      reason: 'SUCCESS',
+      portal: 'POS',
+    },
+  }).catch(() => {})
+
+  // Record in login session history
+  await prisma.loginHistory.create({
+    data: {
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      ipAddress: ip,
+      userAgent,
+      portal: 'POS',
+      status: 'ACTIVE',
+    },
+  }).catch(() => {})
 
   const token = await signToken({
     id: user.id,
