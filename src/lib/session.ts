@@ -58,10 +58,30 @@ export async function createSession(user: SessionUser) {
   return token
 }
 
+export async function createAbebeSession(user: SessionUser) {
+  const token = await signToken({
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName || user.username,
+    role: user.role,
+    scope: 'abebe_flight_control',
+  })
+
+  const cookieStore = await cookies()
+  cookieStore.set('abebe_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24, // 24 hours
+    path: '/',
+  })
+  return token
+}
+
 export async function getSession(): Promise<SessionUser | null> {
   try {
     const cookieStore = await cookies()
-    const token = cookieStore.get('session')?.value
+    const token = cookieStore.get('abebe_session')?.value || cookieStore.get('session')?.value
     if (!token) return null
     const payload = await verifyToken(token)
     if (!payload) return null
@@ -79,4 +99,9 @@ export async function getSession(): Promise<SessionUser | null> {
 export async function deleteSession() {
   const cookieStore = await cookies()
   cookieStore.delete('session')
+}
+
+export async function deleteAbebeSession() {
+  const cookieStore = await cookies()
+  cookieStore.delete('abebe_session')
 }

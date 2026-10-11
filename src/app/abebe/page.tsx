@@ -6,7 +6,8 @@ import {
   Terminal, Database, RefreshCw, AlertTriangle, Shield, ShieldAlert,
   Search, Plus, Trash2, Edit3, ArrowRight, Download, CheckCircle2,
   XCircle, Clock, HardDrive, Eye, EyeOff, Layers, ExternalLink,
-  ChevronRight, Lock, Unlock, Filter, LogOut, KeyRound, User as UserIcon
+  ChevronRight, Lock, Unlock, Filter, LogOut, KeyRound, User as UserIcon,
+  Copy, Check
 } from 'lucide-react'
 
 interface ModelMeta {
@@ -33,9 +34,23 @@ export default function AbebeDeveloperPortal() {
   const [showPassword, setShowPassword] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState('')
+  const [loginMode, setLoginMode] = useState<'signin' | 'edit_credentials'>('signin')
+
+  // Master Credentials & Security State
+  const [credUsername, setCredUsername] = useState('')
+  const [credCurrentPassword, setCredCurrentPassword] = useState('')
+  const [credNewPassword, setCredNewPassword] = useState('')
+  const [credConfirmPassword, setCredConfirmPassword] = useState('')
+  const [credLoading, setCredLoading] = useState(false)
+  const [credError, setCredError] = useState('')
+  const [credSuccess, setCredSuccess] = useState('')
+  const [credProfile, setCredProfile] = useState<any | null>(null)
+  const [showCredNew, setShowCredNew] = useState(false)
+  const [showCredCurrent, setShowCredCurrent] = useState(false)
+  const [copiedCreds, setCopiedCreds] = useState(false)
 
   // Developer Flight Control state
-  const [activeTab, setActiveTab] = useState<'explorer' | 'sync' | 'integrity' | 'audit'>('explorer')
+  const [activeTab, setActiveTab] = useState<'explorer' | 'sync' | 'integrity' | 'audit' | 'security'>('explorer')
   const [writeMode, setWriteMode] = useState(false)
   const [models, setModels] = useState<ModelMeta[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('User')
@@ -81,11 +96,11 @@ export default function AbebeDeveloperPortal() {
       }
 
       try {
-        const res = await fetch('/api/auth/me')
+        const res = await fetch('/api/abebe/auth')
         if (res.ok) {
-          const user = await res.json()
-          if (user.role === 'ADMIN') {
-            setCurrentUser(user)
+          const data = await res.json()
+          if (data.authenticated && data.user?.role === 'ADMIN') {
+            setCurrentUser(data.user)
             setAuthStatus('authenticated')
             return
           }
@@ -140,16 +155,17 @@ export default function AbebeDeveloperPortal() {
     if (activeTab === 'sync') refreshSync()
     if (activeTab === 'integrity') runIntegrityScan()
     if (activeTab === 'audit') loadAuditLogs()
+    if (activeTab === 'security') loadCredentialsProfile()
   }, [activeTab, authStatus])
 
-  // Auth Handlers
+  // Auth Handlers (Standalone Abebe Session)
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoginLoading(true)
     setLoginError('')
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/abebe/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword }),
@@ -157,29 +173,16 @@ export default function AbebeDeveloperPortal() {
 
       const data = await res.json()
       if (!res.ok) {
-        setLoginError(data.error || 'Invalid credentials')
+        setLoginError(data.error || 'Invalid administrator credentials')
         setLoginLoading(false)
         return
       }
 
-      // Verify role is ADMIN
-      const meRes = await fetch('/api/auth/me')
-      if (meRes.ok) {
-        const user = await meRes.json()
-        if (user.role === 'ADMIN') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('abebe_unlocked', 'true')
-          }
-          setCurrentUser(user)
-          setAuthStatus('authenticated')
-          setLoginLoading(false)
-          return
-        }
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('abebe_unlocked', 'true')
       }
-
-      // If not admin, logout and reject
-      await fetch('/api/auth/logout', { method: 'POST' })
-      setLoginError('Access Restricted: Administrator role required for Developer Flight Control.')
+      setCurrentUser(data.user)
+      setAuthStatus('authenticated')
       setLoginLoading(false)
     } catch {
       setLoginError('Network connection failed. Please try again.')
@@ -188,12 +191,119 @@ export default function AbebeDeveloperPortal() {
   }
 
   async function handleLogout() {
+    try {
+      await fetch('/api/abebe/auth', { method: 'DELETE' })
+    } catch {}
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('abebe_unlocked')
     }
     setCurrentUser(null)
     setAuthStatus('unauthenticated')
     setLoginPassword('')
+  }
+
+  // Master Credentials Handlers
+  async function loadCredentialsProfile() {
+    try {
+      const res = await fetch('/api/abebe/credentials')
+      if (res.ok) {
+        const data = await res.json()
+        setCredProfile(data)
+        setCredUsername(data.username || '')
+      }
+    } catch (err) {
+      console.error('Failed to load credentials profile:', err)
+    }
+  }
+
+  async function handleUpdateCredentials(e: React.FormEvent) {
+    e.preventDefault()
+    setCredLoading(true)
+    setCredError('')
+    setCredSuccess('')
+
+    if (credNewPassword !== credConfirmPassword) {
+      setCredError('New password and confirmation do not match.')
+      setCredLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/abebe/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUsername: currentUser?.username || credUsername,
+          currentPassword: credCurrentPassword,
+          newUsername: credUsername.trim(),
+          newPassword: credNewPassword,
+          confirmPassword: credConfirmPassword,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setCredError(data.error || 'Failed to update credentials')
+        setCredLoading(false)
+        return
+      }
+
+      setCredSuccess(data.message || 'Credentials updated successfully across local and cloud databases.')
+      if (data.user) {
+        setCurrentUser(data.user)
+      }
+      setCredCurrentPassword('')
+      setCredNewPassword('')
+      setCredConfirmPassword('')
+      loadCredentialsProfile()
+      setTimeout(() => setCredSuccess(''), 6000)
+    } catch (err: any) {
+      setCredError(err.message || 'Network error updating credentials')
+    } finally {
+      setCredLoading(false)
+    }
+  }
+
+  async function handleLoginScreenUpdateCredentials(e: React.FormEvent) {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError('')
+
+    if (credNewPassword !== credConfirmPassword) {
+      setLoginError('New password and confirmation do not match.')
+      setLoginLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/abebe/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUsername: loginUsername.trim(),
+          currentPassword: loginPassword,
+          newUsername: credUsername.trim(),
+          newPassword: credNewPassword,
+          confirmPassword: credConfirmPassword,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setLoginError(data.error || 'Failed to update credentials')
+        setLoginLoading(false)
+        return
+      }
+
+      sessionStorage.setItem('abebe_unlocked', 'true')
+      if (data.user) setCurrentUser(data.user)
+      setAuthStatus('authenticated')
+      setActionSuccess(`Credentials updated! Logged into flight control as ${data.user?.username || credUsername.trim()}`)
+    } catch {
+      setLoginError('Network failure while updating credentials.')
+    } finally {
+      setLoginLoading(false)
+    }
   }
 
   // Developer Flight Control Handlers
@@ -437,6 +547,37 @@ export default function AbebeDeveloperPortal() {
               Developer Flight Control
             </h1>
 
+            {/* Mode Switcher: Sign In vs Standalone Credentials Editor */}
+            <div style={{ display: 'flex', background: '#0B111E', padding: '3px', borderRadius: '8px', border: '1px solid #1E293B', marginTop: '16px' }}>
+              <button
+                type="button"
+                onClick={() => { setLoginMode('signin'); setLoginError('') }}
+                style={{
+                  flex: 1, padding: '7px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+                  background: loginMode === 'signin' ? '#1E293B' : 'transparent',
+                  color: loginMode === 'signin' ? '#FFFFFF' : '#94A3B8',
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMode('edit_credentials')
+                  setLoginError('')
+                  setCredUsername(loginUsername || 'ROOT')
+                }}
+                style={{
+                  flex: 1, padding: '7px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+                  background: loginMode === 'edit_credentials' ? '#1E293B' : 'transparent',
+                  color: loginMode === 'edit_credentials' ? '#D4AF37' : '#94A3B8',
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+              >
+                Edit Credentials
+              </button>
+            </div>
           </div>
 
           {/* Error Message */}
@@ -451,89 +592,239 @@ export default function AbebeDeveloperPortal() {
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '6px' }}>
-                Admin Username
-              </label>
-              <div style={{ position: 'relative' }}>
-                <UserIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+          {/* MODE 1: Standard Standalone Sign In Form */}
+          {loginMode === 'signin' && (
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '6px' }}>
+                  Admin Username
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <UserIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="Enter administrator username"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
+                    style={{
+                      width: '100%', padding: '10px 12px 10px 38px',
+                      borderRadius: '8px', border: '1px solid #334155',
+                      background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '6px' }}>
+                  Master Key / Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Enter administrator password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    style={{
+                      width: '100%', padding: '10px 40px 10px 38px',
+                      borderRadius: '8px', border: '1px solid #334155',
+                      background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loginLoading}
+                style={{
+                  marginTop: '8px', padding: '12px', borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
+                  border: 'none', color: '#090D16', fontWeight: '700', fontSize: '13px',
+                  letterSpacing: '0.02em', cursor: loginLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  boxShadow: '0 4px 14px rgba(212, 175, 55, 0.3)',
+                  transition: 'opacity 0.15s ease'
+                }}
+              >
+                {loginLoading ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Authenticating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={15} />
+                    <span>Access Flight Control</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* MODE 2: Standalone Edit Username & Password Form */}
+          {loginMode === 'edit_credentials' && (
+            <form onSubmit={handleLoginScreenUpdateCredentials} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '5px' }}>
+                  Current Username
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <UserIcon size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Current username (e.g. ROOT)"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 12px 9px 36px',
+                      borderRadius: '8px', border: '1px solid #334155',
+                      background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '5px' }}>
+                  Current Password (To Authorize)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <KeyRound size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+                  <input
+                    type={showCredCurrent ? 'text' : 'password'}
+                    required
+                    placeholder="Enter current password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 38px 9px 36px',
+                      borderRadius: '8px', border: '1px solid #334155',
+                      background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCredCurrent(!showCredCurrent)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0 }}
+                  >
+                    {showCredCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #1E293B', paddingTop: '10px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#D4AF37', marginBottom: '5px' }}>
+                  New Username
+                </label>
                 <input
                   type="text"
                   required
-                  autoFocus
-                  placeholder="Enter administrator username"
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Enter new administrator username"
+                  value={credUsername}
+                  onChange={(e) => setCredUsername(e.target.value)}
                   style={{
-                    width: '100%', padding: '10px 12px 10px 38px',
-                    borderRadius: '8px', border: '1px solid #334155',
-                    background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                    width: '100%', padding: '9px 12px',
+                    borderRadius: '8px', border: '1px solid #D4AF37',
+                    background: '#0B111E', color: '#FFFFFF', fontSize: '13px', fontWeight: '600',
                     outline: 'none', boxSizing: 'border-box'
                   }}
                 />
               </div>
-            </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '6px' }}>
-                Master Key / Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#D4AF37', marginBottom: '5px' }}>
+                  New Master Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showCredNew ? 'text' : 'password'}
+                    required
+                    placeholder="Enter new password"
+                    value={credNewPassword}
+                    onChange={(e) => setCredNewPassword(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 38px 9px 12px',
+                      borderRadius: '8px', border: '1px solid #D4AF37',
+                      background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCredNew(!showCredNew)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0 }}
+                  >
+                    {showCredNew ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#CBD5E1', marginBottom: '5px' }}>
+                  Confirm New Password
+                </label>
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showCredNew ? 'text' : 'password'}
                   required
-                  placeholder="Enter administrator password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  value={credConfirmPassword}
+                  onChange={(e) => setCredConfirmPassword(e.target.value)}
                   style={{
-                    width: '100%', padding: '10px 40px 10px 38px',
-                    borderRadius: '8px', border: '1px solid #334155',
+                    width: '100%', padding: '9px 12px',
+                    borderRadius: '8px', border: `1px solid ${credConfirmPassword && credConfirmPassword !== credNewPassword ? '#EF4444' : '#334155'}`,
                     background: '#0B111E', color: '#FFFFFF', fontSize: '13px',
                     outline: 'none', boxSizing: 'border-box'
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0
-                  }}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loginLoading}
-              style={{
-                marginTop: '8px', padding: '12px', borderRadius: '8px',
-                background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
-                border: 'none', color: '#090D16', fontWeight: '700', fontSize: '13px',
-                letterSpacing: '0.02em', cursor: loginLoading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: '0 4px 14px rgba(212, 175, 55, 0.3)',
-                transition: 'opacity 0.15s ease'
-              }}
-            >
-              {loginLoading ? (
-                <>
-                  <RefreshCw size={15} className="animate-spin" />
-                  <span>Authenticating...</span>
-                </>
-              ) : (
-                <>
-                  <Lock size={15} />
-                  <span>Access Flight Control</span>
-                </>
-              )}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loginLoading}
+                style={{
+                  marginTop: '6px', padding: '12px', borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
+                  border: 'none', color: '#090D16', fontWeight: '700', fontSize: '13px',
+                  letterSpacing: '0.02em', cursor: loginLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  boxShadow: '0 4px 14px rgba(212, 175, 55, 0.3)',
+                  transition: 'opacity 0.15s ease'
+                }}
+              >
+                {loginLoading ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Syncing & Logging in...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound size={15} />
+                    <span>Save New Credentials & Log In</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           {/* Quick link back to standard POS login / ordering */}
           <div style={{ marginTop: '22px', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '16px' }}>
@@ -634,6 +925,22 @@ export default function AbebeDeveloperPortal() {
             <span>{currentUser?.fullName || currentUser?.username} (ADMIN)</span>
           </div>
 
+          {/* Edit Credentials Quick Action Button */}
+          <button
+            onClick={() => setActiveTab('security')}
+            title="Edit Master Administrator Username & Password"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px',
+              fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+              background: activeTab === 'security' ? '#0F172A' : '#FEF3C7',
+              border: `1px solid ${activeTab === 'security' ? '#0F172A' : '#FDE68A'}`,
+              color: activeTab === 'security' ? '#D4AF37' : '#92400E',
+            }}
+          >
+            <KeyRound size={13} />
+            <span>Edit Credentials</span>
+          </button>
+
           {/* Lock / Log Out */}
           <button
             onClick={handleLogout}
@@ -682,6 +989,7 @@ export default function AbebeDeveloperPortal() {
           { id: 'sync', label: 'Sync Flight Control', icon: <RefreshCw size={15} /> },
           { id: 'integrity', label: 'Financial Integrity Scanner', icon: <ShieldAlert size={15} /> },
           { id: 'audit', label: 'Developer Audit Trail', icon: <Clock size={15} /> },
+          { id: 'security', label: 'Security & Master Credentials', icon: <KeyRound size={15} /> },
         ].map(tab => (
           <button
             key={tab.id}
@@ -1129,6 +1437,262 @@ export default function AbebeDeveloperPortal() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: STANDALONE MASTER SECURITY & CREDENTIALS MANAGEMENT */}
+      {activeTab === 'security' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 420px) 1fr', gap: '24px', alignItems: 'start' }}>
+          {/* Column 1: Current Master Identity Profile */}
+          <div style={{
+            background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0',
+            padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '10px',
+                background: '#0F172A', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', color: '#D4AF37'
+              }}>
+                <Shield size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>
+                  Master Identity
+                </h3>
+                <span style={{ fontSize: '12px', color: '#64748B' }}>
+                  Standalone Flight Control Profile
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid #F1F5F9', paddingTop: '16px' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Current Username
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', padding: '10px 14px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <code style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A' }}>
+                    {currentUser?.username || credUsername || 'ROOT'}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentUser?.username || credUsername || 'ROOT')
+                      setCopiedCreds(true)
+                      setTimeout(() => setCopiedCreds(false), 2000)
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: '2px' }}
+                    title="Copy Username"
+                  >
+                    {copiedCreds ? <Check size={14} style={{ color: '#10B981' }} /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Role & Privileges
+                </span>
+                <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '12px', fontWeight: '700' }}>
+                    ADMIN (Superuser)
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#64748B' }}>Dual-Database Root</span>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Database Sync Targets
+                </span>
+                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+                    <span>Local SQLite (diva-addis.db) — Primary</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: syncData?.cloud?.status === 'CONNECTED' ? '#10B981' : '#F59E0B' }} />
+                    <span>Neon Cloud PostgreSQL — {syncData?.cloud?.status === 'CONNECTED' ? 'Synchronized' : 'Standby'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                background: '#F8FAFC', borderRadius: '8px', padding: '12px',
+                border: '1px solid #E2E8F0', marginTop: '6px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: '#0F172A', marginBottom: '4px' }}>
+                  <Lock size={13} style={{ color: '#D4AF37' }} />
+                  <span>Decoupled Security Guarantee</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '11px', color: '#64748B', lineHeight: '1.5' }}>
+                  This console operates independently of POS floor staff (cashiers & waiters). Updating credentials here updates both databases without disrupting shift operations.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2: Edit Username & Password Form */}
+          <div style={{
+            background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0',
+            padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: '#0F172A' }}>
+                  Edit Master Credentials
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748B' }}>
+                  Change administrator username or master password. Updates are instantly committed to local and cloud databases.
+                </p>
+              </div>
+            </div>
+
+            {/* Error & Success Feedback */}
+            {credError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '12px 16px', borderRadius: '8px', marginBottom: '18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>{credError}</span>
+              </div>
+            )}
+            {credSuccess && (
+              <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', padding: '12px 16px', borderRadius: '8px', marginBottom: '18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+                <span>{credSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateCredentials} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                  Administrator Username
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <UserIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                  <input
+                    type="text"
+                    required
+                    value={credUsername}
+                    onChange={(e) => setCredUsername(e.target.value)}
+                    placeholder="e.g. ROOT or abebe"
+                    style={{
+                      width: '100%', padding: '10px 14px 10px 38px', borderRadius: '8px',
+                      border: '1px solid #CBD5E1', fontSize: '13px', fontWeight: '600',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: '11px', color: '#64748B', marginTop: '4px', display: 'block' }}>
+                  The username used to unlock the developer portal at /abebe.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                  Current Master Password <span style={{ color: '#DC2626' }}>*</span>
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                  <input
+                    type={showCredCurrent ? 'text' : 'password'}
+                    required
+                    value={credCurrentPassword}
+                    onChange={(e) => setCredCurrentPassword(e.target.value)}
+                    placeholder="Enter current password to verify identity"
+                    style={{
+                      width: '100%', padding: '10px 40px 10px 38px', borderRadius: '8px',
+                      border: '1px solid #CBD5E1', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCredCurrent(!showCredCurrent)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0 }}
+                  >
+                    {showCredCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                    New Master Password <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                    <input
+                      type={showCredNew ? 'text' : 'password'}
+                      required
+                      value={credNewPassword}
+                      onChange={(e) => setCredNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      style={{
+                        width: '100%', padding: '10px 40px 10px 38px', borderRadius: '8px',
+                        border: '1px solid #CBD5E1', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCredNew(!showCredNew)}
+                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0 }}
+                    >
+                      {showCredNew ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                    Confirm New Password <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                    <input
+                      type={showCredNew ? 'text' : 'password'}
+                      required
+                      value={credConfirmPassword}
+                      onChange={(e) => setCredConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      style={{
+                        width: '100%', padding: '10px 14px 10px 38px', borderRadius: '8px',
+                        border: `1px solid ${credConfirmPassword && credConfirmPassword !== credNewPassword ? '#EF4444' : '#CBD5E1'}`,
+                        fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '18px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="submit"
+                  disabled={credLoading}
+                  style={{
+                    padding: '11px 24px', borderRadius: '8px', border: 'none',
+                    background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                    color: '#D4AF37', fontWeight: '700', fontSize: '13px',
+                    cursor: credLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
+                  }}
+                >
+                  {credLoading ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" />
+                      <span>Updating Both Databases...</span>
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound size={15} />
+                      <span>Save & Sync Master Credentials</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

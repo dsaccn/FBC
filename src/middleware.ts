@@ -51,10 +51,12 @@ export async function middleware(req: NextRequest) {
     )
   }
 
-  // Allow public authentication and static assets
+  // Allow public authentication, standalone abebe flight control, and static assets
   if (
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/abebe') ||
     pathname === '/login' ||
+    pathname === '/abebe' ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
     pathname.startsWith('/.well-known') ||
@@ -76,7 +78,7 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  const token = req.cookies.get('session')?.value
+  const token = req.cookies.get('abebe_session')?.value || req.cookies.get('session')?.value
 
   if (!token) {
     if (isApi) {
