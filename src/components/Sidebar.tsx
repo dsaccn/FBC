@@ -28,8 +28,6 @@ const navItems: NavItem[] = [
   { label: 'Recipes', href: '/dashboard/recipes', icon: <ChefHat size={18} />, roles: ['ADMIN'] },
   { label: 'Staff', href: '/dashboard/staff', icon: <Users size={18} />, roles: ['ADMIN'] },
   { label: 'Reports', href: '/dashboard/reports', icon: <BarChart2 size={18} />, roles: ['ADMIN'] },
-  { label: 'Developer Portal', href: '/dashboard/system', icon: <Terminal size={18} />, roles: ['ADMIN'] },
-  // { label: 'Staff Meals', href: '/dashboard/staff-meals', icon: <Sandwich size={18} />, roles: ['ADMIN'] },
 ]
 
 interface SidebarProps {
