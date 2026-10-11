@@ -1,0 +1,5 @@
+Contact: mailto:admin@kogna.coffee
+Expires: 2027-10-11T00:00:00.000Z
+Preferred-Languages: en, am
+Canonical: https://www.kogna.coffee/.well-known/security.txt
+Policy: https://www.kogna.coffee/security-policy

@@ -24,13 +24,14 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/api/staff-recipes':     ['ADMIN'],
   '/api/staff':             ['ADMIN'],
   '/api/recipes':           ['ADMIN'],
+  '/api/ingredients':       ['ADMIN', 'MANAGER'],
   '/api/inventory':         ['ADMIN', 'MANAGER'],
   '/api/reports':           ['ADMIN'],
   '/api/menu-items':        ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/categories':        ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/tables':            ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/orders':            ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
-  '/api/payments':          ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
+  '/api/payments':          ['ADMIN', 'MANAGER', 'CASHIER'],
   '/api/cancellations':     ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/staff-meals':       ['ADMIN'],
   '/api/sync':              ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
@@ -54,6 +55,7 @@ export async function middleware(req: NextRequest) {
     pathname === '/login' ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
+    pathname.startsWith('/.well-known') ||
     pathname === '/manifest.json' ||
     pathname === '/sw.js' ||
     pathname === '/favicon.ico'
@@ -71,8 +73,6 @@ export async function middleware(req: NextRequest) {
       maxLen = prefix.length
     }
   }
-
-  if (!protectedPrefix) return NextResponse.next()
 
   const token = req.cookies.get('session')?.value
 
@@ -96,14 +96,27 @@ export async function middleware(req: NextRequest) {
     return response
   }
 
-  const allowedRoles = ROLE_ROUTES[protectedPrefix]
   const userRole = String(payload.role || '')
 
-  if (!allowedRoles.includes(userRole)) {
-    if (isApi) {
-      return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 })
+  // Method-specific role hardening for menu & category mutations
+  if (
+    (pathname.startsWith('/api/menu-items') || pathname.startsWith('/api/categories')) &&
+    !['GET', 'HEAD'].includes(req.method)
+  ) {
+    if (userRole !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden: Only administrators can modify menu items or categories' }, { status: 403 })
     }
-    return NextResponse.redirect(new URL('/dashboard/tables', req.url))
+  }
+
+  // Enforce defined role routes (default-deny for matched prefixes)
+  if (protectedPrefix) {
+    const allowedRoles = ROLE_ROUTES[protectedPrefix]
+    if (!allowedRoles.includes(userRole)) {
+      if (isApi) {
+        return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 })
+      }
+      return NextResponse.redirect(new URL('/dashboard/tables', req.url))
+    }
   }
 
   // Attach user to headers for server components
