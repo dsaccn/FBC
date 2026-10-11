@@ -52,8 +52,8 @@ export async function createSession(user: SessionUser) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 12, // 12 hours
     path: '/',
+    // Omit maxAge so the cookie is strictly a session cookie killed upon browser close
   })
   return token
 }
@@ -72,8 +72,8 @@ export async function createAbebeSession(user: SessionUser) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24, // 24 hours
     path: '/',
+    // Omit maxAge so the cookie is strictly a session cookie killed upon browser close
   })
   return token
 }

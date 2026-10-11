@@ -148,8 +148,8 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 12, // 12 hours
     path: '/',
+    // Omit maxAge so the cookie is strictly a session cookie killed upon browser close
   })
 
   return response
