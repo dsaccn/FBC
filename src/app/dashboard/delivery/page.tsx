@@ -188,7 +188,7 @@ export default function DeliveryPage() {
     const isTakeaway = tableNumber.toLowerCase().startsWith('takeaway')
     const typeLabel = isTakeaway ? 'TAKEAWAY' : 'DELIVERY'
     
-    // table.number format: "Delivery: Abebe (0911234567) #104" or "Takeaway: Sara #105"
+    // table.number format: "Delivery: Abebe (0911234567) #104" or static "Delivery" / "Takeaway"
     let cleanName = tableNumber.replace(/^(Delivery:|Takeaway:)\s*/i, '').replace(/#.*$/, '').trim()
     let extractedPhone = ''
 
@@ -198,7 +198,11 @@ export default function DeliveryPage() {
       cleanName = cleanName.replace(/\([^)]+\)/, '').trim()
     }
 
-    // Extract address & delivery notes from the first item note if formatted as [📍 Address | 📝 Notes]
+    if (!cleanName || cleanName.toLowerCase() === 'delivery' || cleanName.toLowerCase() === 'takeaway') {
+      cleanName = ''
+    }
+
+    // Extract address, phone, customer name, and delivery notes from items[0]?.notes formatted as [👤 Name | 📞 Phone | 📍 Address | 📝 Notes]
     let extractedAddress = ''
     let extractedNotes = ''
     const firstItemNote = items[0]?.notes || ''
@@ -206,6 +210,8 @@ export default function DeliveryPage() {
     if (metaMatch) {
       const parts = metaMatch[1].split('|').map(s => s.trim())
       for (const part of parts) {
+        if (part.startsWith('👤')) cleanName = cleanName || part.replace('👤', '').trim()
+        if (part.startsWith('📞')) extractedPhone = extractedPhone || part.replace('📞', '').trim()
         if (part.startsWith('📍')) extractedAddress = part.replace('📍', '').trim()
         if (part.startsWith('📝')) extractedNotes = part.replace('📝', '').trim()
       }
@@ -213,7 +219,7 @@ export default function DeliveryPage() {
 
     return {
       type: typeLabel,
-      orderName: cleanName || 'Customer',
+      orderName: cleanName || (typeLabel === 'DELIVERY' ? 'Delivery Customer' : 'Takeaway Customer'),
       phone: extractedPhone,
       address: extractedAddress,
       deliveryNotes: extractedNotes,

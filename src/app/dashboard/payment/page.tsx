@@ -63,10 +63,10 @@ export default function PaymentPage() {
   const total = Math.max(0, subtotal - discountAmt + (isDigitalPayment ? tipAmt : 0))
 
   // Helper: parse delivery/takeaway or standard table
-  const parseOrderInfo = (tableNumber: string) => {
+  const parseOrderInfo = (tableNumber: string, items?: any[]) => {
     const lower = tableNumber.toLowerCase()
-    const isDelivery = lower.startsWith('delivery:')
-    const isTakeaway = lower.startsWith('takeaway:')
+    const isDelivery = lower.startsWith('delivery')
+    const isTakeaway = lower.startsWith('takeaway')
 
     if (!isDelivery && !isTakeaway) {
       return {
@@ -87,6 +87,21 @@ export default function PaymentPage() {
       cleanName = cleanName.replace(/\([^)]+\)/, '').trim()
     }
 
+    if (!cleanName || cleanName.toLowerCase() === 'delivery' || cleanName.toLowerCase() === 'takeaway') {
+      cleanName = ''
+    }
+
+    if (items && items[0]?.notes) {
+      const metaMatch = items[0].notes.match(/\[(.*?)\]/)
+      if (metaMatch) {
+        const parts = metaMatch[1].split('|').map((s: string) => s.trim())
+        for (const part of parts) {
+          if (part.startsWith('👤') && !cleanName) cleanName = part.replace('👤', '').trim()
+          if (part.startsWith('📞') && !extractedPhone) extractedPhone = part.replace('📞', '').trim()
+        }
+      }
+    }
+
     return {
       isSpecial: true,
       type,
@@ -96,7 +111,7 @@ export default function PaymentPage() {
     }
   }
 
-  const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table.number) : null
+  const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table.number, selectedOrder.orderItems) : null
 
   async function handlePay() {
     if (!selectedOrder) {
@@ -133,7 +148,7 @@ export default function PaymentPage() {
   function printReceipt() {
     if (!selectedOrder) return
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
-    const info = parseOrderInfo(selectedOrder.table.number)
+    const info = parseOrderInfo(selectedOrder.table.number, selectedOrder.orderItems)
     const html = `<html>
       <head>
         <title>Receipt</title>
@@ -215,7 +230,7 @@ export default function PaymentPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {orders.map(o => {
                 const t = o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
-                const info = parseOrderInfo(o.table.number)
+                const info = parseOrderInfo(o.table.number, o.orderItems)
                 return (
                   <div
                     key={o.id}

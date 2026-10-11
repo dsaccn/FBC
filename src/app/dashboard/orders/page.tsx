@@ -97,10 +97,10 @@ export default function OrdersPage() {
   const statusColors: Record<string, string> = { OPEN: 'badge-open', PAID: 'badge-paid', CANCELLED: 'badge-cancelled' }
 
   // Helper: parse delivery/takeaway or standard table
-  const parseOrderInfo = (tableNumber: string) => {
+  const parseOrderInfo = (tableNumber: string, items?: OrderItem[]) => {
     const lower = tableNumber.toLowerCase()
-    const isDelivery = lower.startsWith('delivery:')
-    const isTakeaway = lower.startsWith('takeaway:')
+    const isDelivery = lower.startsWith('delivery')
+    const isTakeaway = lower.startsWith('takeaway')
 
     if (!isDelivery && !isTakeaway) {
       return {
@@ -119,6 +119,21 @@ export default function OrdersPage() {
     if (phoneMatch) {
       extractedPhone = phoneMatch[1]
       cleanName = cleanName.replace(/\([^)]+\)/, '').trim()
+    }
+
+    if (!cleanName || cleanName.toLowerCase() === 'delivery' || cleanName.toLowerCase() === 'takeaway') {
+      cleanName = ''
+    }
+
+    if (items && items[0]?.notes) {
+      const metaMatch = items[0].notes.match(/\[(.*?)\]/)
+      if (metaMatch) {
+        const parts = metaMatch[1].split('|').map((s: string) => s.trim())
+        for (const part of parts) {
+          if (part.startsWith('👤') && !cleanName) cleanName = part.replace('👤', '').trim()
+          if (part.startsWith('📞') && !extractedPhone) extractedPhone = part.replace('📞', '').trim()
+        }
+      }
     }
 
     return {
@@ -196,7 +211,7 @@ export default function OrdersPage() {
             const total = order.orderItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
             const food = order.orderItems.filter(i => i.menuItem.category?.type === 'FOOD')
             const drinks = order.orderItems.filter(i => i.menuItem.category?.type === 'DRINK')
-            const info = parseOrderInfo(order.table.number)
+            const info = parseOrderInfo(order.table.number, order.orderItems)
 
             return (
               <div key={order.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>

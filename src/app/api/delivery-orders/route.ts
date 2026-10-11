@@ -54,9 +54,9 @@ export async function GET(req: Request) {
 
     // Filter to only Delivery and Takeaway orders based on table number
     const deliveryOrders = allOrders.filter(o => {
-      const num = o.table?.number || ''
-      const isDlv = num.startsWith('Delivery:') || num.startsWith('DELIVERY')
-      const isTak = num.startsWith('Takeaway:') || num.startsWith('TAKEAWAY')
+      const num = (o.table?.number || '').toLowerCase()
+      const isDlv = num.startsWith('delivery')
+      const isTak = num.startsWith('takeaway')
       
       if (!isDlv && !isTak) return false
       if (type === 'DELIVERY') return isDlv
@@ -102,28 +102,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No active staff user found to assign order' }, { status: 400 })
     }
 
-    const typePrefix = (orderType || 'DELIVERY').toUpperCase() === 'TAKEAWAY' ? 'Takeaway' : 'Delivery'
+    const isTakeaway = (orderType || 'DELIVERY').toUpperCase() === 'TAKEAWAY'
+    const typePrefix = isTakeaway ? 'Takeaway' : 'Delivery'
+    const staticId = isTakeaway ? 'tbl_static_takeaway' : 'tbl_static_delivery'
     const cleanName = orderName.trim()
     const cleanPhone = phone ? phone.trim() : ''
     const shortSeq = Math.floor(100 + Math.random() * 900) // e.g. 482
     const timeCode = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }).replace(':', '')
 
-    // Unique table number representing this delivery order
-    const tableNumber = `${typePrefix}: ${cleanName}${cleanPhone ? ` (${cleanPhone})` : ''} #${timeCode}-${shortSeq}`
+    // Use permanent static table (zero table pollution)
+    let table = await prisma.table.findUnique({ where: { number: typePrefix } })
+    if (!table) {
+      table = await prisma.table.upsert({
+        where: { id: staticId },
+        update: { number: typePrefix },
+        create: {
+          id: staticId,
+          number: typePrefix,
+          status: 'FREE',
+          pendingSync: true,
+        },
+      })
+    }
 
-    // Create the virtual delivery table
-    const table = await prisma.table.create({
-      data: {
-        number: tableNumber,
-        status: 'OCCUPIED',
-        pendingSync: true,
-      },
-    })
-
-    // Prepare metadata note if address or delivery notes are present
+    // Prepare metadata note: embeds customer name, phone, address, instructions, and order code
     const metaPrefix = [
+      cleanName ? `👤 ${cleanName}` : '',
+      cleanPhone ? `📞 ${cleanPhone}` : '',
       address?.trim() ? `📍 ${address.trim()}` : '',
       deliveryNotes?.trim() ? `📝 ${deliveryNotes.trim()}` : '',
+      `#${timeCode}-${shortSeq}`,
     ].filter(Boolean).join(' | ')
 
     // Create the order with all items
@@ -135,7 +143,7 @@ export async function POST(req: Request) {
         orderItems: {
           create: items.map((item: { menuItemId: string; quantity: number; notes?: string }, idx: number) => {
             let combinedNote = item.notes ? item.notes.trim() : ''
-            // Attach address/delivery notes to the first item for persistent storage
+            // Attach customer / address / delivery notes to the first item for persistent storage
             if (idx === 0 && metaPrefix) {
               combinedNote = combinedNote ? `[${metaPrefix}] ${combinedNote}` : `[${metaPrefix}]`
             }
