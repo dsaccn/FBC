@@ -436,13 +436,7 @@ export default function AbebeDeveloperPortal() {
             <h1 style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: '#FFFFFF' }}>
               Developer Flight Control
             </h1>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '6px', padding: '3px 10px', borderRadius: '20px', background: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#D4AF37' }} />
-              <span style={{ fontSize: '11px', fontWeight: '600', color: '#D4AF37', letterSpacing: '0.04em' }}>PORT: /abebe</span>
-            </div>
-            <p style={{ fontSize: '13px', color: '#94A3B8', marginTop: '10px', marginBottom: 0 }}>
-              Direct dual-database management, low-level record inspector, and cloud sync console.
-            </p>
+
           </div>
 
           {/* Error Message */}
@@ -578,9 +572,7 @@ export default function AbebeDeveloperPortal() {
                 <h1 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A', letterSpacing: '-0.02em', margin: 0 }}>
                   Developer & System Flight Control
                 </h1>
-                <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.12)', color: '#B48A1E', border: '1px solid rgba(212, 175, 55, 0.3)' }}>
-                  PORT: /abebe
-                </span>
+
               </div>
               <p style={{ fontSize: '12px', color: '#64748B', margin: '2px 0 0 0' }}>
                 Dual-database flight control, 18-table CRUD, sync engine monitor, and integrity auditor.

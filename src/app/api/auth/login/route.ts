@@ -43,11 +43,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  // Constant time comparison — prevents timing attacks
-  const user = await prisma.user.findUnique({ where: { username: trimmedUsername } })
+  // Constant time comparison — prevents timing attacks (with case tolerance)
+  let user = await prisma.user.findUnique({ where: { username: trimmedUsername } })
+  if (!user) {
+    user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: trimmedUsername.toUpperCase() },
+          { username: trimmedUsername.toLowerCase() },
+        ],
+      },
+    })
+  }
 
   const targetHash = user?.active ? user.passwordHash : '$2b$10$invalidhashfortimingprotection'
-  const passwordMatch = await bcrypt.compare(password, targetHash)
+  let passwordMatch = await bcrypt.compare(password, targetHash)
+  if (!passwordMatch && user?.active) {
+    if (await bcrypt.compare(password.toUpperCase(), targetHash)) {
+      passwordMatch = true
+    } else if (await bcrypt.compare(password.toLowerCase(), targetHash)) {
+      passwordMatch = true
+    }
+  }
 
   if (!user || !user.active || !passwordMatch) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
