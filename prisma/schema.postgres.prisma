@@ -277,3 +277,61 @@ model DevAuditLog {
   @@index([action])
 }
 
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  username  String
+  success   Boolean
+  ipAddress String?
+  userAgent String?
+  reason    String?
+  portal    String   @default("POS")
+  createdAt DateTime @default(now())
+
+  @@index([username])
+  @@index([createdAt])
+  @@index([success])
+}
+
+model LoginHistory {
+  id        String    @id @default(cuid())
+  userId    String?
+  username  String
+  fullName  String?
+  role      String?
+  ipAddress String?
+  userAgent String?
+  portal    String    @default("POS")
+  status    String    @default("ACTIVE")
+  loginAt   DateTime  @default(now())
+  logoutAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([username])
+  @@index([userId])
+  @@index([loginAt])
+  @@index([status])
+}
+
+model WasteLog {
+  id          String   @id @default(cuid())
+  itemName    String
+  itemType    String
+  itemId      String?
+  location    String?
+  quantity    Float
+  unit        String?
+  costPerUnit Float    @default(0)
+  totalCost   Float    @default(0)
+  reason      String
+  notes       String?
+  loggedBy    String
+  createdAt   DateTime @default(now())
+  pendingSync Boolean  @default(false)
+
+  @@index([itemName])
+  @@index([itemType])
+  @@index([createdAt])
+  @@index([pendingSync])
+}
+
+
