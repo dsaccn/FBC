@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutGrid, UtensilsCrossed, CreditCard, Users,
   Package, BarChart2, LogOut, ClipboardList,
-  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich, Bike
+  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich, Bike, Terminal
 } from 'lucide-react'
 
 interface NavItem {
@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { label: 'Recipes', href: '/dashboard/recipes', icon: <ChefHat size={18} />, roles: ['ADMIN'] },
   { label: 'Staff', href: '/dashboard/staff', icon: <Users size={18} />, roles: ['ADMIN'] },
   { label: 'Reports', href: '/dashboard/reports', icon: <BarChart2 size={18} />, roles: ['ADMIN'] },
+  { label: 'Developer Portal', href: '/dashboard/system', icon: <Terminal size={18} />, roles: ['ADMIN'] },
   // { label: 'Staff Meals', href: '/dashboard/staff-meals', icon: <Sandwich size={18} />, roles: ['ADMIN'] },
 ]
 

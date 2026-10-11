@@ -259,3 +259,21 @@ model StaffMealItem {
   staffMeal       StaffMeal     @relation(fields: [staffMealId], references: [id], onDelete: Cascade)
   staffMenuItem   StaffMenuItem @relation(fields: [staffMenuItemId], references: [id])
 }
+
+model DevAuditLog {
+  id                String   @id @default(cuid())
+  timestamp         DateTime @default(now())
+  developerUsername String
+  action            String   // CREATE, UPDATE, DELETE, SQL_QUERY, SEED, RESET, SYNC
+  targetTable       String
+  recordId          String?
+  previousState     String?  // JSON string
+  newState          String?  // JSON string
+  reason            String?
+  ipAddress         String?
+
+  @@index([targetTable])
+  @@index([timestamp])
+  @@index([action])
+}
+

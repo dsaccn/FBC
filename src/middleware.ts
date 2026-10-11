@@ -10,12 +10,14 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/dashboard/reports':     ['ADMIN'],
   '/dashboard/inventory':   ['ADMIN', 'MANAGER'],
   '/dashboard/recipes':     ['ADMIN'],
+  '/dashboard/system':      ['ADMIN'],
   '/dashboard/tables':      ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/orders':      ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/payment':     ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard':             ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
 
   // API Routes
+  '/api/system':            ['ADMIN'],
   '/api/verify-receipt':    ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/delivery-orders':   ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/staff-members':     ['ADMIN'],
