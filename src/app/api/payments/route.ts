@@ -5,16 +5,18 @@ import { backgroundSync } from '@/lib/sync-engine'
 export async function POST(req: Request) {
   const { orderId, cashierId, amount, method, discount, discountType, isComplimentary, notes } = await req.json()
 
+  const isOfflineLocal = !process.env.VERCEL
+
   // Create payment
   const payment = await prisma.payment.create({
-    data: { orderId, cashierId, amount, method, discount: discount || 0, discountType: discountType || 'fixed', isComplimentary: isComplimentary || false, notes, pendingSync: true },
+    data: { orderId, cashierId, amount, method, discount: discount || 0, discountType: discountType || 'fixed', isComplimentary: isComplimentary || false, notes, pendingSync: isOfflineLocal },
     include: { order: { include: { table: true } } },
   })
 
   // Mark order as PAID and flag it for push to cloud (pendingSync=true prevents
   // the next pullFromCloud from reverting the status back to OPEN before the push
   // has had a chance to sync the PAID status to Neon)
-  await prisma.order.update({ where: { id: orderId }, data: { status: 'PAID', pendingSync: true } })
+  await prisma.order.update({ where: { id: orderId }, data: { status: 'PAID', pendingSync: isOfflineLocal } })
 
   // Free up the table
   await prisma.table.update({ where: { id: payment.order.tableId }, data: { status: 'FREE' } })

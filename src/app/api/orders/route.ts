@@ -90,19 +90,18 @@ export async function POST(req: Request) {
 
     const waiterId = waiter.id   // always use the authoritative local id
 
-    // Create order with items — mark both order + items as pendingSync so
-    // they are pushed to Neon on the next background sync cycle.
+    const isOfflineLocal = !process.env.VERCEL
     const order = await prisma.order.create({
       data: {
         tableId,
         waiterId,
-        pendingSync: true,
+        pendingSync: isOfflineLocal,
         orderItems: {
           create: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
             notes: item.notes || null,
-            pendingSync: true,
+            pendingSync: isOfflineLocal,
           })),
         },
       },

@@ -88,13 +88,15 @@ export async function POST(req: Request) {
 
     const dateToUse = servedAt ? new Date(servedAt) : new Date()
 
+    const isOfflineLocal = !process.env.VERCEL
+
     const newMeal = await prisma.$transaction(async (tx) => {
       const meal = await tx.staffMeal.create({
         data: {
           staffMemberId,
           mealType: mealType.toUpperCase(),
           servedAt: dateToUse,
-          pendingSync: true
+          pendingSync: isOfflineLocal,
         },
         include: {
           staffMember: true
@@ -106,7 +108,7 @@ export async function POST(req: Request) {
           staffMealId: meal.id,
           staffMenuItemId,
           quantity: 1,
-          pendingSync: true
+          pendingSync: isOfflineLocal,
         },
         include: {
           staffMenuItem: true
@@ -121,7 +123,7 @@ export async function POST(req: Request) {
           where: { id: r.staffIngredientId },
           data: {
             quantity: { decrement: r.quantity * mealItem.quantity },
-            pendingSync: true,
+            pendingSync: isOfflineLocal,
           },
         })
       }

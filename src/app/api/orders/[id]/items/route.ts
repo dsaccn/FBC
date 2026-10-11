@@ -10,8 +10,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { itemIds } = await req.json()
     await prisma.orderItem.updateMany({
       where: { id: { in: itemIds } },
-      // Mark as pendingSync so print status is pushed to cloud on next sync
-      data: { status: 'PRINTED', printedAt: new Date(), pendingSync: true },
+      // Mark as pendingSync so print status is pushed to cloud on next sync (offline local only)
+      data: { status: 'PRINTED', printedAt: new Date(), pendingSync: !process.env.VERCEL },
     })
 
     // Trigger background sync to Neon
@@ -37,14 +37,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const order = await prisma.order.findUnique({ where: { id } })
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    // Create new order items — mark as pendingSync so they're pushed to Neon
+    const isOfflineLocal = !process.env.VERCEL
+
+    // Create new order items — mark as pendingSync so they're pushed to Neon (offline local only)
     await prisma.orderItem.createMany({
       data: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
         orderId: id,
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         notes: item.notes || null,
-        pendingSync: true,
+        pendingSync: isOfflineLocal,
       })),
     })
 
@@ -52,7 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // its updated state (status, updatedAt) and discovers the new items.
     await prisma.order.update({
       where: { id },
-      data: { pendingSync: true },
+      data: { pendingSync: isOfflineLocal },
     })
     // Deduct stock for food, drinks, and recipe ingredients
     await deductOrderStock(items)

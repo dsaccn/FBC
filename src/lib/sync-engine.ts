@@ -268,6 +268,7 @@ let isSyncing = false
  * Fast — only touches local SQLite, no network call.
  */
 export async function getPendingSyncCount(): Promise<number> {
+  if (process.env.VERCEL) return 0
   const [orders, orderItems, payments, cancellations, inventoryLogs, tables, staffMembers, staffMenuItems, staffIngredients, staffRecipes, staffMeals, staffMealItems] = await Promise.all([
     prisma.order.count({ where: { pendingSync: true } }),
     prisma.orderItem.count({ where: { pendingSync: true } }),

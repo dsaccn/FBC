@@ -48,3 +48,9 @@ next-env.d.ts
 # Distribution archives and installers
 *.zip
 *.msi
+
+# Agent and IDE local directories
+.agents
+.cursor
+.gemini
+.claude

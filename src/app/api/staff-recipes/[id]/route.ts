@@ -19,7 +19,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const recipe = await prisma.staffRecipe.update({
       where: { id },
-      data: { quantity: qty, pendingSync: true },
+      data: { quantity: qty, pendingSync: !process.env.VERCEL },
       include: { staffIngredient: true },
     })
     return NextResponse.json(recipe)

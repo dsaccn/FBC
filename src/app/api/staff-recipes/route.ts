@@ -44,10 +44,11 @@ export async function POST(req: Request) {
     }
 
     // Upsert so re-adding the same ingredient updates the amount instead of erroring.
+    const isOfflineLocal = !process.env.VERCEL
     const recipe = await prisma.staffRecipe.upsert({
       where: { staffMenuItemId_staffIngredientId: { staffMenuItemId, staffIngredientId } },
-      update: { quantity: qty, pendingSync: true },
-      create: { staffMenuItemId, staffIngredientId, quantity: qty },
+      update: { quantity: qty, pendingSync: isOfflineLocal },
+      create: { staffMenuItemId, staffIngredientId, quantity: qty, pendingSync: isOfflineLocal },
       include: { staffIngredient: true },
     })
     return NextResponse.json(recipe)

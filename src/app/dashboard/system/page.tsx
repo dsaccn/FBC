@@ -724,9 +724,20 @@ export default function DeveloperSystemPortal() {
           <div style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '12px', padding: '24px', marginBottom: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Pending Synchronization Queue</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>
+                    {syncData?.isCloud ? 'Cloud Sync Status (Neon PostgreSQL)' : 'Pending Synchronization Queue'}
+                  </h3>
+                  {syncData?.isCloud && (
+                    <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '4px', background: 'rgba(5, 150, 105, 0.1)', color: '#059669' }}>
+                      Cloud Direct Mode
+                    </span>
+                  )}
+                </div>
                 <p style={{ fontSize: '13px', color: '#64748B', margin: '4px 0 0 0' }}>
-                  Total of <strong>{syncData?.totalPending ?? 0}</strong> local records waiting to push to the cloud.
+                  {syncData?.isCloud
+                    ? 'Running live on Vercel connected directly to Neon. All records are centralized and synced.'
+                    : `Total of ${syncData?.totalPending ?? 0} local records waiting to push to the cloud.`}
                 </p>
               </div>
               <button
@@ -736,7 +747,7 @@ export default function DeveloperSystemPortal() {
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '13px' }}
               >
                 <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-                <span>{syncing ? 'Synchronizing...' : 'Force Full Sync Now'}</span>
+                <span>{syncing ? 'Synchronizing...' : syncData?.isCloud ? 'Reconcile Cloud State' : 'Force Full Sync Now'}</span>
               </button>
             </div>
 

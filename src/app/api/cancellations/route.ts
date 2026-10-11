@@ -6,6 +6,7 @@ import { restoreOrderStock } from '@/lib/stock'
 // Cancel an order item (requires manager approval)
 export async function POST(req: Request) {
   const { orderItemId, managerId, reason, cancelQuantity } = await req.json()
+  const isOfflineLocal = !process.env.VERCEL
 
   const orderItem = await prisma.orderItem.findUnique({ where: { id: orderItemId } })
   if (!orderItem) {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
         quantity: qtyToCancel,
         notes: orderItem.notes,
         status: 'CANCELLED',
-        pendingSync: true,  // push this split item to cloud
+        pendingSync: isOfflineLocal,  // push this split item to cloud only if offline local
       }
     })
     cancelledItemId = newCancelledItem.id
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
 
   // Log cancellation
   const cancellation = await prisma.cancellation.create({
-    data: { orderItemId: cancelledItemId, managerId, reason, pendingSync: true },
+    data: { orderItemId: cancelledItemId, managerId, reason, pendingSync: isOfflineLocal },
     include: {
       orderItem: { include: { menuItem: true } },
       manager: { select: { fullName: true } },
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     // Cancel the order and free the table
     const order = await prisma.order.update({
       where: { id: orderItem.orderId },
-      data: { status: 'CANCELLED', pendingSync: true },
+      data: { status: 'CANCELLED', pendingSync: isOfflineLocal },
     })
     await prisma.table.update({
       where: { id: order.tableId },

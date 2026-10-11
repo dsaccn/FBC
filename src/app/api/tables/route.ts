@@ -53,7 +53,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const { number } = await req.json()
-  const table = await prisma.table.create({ data: { number, pendingSync: true } })
+  const table = await prisma.table.create({ data: { number, pendingSync: !process.env.VERCEL } })
   backgroundSync()
   return NextResponse.json(table)
 }

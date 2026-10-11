@@ -112,6 +112,8 @@ export async function POST(req: Request) {
 
     // Use permanent static table (zero table pollution)
     let table = await prisma.table.findUnique({ where: { number: typePrefix } })
+    const isOfflineLocal = !process.env.VERCEL
+
     if (!table) {
       table = await prisma.table.upsert({
         where: { id: staticId },
@@ -120,7 +122,7 @@ export async function POST(req: Request) {
           id: staticId,
           number: typePrefix,
           status: 'FREE',
-          pendingSync: true,
+          pendingSync: isOfflineLocal,
         },
       })
     }
@@ -139,7 +141,7 @@ export async function POST(req: Request) {
       data: {
         tableId: table.id,
         waiterId: waiter.id,
-        pendingSync: true,
+        pendingSync: isOfflineLocal,
         orderItems: {
           create: items.map((item: { menuItemId: string; quantity: number; notes?: string }, idx: number) => {
             let combinedNote = item.notes ? item.notes.trim() : ''
@@ -151,7 +153,7 @@ export async function POST(req: Request) {
               menuItemId: item.menuItemId,
               quantity: item.quantity,
               notes: combinedNote || null,
-              pendingSync: true,
+              pendingSync: isOfflineLocal,
             }
           }),
         },

@@ -5,8 +5,8 @@ import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await req.json()
-  // Always mark as pending sync when edited so the change propagates to all terminals
-  const table = await prisma.table.update({ where: { id }, data: { ...body, pendingSync: true } })
+  // Always mark as pending sync when edited locally so the change propagates to all terminals
+  const table = await prisma.table.update({ where: { id }, data: { ...body, pendingSync: !process.env.VERCEL } })
   backgroundSync()
   return NextResponse.json(table)
 }

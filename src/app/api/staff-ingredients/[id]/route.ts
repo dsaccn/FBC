@@ -20,8 +20,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         unit: unit !== undefined ? unit : undefined,
         quantity: quantity !== undefined ? Number(quantity) : undefined,
         minThreshold: minThreshold !== undefined ? Number(minThreshold) : undefined,
-        // Any admin edit must re-sync to the cloud.
-        pendingSync: true,
+        // Any admin edit must re-sync to the cloud (offline local only).
+        pendingSync: !process.env.VERCEL,
       }
     })
     return NextResponse.json(item)
