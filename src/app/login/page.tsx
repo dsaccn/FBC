@@ -248,7 +248,7 @@ export default function LoginPage() {
                 </span>
                 <input
                   type="text"
-                  placeholder="e.g. admin or waiter"
+                  placeholder="Enter staff username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoFocus
