@@ -77,7 +77,7 @@ echo  File location:
 echo  %ZIP_FILE%
 echo.
 echo  This file is tiny (~1-2 MB) and includes your complete
-echo  local database (prisma/diva-addis.db) and .env configuration.
+echo  local database (prisma/kogna.db) and .env configuration.
 echo =========================================================
 echo.
 pause

@@ -693,7 +693,9 @@ export default function DeveloperSystemPortal() {
             <div style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                 <HardDrive size={18} style={{ color: '#059669' }} />
-                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: 0 }}>Local SQLite (diva-addis.db)</h3>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: 0 }}>
+                  Local SQLite ({healthData?.database?.mainFile?.fileName || 'kogna.db'})
+                </h3>
               </div>
               <div style={{ fontSize: '13px', color: '#64748B', lineHeight: '1.8' }}>
                 <div>Status: <span style={{ color: '#059669', fontWeight: '600' }}>ONLINE & ACTIVE</span></div>

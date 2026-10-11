@@ -72,10 +72,12 @@ if exist "node_modules\" (
     exit /b 1
 )
 
-if exist "prisma\diva-addis.db" (
+if exist "prisma\kogna.db" (
+    echo    Local database (kogna.db) present: OK
+) else if exist "prisma\diva-addis.db" (
     echo    Local database (diva-addis.db) present: OK
 ) else (
-    echo    [WARNING] prisma\diva-addis.db not found. A new database will be initialized.
+    echo    [WARNING] prisma\kogna.db not found. A new database will be initialized.
 )
 
 :: Verify Prisma client

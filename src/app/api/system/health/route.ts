@@ -33,9 +33,11 @@ export async function GET() {
 
   try {
     // 1. SQLite database disk metrics
-    const dbPath = path.join(process.cwd(), 'prisma', 'diva-addis.db')
-    const walPath = path.join(process.cwd(), 'prisma', 'diva-addis.db-wal')
-    const shmPath = path.join(process.cwd(), 'prisma', 'diva-addis.db-shm')
+    const envDbUrl = process.env.DATABASE_URL || 'file:./kogna.db'
+    const dbFileName = envDbUrl.replace(/^file:(\.\/)?/, '').split('?')[0] || 'kogna.db'
+    const dbPath = path.join(process.cwd(), 'prisma', dbFileName)
+    const walPath = `${dbPath}-wal`
+    const shmPath = `${dbPath}-shm`
 
     const dbSize = getFileSizeBytes(dbPath)
     const walSize = getFileSizeBytes(walPath)
@@ -59,9 +61,9 @@ export async function GET() {
       database: {
         engine: 'SQLite 3 (via Prisma ORM)',
         journalMode,
-        mainFile: { path: 'prisma/diva-addis.db', bytes: dbSize, formatted: formatBytes(dbSize) },
-        walFile: { path: 'prisma/diva-addis.db-wal', bytes: walSize, formatted: formatBytes(walSize) },
-        shmFile: { path: 'prisma/diva-addis.db-shm', bytes: shmSize, formatted: formatBytes(shmSize) },
+        mainFile: { fileName: dbFileName, path: `prisma/${dbFileName}`, bytes: dbSize, formatted: formatBytes(dbSize) },
+        walFile: { fileName: `${dbFileName}-wal`, path: `prisma/${dbFileName}-wal`, bytes: walSize, formatted: formatBytes(walSize) },
+        shmFile: { fileName: `${dbFileName}-shm`, path: `prisma/${dbFileName}-shm`, bytes: shmSize, formatted: formatBytes(shmSize) },
         totalDiskUsage: formatBytes(totalDbSize),
       },
       system: {
@@ -90,12 +92,15 @@ export async function POST() {
   }
 
   try {
+    const envDbUrl = process.env.DATABASE_URL || 'file:./kogna.db'
+    const dbFileName = envDbUrl.replace(/^file:(\.\/)?/, '').split('?')[0] || 'kogna.db'
+
     // Run WAL checkpoint truncate on SQLite
     const checkpointResult = await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE)')
     
     await logDevAction({
       action: 'SQL_QUERY',
-      targetTable: 'diva-addis.db',
+      targetTable: dbFileName,
       reason: 'Executed PRAGMA wal_checkpoint(TRUNCATE) to flush WAL and reclaim disk',
     })
 
