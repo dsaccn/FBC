@@ -36,6 +36,7 @@ export async function GET() {
     const tablesMarkedFreeWithOpenOrders = await prisma.table.findMany({
       where: {
         status: 'FREE',
+        id: { notIn: ['__archived_orders_table__', 'tbl_static_delivery', 'tbl_static_takeaway'] },
         orders: { some: { status: 'OPEN' } },
       },
       select: { id: true, number: true },

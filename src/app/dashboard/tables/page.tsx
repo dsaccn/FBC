@@ -42,7 +42,14 @@ export default function TablesPage() {
       const res = await fetch('/api/tables')
       if (res.ok) {
         const allTables: Table[] = await res.json()
-        setTables(allTables.filter(t => !t.number.startsWith('Delivery:') && !t.number.startsWith('Takeaway:') && !t.number.startsWith('DLV-') && !t.number.startsWith('DELIVERY') && !t.number.startsWith('TAKEAWAY')))
+        const isDineIn = (t: Table) => {
+          const num = (t.number || '').trim().toLowerCase()
+          if (num === 'archived' || num === 'delivery' || num === 'takeaway') return false
+          if (num.startsWith('delivery') || num.startsWith('takeaway') || num.startsWith('dlv-') || num.startsWith('archived')) return false
+          if (t.id === '__archived_orders_table__' || t.id.startsWith('tbl_static_')) return false
+          return true
+        }
+        setTables(allTables.filter(isDineIn))
         hasLoadedRef.current = true
       } else {
         console.error('Failed to load tables:', res.statusText)

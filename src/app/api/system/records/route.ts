@@ -34,6 +34,12 @@ export async function GET(req: NextRequest) {
 
   try {
     let where: any = {}
+    if (!search && model === 'Table') {
+      where = {
+        id: { notIn: ['__archived_orders_table__', 'tbl_static_delivery', 'tbl_static_takeaway'] },
+      }
+    }
+
     if (search) {
       // Dynamic search heuristics for common fields
       if (['User'].includes(model)) {

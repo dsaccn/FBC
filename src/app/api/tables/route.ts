@@ -3,12 +3,11 @@ import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 
 export async function GET() {
-  // Fetch tables and all open order tableIds in parallel — 2 queries instead of 2N+1
-  const [tables, openOrders] = await Promise.all([
+  // Fetch dine-in tables and open dine-in order tableIds in parallel — 2 queries instead of 2N+1
+  const [allTables, openOrders] = await Promise.all([
     prisma.table.findMany({
       where: {
-        id: { not: '__archived_orders_table__' },
-        number: { not: 'Archived' },
+        id: { notIn: ['__archived_orders_table__', 'tbl_static_delivery', 'tbl_static_takeaway'] },
         status: { not: 'ARCHIVED' },
       },
     }),
@@ -18,9 +17,22 @@ export async function GET() {
     }),
   ])
 
+  // Filter out any delivery, takeaway, or system tables so only actual floor tables remain
+  const tables = allTables.filter((t) => {
+    const num = (t.number || '').trim().toLowerCase()
+    return (
+      num !== 'archived' &&
+      num !== 'delivery' &&
+      num !== 'takeaway' &&
+      !num.startsWith('delivery') &&
+      !num.startsWith('takeaway') &&
+      !num.startsWith('dlv')
+    )
+  })
+
   const occupiedTableIds = new Set(openOrders.map((o) => o.tableId))
 
-  // Determine which tables need status correction
+  // Determine which dine-in tables need status correction
   const toFree: string[] = []
   const toOccupied: string[] = []
 
