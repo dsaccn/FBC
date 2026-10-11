@@ -25,8 +25,8 @@ interface AuthUser {
 }
 
 export default function AbebeDeveloperPortal() {
-  // Auth state
-  const [authStatus, setAuthStatus] = useState<'checking' | 'unauthenticated' | 'authenticated'>('checking')
+  // Auth state: default to 'unauthenticated' so the Login Page is ALWAYS presented first on /abebe
+  const [authStatus, setAuthStatus] = useState<'unauthenticated' | 'authenticated'>('unauthenticated')
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [loginUsername, setLoginUsername] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -71,9 +71,15 @@ export default function AbebeDeveloperPortal() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [auditTotal, setAuditTotal] = useState<number>(0)
 
-  // 1. Check existing session on mount
+  // 1. Only restore flight control session if explicitly unlocked in this tab
   useEffect(() => {
     async function checkAuth() {
+      const isUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('abebe_unlocked') === 'true'
+      if (!isUnlocked) {
+        setAuthStatus('unauthenticated')
+        return
+      }
+
       try {
         const res = await fetch('/api/auth/me')
         if (res.ok) {
@@ -87,6 +93,8 @@ export default function AbebeDeveloperPortal() {
       } catch (err) {
         console.error('Session check error:', err)
       }
+
+      if (typeof window !== 'undefined') sessionStorage.removeItem('abebe_unlocked')
       setAuthStatus('unauthenticated')
     }
     checkAuth()
@@ -159,6 +167,9 @@ export default function AbebeDeveloperPortal() {
       if (meRes.ok) {
         const user = await meRes.json()
         if (user.role === 'ADMIN') {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('abebe_unlocked', 'true')
+          }
           setCurrentUser(user)
           setAuthStatus('authenticated')
           setLoginLoading(false)
@@ -177,10 +188,8 @@ export default function AbebeDeveloperPortal() {
   }
 
   async function handleLogout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-    } catch (e) {
-      console.error(e)
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('abebe_unlocked')
     }
     setCurrentUser(null)
     setAuthStatus('unauthenticated')
@@ -380,28 +389,7 @@ export default function AbebeDeveloperPortal() {
 
   const recordColumns = records.length > 0 ? Object.keys(records[0]) : []
 
-  // ── VIEW 1: LOADING SPINNER ──
-  if (authStatus === 'checking') {
-    return (
-      <div style={{
-        minHeight: '100vh', background: '#090D16', color: '#F8FAFC',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        fontFamily: "'Inter', sans-serif"
-      }}>
-        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#1E293B', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', marginBottom: '16px' }}>
-          <Terminal size={24} className="animate-spin" />
-        </div>
-        <div style={{ fontSize: '15px', fontWeight: '600', letterSpacing: '0.04em' }}>
-          INITIALIZING SECURE CONSOLE
-        </div>
-        <div style={{ fontSize: '12px', color: '#64748B', marginTop: '6px' }}>
-          Verifying security privileges for /abebe...
-        </div>
-      </div>
-    )
-  }
-
-  // ── VIEW 2: STANDALONE LOGIN SCREEN AT /abebe ──
+  // ── VIEW 1: STANDALONE LOGIN SCREEN AT /abebe ──
   if (authStatus === 'unauthenticated') {
     return (
       <div style={{
