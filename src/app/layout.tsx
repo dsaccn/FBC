@@ -3,13 +3,13 @@ import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'MEBA TECH PRO — POS & Management',
-  description: 'Point of Sale & Management System by MEBA TECH',
+  title: 'Kogna Coffee',
+  description: 'Kogna Coffee Point of Sale',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'MEBA TECH PRO',
+    title: 'Kogna Coffee',
   },
 }
 

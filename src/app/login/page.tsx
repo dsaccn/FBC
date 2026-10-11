@@ -454,29 +454,6 @@ export default function LoginPage() {
           </span>
         </div>
       </div>
-
-      <style jsx global>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-4px); }
-          75% { transform: translateX(4px); }
-        }
-      `}</style>
     </main>
   )
 }

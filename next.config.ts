@@ -11,12 +11,13 @@ const securityHeaders = [
   { key: 'Access-Control-Allow-Origin', value: 'https://www.kogna.coffee' },
   { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },
   { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, Cookie' },
+  { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
   {
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
       "script-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src 'self' https://fonts.googleapis.com",
       "img-src 'self' data: blob:",
       "font-src 'self' https://fonts.gstatic.com data:",
       "connect-src 'self' https://*.neon.tech",
