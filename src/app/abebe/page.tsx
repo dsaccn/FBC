@@ -1317,10 +1317,10 @@ export default function AbebeDeveloperPortal() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: '#0F172A', marginBottom: '4px' }}>
                   <Lock size={13} style={{ color: '#D4AF37' }} />
-                  <span>Decoupled Security Guarantee</span>
+                  <span>Standalone Security Guarantee</span>
                 </div>
                 <p style={{ margin: 0, fontSize: '11px', color: '#64748B', lineHeight: '1.5' }}>
-                  This console operates independently of POS floor staff (cashiers & waiters). Updating credentials here updates both databases without disrupting shift operations.
+                  This management console operates 100% independently of the POS portal and POS Administrator account. Changing master credentials here only controls access to /abebe and will NEVER alter your POS admin or staff accounts.
                 </p>
               </div>
             </div>
@@ -1337,7 +1337,7 @@ export default function AbebeDeveloperPortal() {
                   Edit Master Credentials
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748B' }}>
-                  Change administrator username or master password. Updates are instantly committed to local and cloud databases.
+                  Change standalone management console username or master password. Updates will never alter your POS portal administrator credentials.
                 </p>
               </div>
             </div>

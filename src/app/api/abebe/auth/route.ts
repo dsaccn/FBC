@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createAbebeSession, deleteAbebeSession, getSession } from '@/lib/session'
-import bcrypt from 'bcryptjs'
+import { getAbebeCredential, verifyAbebePassword } from '@/lib/abebe-auth'
 
 // GET: Check standalone session status for /abebe
 export async function GET() {
@@ -11,13 +11,8 @@ export async function GET() {
       return NextResponse.json({ authenticated: false }, { status: 200 })
     }
 
-    // Verify user still exists in database
-    const user = await prisma.user.findUnique({
-      where: { id: session.id },
-      select: { id: true, username: true, fullName: true, role: true, active: true },
-    })
-
-    if (!user || !user.active || user.role !== 'ADMIN') {
+    const cred = await getAbebeCredential()
+    if (!cred) {
       await deleteAbebeSession()
       return NextResponse.json({ authenticated: false }, { status: 200 })
     }
@@ -25,10 +20,10 @@ export async function GET() {
     return NextResponse.json({
       authenticated: true,
       user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        role: user.role,
+        id: cred.id,
+        username: cred.username,
+        fullName: 'Management Console',
+        role: 'ADMIN',
       },
     })
   } catch (error: any) {
@@ -36,7 +31,7 @@ export async function GET() {
   }
 }
 
-// POST: Standalone login to /abebe console
+// POST: Standalone login to /abebe console (completely independent of POS user accounts)
 export async function POST(req: NextRequest) {
   const forwardedFor = req.headers.get('x-forwarded-for')
   const realIp = req.headers.get('x-real-ip')
@@ -76,42 +71,31 @@ export async function POST(req: NextRequest) {
 
     const trimmedUsername = username.trim()
 
-    // Find ADMIN user: exact match first, then case-insensitive match
-    let user = await prisma.user.findFirst({
-      where: {
-        role: 'ADMIN',
-        OR: [
-          { username: trimmedUsername },
-          { username: trimmedUsername.toUpperCase() },
-          { username: trimmedUsername.toLowerCase() },
-        ],
-      },
-    })
+    // Query standalone Management Portal credentials (independent of POS User table)
+    const cred = await getAbebeCredential()
+    if (!cred) {
+      return NextResponse.json({ error: 'Management credentials uninitialized' }, { status: 500 })
+    }
 
-    if (!user || !user.active) {
-      const failReason = !user ? 'USER_NOT_FOUND_OR_NOT_ADMIN' : 'ACCOUNT_INACTIVE'
+    const usernameMatches =
+      cred.username.toLowerCase() === trimmedUsername.toLowerCase() ||
+      cred.username === trimmedUsername
+
+    if (!usernameMatches) {
       await prisma.loginAttempt.create({
         data: {
           username: trimmedUsername,
           success: false,
           ipAddress: ip,
           userAgent,
-          reason: failReason,
+          reason: 'USER_NOT_FOUND',
           portal: 'ABEBE_CONSOLE',
         },
       }).catch(() => {})
-      return NextResponse.json({ error: 'Invalid credentials or account inactive' }, { status: 401 })
+      return NextResponse.json({ error: 'Invalid management console credentials' }, { status: 401 })
     }
 
-    // Check password hash
-    let passwordMatch = await bcrypt.compare(password, user.passwordHash)
-    if (!passwordMatch) {
-      if (await bcrypt.compare(password.toUpperCase(), user.passwordHash)) {
-        passwordMatch = true
-      } else if (await bcrypt.compare(password.toLowerCase(), user.passwordHash)) {
-        passwordMatch = true
-      }
-    }
+    const passwordMatch = await verifyAbebePassword(password, cred.passwordHash)
 
     if (!passwordMatch) {
       await prisma.loginAttempt.create({
@@ -129,16 +113,16 @@ export async function POST(req: NextRequest) {
 
     // Create standalone Abebe session
     await createAbebeSession({
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      role: user.role,
+      id: cred.id,
+      username: cred.username,
+      fullName: 'Management Console',
+      role: 'ADMIN',
     })
 
     // Record successful login attempt
     await prisma.loginAttempt.create({
       data: {
-        username: user.username,
+        username: cred.username,
         success: true,
         ipAddress: ip,
         userAgent,
@@ -150,10 +134,10 @@ export async function POST(req: NextRequest) {
     // Record login session history
     await prisma.loginHistory.create({
       data: {
-        userId: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        role: user.role,
+        userId: cred.id,
+        username: cred.username,
+        fullName: 'Management Console',
+        role: 'ADMIN',
         ipAddress: ip,
         userAgent,
         portal: 'ABEBE_CONSOLE',
@@ -165,10 +149,10 @@ export async function POST(req: NextRequest) {
     try {
       await prisma.devAuditLog.create({
         data: {
-          developerUsername: user.username,
+          developerUsername: cred.username,
           action: 'LOGIN',
           targetTable: 'Abebe Console',
-          recordId: user.id,
+          recordId: cred.id,
           reason: 'Standalone Developer Flight Control authenticated session established',
           ipAddress: ip,
         },
@@ -180,10 +164,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        role: user.role,
+        id: cred.id,
+        username: cred.username,
+        fullName: 'Management Console',
+        role: 'ADMIN',
       },
     })
   } catch (error: any) {

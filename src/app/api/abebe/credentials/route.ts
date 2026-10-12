@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, createAbebeSession } from '@/lib/session'
-import bcrypt from 'bcryptjs'
+import { getAbebeCredential, verifyAbebePassword, updateAbebeCredential } from '@/lib/abebe-auth'
 
-// GET: Retrieve current administrator account profile & cloud status
+// GET: Retrieve current standalone management portal profile & cloud status
 export async function GET() {
   try {
     const session = await getSession()
@@ -11,20 +11,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 })
     }
 
-    const admin = await prisma.user.findFirst({
-      where: { role: 'ADMIN' },
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        role: true,
-        active: true,
-        createdAt: true,
-      },
-    })
-
-    if (!admin) {
-      return NextResponse.json({ error: 'Admin account not found' }, { status: 404 })
+    const cred = await getAbebeCredential()
+    if (!cred) {
+      return NextResponse.json({ error: 'Management credentials not found' }, { status: 404 })
     }
 
     const neonUrl = process.env.NEON_DATABASE_URL
@@ -32,8 +21,8 @@ export async function GET() {
 
     if (neonUrl) {
       try {
-        const { Pool } = require('pg')
-        const pool = new Pool({ connectionString: neonUrl, connectionTimeoutMillis: 4000 })
+        const { Pool } = await import('pg')
+        const pool = new Pool({ connectionString: neonUrl, connectionTimeoutMillis: 4000, ssl: { rejectUnauthorized: false } })
         await pool.query('SELECT 1')
         cloudConnected = true
         await pool.end()
@@ -43,10 +32,10 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      username: admin.username,
-      fullName: admin.fullName,
-      role: admin.role,
-      createdAt: admin.createdAt,
+      username: cred.username,
+      fullName: 'Management Console',
+      role: 'ADMIN',
+      createdAt: cred.createdAt,
       cloudConnected,
       hasCloudConfig: !!neonUrl,
     })
@@ -55,7 +44,7 @@ export async function GET() {
   }
 }
 
-// POST: Update standalone administrator credentials (username & password)
+// POST: Update standalone management portal credentials (NEVER touches POS User table!)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null)
@@ -64,7 +53,6 @@ export async function POST(req: NextRequest) {
     }
 
     const {
-      currentUsername,
       currentPassword,
       newUsername,
       newPassword,
@@ -91,100 +79,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Username can only contain letters, numbers, dots, hyphens, and underscores' }, { status: 400 })
     }
 
-    // 2. Identify the target admin account
-    const session = await getSession()
-    let admin = null
-
-    if (session && session.role === 'ADMIN') {
-      admin = await prisma.user.findUnique({ where: { id: session.id } })
+    // 2. Fetch standalone management credentials
+    const cred = await getAbebeCredential()
+    if (!cred) {
+      return NextResponse.json({ error: 'Management credentials record not found' }, { status: 404 })
     }
 
-    if (!admin) {
-      // Find admin by provided currentUsername or default to active ADMIN role
-      const lookupUser = currentUsername?.trim()
-      if (lookupUser) {
-        admin = await prisma.user.findFirst({
-          where: {
-            role: 'ADMIN',
-            OR: [
-              { username: lookupUser },
-              { username: lookupUser.toUpperCase() },
-              { username: lookupUser.toLowerCase() },
-            ],
-          },
-        })
-      } else {
-        admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
-      }
-    }
-
-    if (!admin) {
-      return NextResponse.json({ error: 'Administrator account not found' }, { status: 404 })
-    }
-
-    // 3. Verify current password
-    let passwordMatch = await bcrypt.compare(currentPassword, admin.passwordHash)
-    if (!passwordMatch) {
-      if (await bcrypt.compare(currentPassword.toUpperCase(), admin.passwordHash)) {
-        passwordMatch = true
-      } else if (await bcrypt.compare(currentPassword.toLowerCase(), admin.passwordHash)) {
-        passwordMatch = true
-      }
-    }
-
+    // 3. Verify current management password
+    const passwordMatch = await verifyAbebePassword(currentPassword, cred.passwordHash)
     if (!passwordMatch) {
       return NextResponse.json({ error: 'Current password verification failed' }, { status: 401 })
     }
 
-    // 4. Check if new username collides with an existing OTHER user
-    const existingConflict = await prisma.user.findFirst({
-      where: {
-        username: trimmedNewUsername,
-        id: { not: admin.id },
-      },
-    })
-    if (existingConflict) {
-      return NextResponse.json({ error: `Username "${trimmedNewUsername}" is already taken by another user` }, { status: 409 })
-    }
+    // 4. Update standalone credentials in SQLite and Neon Cloud (NEVER touches User table!)
+    const updatedCred = await updateAbebeCredential(trimmedNewUsername, newPassword)
 
-    // 5. Hash new password
-    const newPasswordHash = await bcrypt.hash(newPassword, 10)
-
-    // 6. Update local SQLite database
-    const previousUsername = admin.username
-    const updatedAdmin = await prisma.user.update({
-      where: { id: admin.id },
-      data: {
-        username: trimmedNewUsername,
-        fullName: trimmedNewUsername,
-        passwordHash: newPasswordHash,
-      },
+    // 5. Refresh Abebe session
+    await createAbebeSession({
+      id: updatedCred.id,
+      username: updatedCred.username,
+      fullName: 'Management Console',
+      role: 'ADMIN',
     })
 
-    // 7. Update remote Neon PostgreSQL database if configured
-    let cloudUpdated = false
-    let cloudError = null
-    const neonUrl = process.env.NEON_DATABASE_URL
-
-    if (neonUrl) {
-      try {
-        const { Pool } = require('pg')
-        const pool = new Pool({ connectionString: neonUrl, connectionTimeoutMillis: 6000 })
-        await pool.query(
-          `UPDATE "User"
-           SET username = $1, "fullName" = $2, "passwordHash" = $3
-           WHERE id = $4 OR role = 'ADMIN' OR username = $5`,
-          [trimmedNewUsername, trimmedNewUsername, newPasswordHash, admin.id, previousUsername]
-        )
-        await pool.end()
-        cloudUpdated = true
-      } catch (err: any) {
-        console.error('Neon cloud credentials update error:', err)
-        cloudError = err.message
-      }
-    }
-
-    // 8. Record audit log
+    // 6. Record audit log
     const forwardedFor = req.headers.get('x-forwarded-for')
     const realIp = req.headers.get('x-real-ip')
     const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
@@ -193,17 +111,12 @@ export async function POST(req: NextRequest) {
       await prisma.devAuditLog.create({
         data: {
           developerUsername: trimmedNewUsername,
-          action: 'UPDATE',
-          targetTable: 'Admin Credentials',
-          recordId: updatedAdmin.id,
-          reason: `Master credentials changed. Previous username: "${previousUsername}" -> New username: "${trimmedNewUsername}"`,
-          previousState: JSON.stringify({ username: previousUsername }),
-          newState: JSON.stringify({
-            username: trimmedNewUsername,
-            passwordUpdated: true,
-            cloudUpdated,
-            cloudError,
-          }),
+          action: 'UPDATE_STANDALONE_CREDENTIALS',
+          targetTable: 'AbebeCredential',
+          recordId: updatedCred.id,
+          previousState: JSON.stringify({ username: cred.username }),
+          newState: JSON.stringify({ username: trimmedNewUsername, updated: true }),
+          reason: 'Updated management portal master credentials (Standalone decoupled)',
           ipAddress: ip,
         },
       })
@@ -211,28 +124,13 @@ export async function POST(req: NextRequest) {
       // Non-critical audit failure
     }
 
-    // 9. Re-issue standalone session cookie with the new credentials
-    await createAbebeSession({
-      id: updatedAdmin.id,
-      username: updatedAdmin.username,
-      fullName: updatedAdmin.fullName,
-      role: updatedAdmin.role,
-    })
-
     return NextResponse.json({
       success: true,
-      message: cloudUpdated
-        ? `Credentials updated in both Local SQLite and Neon Cloud databases.`
-        : `Credentials updated in Local SQLite database.`,
-      user: {
-        id: updatedAdmin.id,
-        username: updatedAdmin.username,
-        role: updatedAdmin.role,
-      },
-      cloudUpdated,
+      message: 'Management portal credentials updated successfully (Standalone)',
+      username: updatedCred.username,
     })
   } catch (error: any) {
-    console.error('Error updating credentials:', error)
+    console.error('Update management credentials error:', error)
     return NextResponse.json({ error: error.message || 'Failed to update credentials' }, { status: 500 })
   }
 }

@@ -335,4 +335,13 @@ model WasteLog {
   @@index([pendingSync])
 }
 
+model AbebeCredential {
+  id           String   @id @default("master_root")
+  username     String   @default("ROOT")
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+
 
