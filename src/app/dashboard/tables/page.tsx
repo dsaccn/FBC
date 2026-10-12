@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2 } from 'lucide-react'
+import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2, Unlink } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 
@@ -10,6 +10,9 @@ interface Table {
   number: string
   status: 'FREE' | 'OCCUPIED' | 'WAITING_PAYMENT'
   mergedWithId: string | null
+  mergedWithNumber?: string | null
+  mergedFromNumbers?: string[]
+  isMerged?: boolean
 }
 
 const STATUS_COLORS = {
@@ -157,22 +160,41 @@ export default function TablesPage() {
 
   async function confirmMerge() {
     if (mergeSelected.length !== 2) return
+    const [sourceId, targetId] = mergeSelected
     try {
-      const res = await fetch(`/api/tables/${mergeSelected[0]}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/tables/merge', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mergedWithId: mergeSelected[1] }),
+        body: JSON.stringify({ sourceTableId: sourceId, targetTableId: targetId }),
       })
+      const data = await res.json()
       if (res.ok) {
-        toast.success('Tables merged successfully!')
+        toast.success(data.message || 'Tables merged successfully!')
         setMergeMode(false)
         setMergeSelected([])
         load()
       } else {
-        toast.error('Failed to merge tables')
+        toast.error(data.error || 'Failed to merge tables')
       }
     } catch {
       toast.error('Network error merging tables')
+    }
+  }
+
+  async function unmergeTable(tableId: string) {
+    try {
+      const res = await fetch(`/api/tables/merge?tableId=${encodeURIComponent(tableId)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Tables unmerged successfully!')
+        load()
+      } else {
+        toast.error(data.error || 'Failed to unmerge tables')
+      }
+    } catch {
+      toast.error('Network error unmerging tables')
     }
   }
 
@@ -236,21 +258,37 @@ export default function TablesPage() {
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
         {Object.entries(STATUS_COLORS).map(([k, v]) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: v.border }} />
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{v.label}</span>
           </div>
         ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--gold)' }} />
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Merged / Linked</span>
+        </div>
       </div>
 
       {/* Merge/Transfer instruction */}
       {(mergeMode || transferMode) && (
         <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px', fontSize: '14px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-          <span>{mergeMode ? `Select 2 tables to merge (${mergeSelected.length}/2 selected)` : `Select source then destination table (${transferSelected.length}/2 selected)`}</span>
+          <span>
+            {mergeMode
+              ? mergeSelected.length === 0
+                ? 'Select first table to merge (0/2 selected)'
+                : mergeSelected.length === 1
+                ? `Table ${tables.find(t => t.id === mergeSelected[0])?.number} selected. Now select second table (1/2 selected)`
+                : `Ready to merge Table ${tables.find(t => t.id === mergeSelected[0])?.number} & Table ${tables.find(t => t.id === mergeSelected[1])?.number} (2/2 selected)`
+              : `Select source then destination table (${transferSelected.length}/2 selected)`}
+          </span>
           <div style={{ display: 'flex', gap: '8px' }}>
-            {mergeMode && mergeSelected.length === 2 && <button className="btn btn-gold btn-sm" onClick={confirmMerge}>Confirm Merge</button>}
+            {mergeMode && mergeSelected.length === 2 && (
+              <button className="btn btn-gold btn-sm" onClick={confirmMerge}>
+                Confirm Merge (T{tables.find(t => t.id === mergeSelected[0])?.number} + T{tables.find(t => t.id === mergeSelected[1])?.number})
+              </button>
+            )}
             {transferMode && transferSelected.length === 2 && <button className="btn btn-gold btn-sm" onClick={confirmTransfer}>Confirm Transfer</button>}
             <button className="btn btn-ghost btn-sm" onClick={() => { setMergeMode(false); setTransferMode(false); setMergeSelected([]); setTransferSelected([]) }}>Cancel</button>
           </div>
@@ -272,6 +310,8 @@ export default function TablesPage() {
             const isMergeSelected = mergeSelected.includes(table.id)
             const isTransferSelected = transferSelected.includes(table.id)
             const isSelected = isMergeSelected || isTransferSelected
+            const isMerged = Boolean(table.isMerged || table.mergedWithId || (table.mergedFromNumbers && table.mergedFromNumbers.length > 0))
+
             return (
               <div
                 key={table.id}
@@ -280,17 +320,21 @@ export default function TablesPage() {
                   if (mergeMode) handleMergeClick(table.id)
                   else if (transferMode) handleTransferClick(table.id)
                   else if (table.status === 'WAITING_PAYMENT') window.location.href = `/dashboard/payment`
-                  else window.location.href = `/dashboard/orders/new?tableId=${table.id}`
+                  else {
+                    const targetTableId = table.mergedWithId || table.id
+                    window.location.href = `/dashboard/orders/new?tableId=${targetTableId}`
+                  }
                 }}
                 style={{
-                  background: isSelected ? 'rgba(201,168,76,0.12)' : colors.bg,
-                  border: `2px solid ${isSelected ? 'var(--gold)' : colors.border}`,
+                  background: isSelected ? 'rgba(201,168,76,0.12)' : isMerged ? 'rgba(201,168,76,0.06)' : colors.bg,
+                  border: `2px solid ${isSelected ? 'var(--gold)' : isMerged ? 'rgba(201,168,76,0.7)' : colors.border}`,
                   borderRadius: '12px',
                   padding: '16px 12px',
                   textAlign: 'center',
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
+                  boxShadow: isMerged ? '0 0 12px rgba(201,168,76,0.15)' : undefined,
                 }}
               >
                 {isSelected && (
@@ -298,16 +342,38 @@ export default function TablesPage() {
                 )}
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '2px' }}>TABLE</div>
                 <div style={{ fontSize: '26px', fontWeight: '700', fontFamily: 'Cinzel, serif', color: 'var(--text-primary)', marginBottom: '8px' }}>{table.number}</div>
-                <span className={`badge ${colors.badge}`} style={{ fontSize: '10px', padding: '3px 8px' }}>{colors.label}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                  <span className={`badge ${colors.badge}`} style={{ fontSize: '10px', padding: '3px 8px' }}>{colors.label}</span>
+                  {table.mergedWithId && (
+                    <span className="badge" style={{ background: 'rgba(201,168,76,0.2)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)', fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <Merge size={10} /> Joined with T{table.mergedWithNumber || '?'}
+                    </span>
+                  )}
+                  {table.mergedFromNumbers && table.mergedFromNumbers.length > 0 && (
+                    <span className="badge" style={{ background: 'rgba(201,168,76,0.2)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)', fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <Merge size={10} /> Merged: +T{table.mergedFromNumbers.join(', T')}
+                    </span>
+                  )}
+                </div>
                 {!mergeMode && !transferMode && (
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '6px', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
                     {table.status !== 'FREE' && (
-                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => updateStatus(table.id, 'WAITING_PAYMENT')}>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 6px', fontSize: '11px' }} onClick={() => updateStatus(table.id, 'WAITING_PAYMENT')}>
                         Pay
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(table.id, table.number)}>
-                      <Trash2 size={12} />
+                    {isMerged && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: '4px 6px', fontSize: '11px', color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                        onClick={() => unmergeTable(table.id)}
+                        title="Unmerge table"
+                      >
+                        <Unlink size={11} /> Unmerge
+                      </button>
+                    )}
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 6px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(table.id, table.number)}>
+                      <Trash2 size={11} />
                     </button>
                   </div>
                 )}

@@ -32,16 +32,20 @@ export async function GET() {
 
   const occupiedTableIds = new Set(openOrders.map((o) => o.tableId))
 
-  // Determine which dine-in tables need status correction
+  // Determine which dine-in tables need status correction (accounting for merged tables)
   const toFree: string[] = []
   const toOccupied: string[] = []
 
   for (const table of tables) {
-    const hasOpen = occupiedTableIds.has(table.id)
-    if (!hasOpen && table.status !== 'FREE') {
+    const isDirectlyOpen = occupiedTableIds.has(table.id)
+    const isHostOpen = table.mergedWithId ? occupiedTableIds.has(table.mergedWithId) : false
+    const hasMergedChildOpen = tables.some(other => other.mergedWithId === table.id && occupiedTableIds.has(other.id))
+    const isOccupied = isDirectlyOpen || isHostOpen || hasMergedChildOpen
+
+    if (!isOccupied && !table.mergedWithId && table.status !== 'FREE') {
       toFree.push(table.id)
       table.status = 'FREE'
-    } else if (hasOpen && table.status === 'FREE') {
+    } else if (isOccupied && table.status === 'FREE') {
       toOccupied.push(table.id)
       table.status = 'OCCUPIED'
     }
@@ -60,7 +64,16 @@ export async function GET() {
   // Sort tables naturally (e.g. 1, 2, 3… 10, 11 instead of 1, 10, 11, 2)
   tables.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }))
 
-  return NextResponse.json(tables)
+  const tableMap = new Map(tables.map(t => [t.id, t.number]))
+
+  const enrichedTables = tables.map(t => ({
+    ...t,
+    mergedWithNumber: t.mergedWithId ? tableMap.get(t.mergedWithId) || null : null,
+    mergedFromNumbers: tables.filter(other => other.mergedWithId === t.id).map(other => other.number),
+    isMerged: Boolean(t.mergedWithId || tables.some(other => other.mergedWithId === t.id)),
+  }))
+
+  return NextResponse.json(enrichedTables)
 }
 
 export async function POST(req: Request) {

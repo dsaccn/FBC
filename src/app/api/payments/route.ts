@@ -18,8 +18,31 @@ export async function POST(req: Request) {
   // has had a chance to sync the PAID status to Neon)
   await prisma.order.update({ where: { id: orderId }, data: { status: 'PAID', pendingSync: isOfflineLocal } })
 
-  // Free up the table
-  await prisma.table.update({ where: { id: payment.order.tableId }, data: { status: 'FREE' } })
+  // Free up the table and any tables merged with it
+  const tableId = payment.order.tableId
+  await prisma.table.updateMany({
+    where: {
+      OR: [
+        { id: tableId },
+        { mergedWithId: tableId },
+      ],
+    },
+    data: { status: 'FREE', mergedWithId: null, pendingSync: isOfflineLocal },
+  })
+
+  // Sync to Neon Cloud PostgreSQL if available
+  try {
+    const url = process.env.NEON_DATABASE_URL
+    if (url) {
+      const { Pool } = await import('pg')
+      const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+      await pool.query(
+        `UPDATE "Table" SET status = 'FREE', "mergedWithId" = NULL WHERE id = $1 OR "mergedWithId" = $1`,
+        [tableId]
+      ).catch(() => {})
+      await pool.end().catch(() => {})
+    }
+  } catch {}
 
   // Trigger background sync to Neon
   backgroundSync()
