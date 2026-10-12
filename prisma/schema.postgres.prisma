@@ -56,12 +56,14 @@ model MenuItem {
 }
 
 model Table {
-  id           String   @id @default(cuid())
-  number       String   @unique
-  status       String   @default("FREE")
-  mergedWithId String?
-  createdAt    DateTime @default(now())
-  pendingSync  Boolean  @default(false)
+  id              String   @id @default(cuid())
+  number          String   @unique
+  status          String   @default("FREE")
+  mergedWithId    String?
+  mergeGroupId    String?
+  mergeGroupLabel String?
+  createdAt       DateTime @default(now())
+  pendingSync     Boolean  @default(false)
 
   orders Order[]
 }
