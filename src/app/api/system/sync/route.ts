@@ -67,7 +67,11 @@ export async function GET() {
     if (neonUrl) {
       try {
         const { Pool } = require('pg')
-        const pool = new Pool({ connectionString: neonUrl, connectionTimeoutMillis: 5000 })
+        const pool = new Pool({
+          connectionString: neonUrl,
+          connectionTimeoutMillis: 5000,
+          ssl: { rejectUnauthorized: false },
+        })
         const start = Date.now()
         await pool.query('SELECT 1')
         cloudLatencyMs = Date.now() - start
@@ -166,17 +170,21 @@ export async function POST() {
       })
     }
 
-    backgroundSync()
+    const { syncBothDirections } = await import('@/lib/sync-engine')
+    const syncResult = await syncBothDirections()
 
     await logDevAction({
       action: 'SYNC',
       targetTable: 'ALL',
-      reason: 'Triggered manual full push/pull sync from developer portal',
+      reason: `Triggered manual full push/pull sync: ${JSON.stringify(syncResult.synced)}, pulled orders: ${syncResult.pulled?.orders ?? 0}`,
     })
 
     return NextResponse.json({
-      success: true,
-      message: 'Full sync cycle initiated successfully',
+      success: syncResult.success,
+      syncResult,
+      message: syncResult.success
+        ? `Sync successful! Pushed: ${Object.values(syncResult.synced).reduce((a, b) => a + b, 0)} records, Pulled: ${syncResult.pulled?.orders ?? 0} orders.`
+        : `Sync encountered warnings: ${syncResult.errors.join('; ')}`,
       isCloud: false,
       timestamp: new Date().toISOString(),
     })

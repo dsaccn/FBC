@@ -803,9 +803,118 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           },
         })
       }
+
+      // Delete local StaffMeals that were deleted on cloud
+      const cloudStaffMealIds = new Set(cloudStaffMeals.map(sm => sm.id))
+      const localStaffMeals = await prisma.staffMeal.findMany({ select: { id: true, pendingSync: true } })
+      for (const lsm of localStaffMeals) {
+        if (!lsm.pendingSync && !cloudStaffMealIds.has(lsm.id)) {
+          await prisma.staffMealItem.deleteMany({ where: { staffMealId: lsm.id } }).catch(() => {})
+          await prisma.staffMeal.delete({ where: { id: lsm.id } }).catch(() => {})
+        }
+      }
+
+      // Delete local StaffMealItems that were deleted on cloud
+      const cloudStaffMealItemIds = new Set(cloudStaffMealItems.map(smi => smi.id))
+      const localStaffMealItems = await prisma.staffMealItem.findMany({ select: { id: true, pendingSync: true } })
+      for (const lsmi of localStaffMealItems) {
+        if (!lsmi.pendingSync && !cloudStaffMealItemIds.has(lsmi.id)) {
+          await prisma.staffMealItem.delete({ where: { id: lsmi.id } }).catch(() => {})
+        }
+      }
     } catch (e) {
       console.warn('[Pull static warning]', String(e))
       errors.push(`Static sync warning: ${String(e)}`)
+    }
+
+    // ── Orders & Transactions Deletion Reconciliation ─────────────────────────
+    try {
+      const { rows: allCloudOrders } = await pg.query(`SELECT id FROM "Order"`)
+      const cloudOrderIds = new Set(allCloudOrders.map(o => o.id))
+
+      const localSyncedOrders = await prisma.order.findMany({
+        where: { pendingSync: false },
+        select: { id: true, tableId: true }
+      })
+
+      const deletedOrderIds: string[] = []
+      const affectedTableIds = new Set<string>()
+
+      for (const lo of localSyncedOrders) {
+        if (!cloudOrderIds.has(lo.id)) {
+          deletedOrderIds.push(lo.id)
+          affectedTableIds.add(lo.tableId)
+        }
+      }
+
+      if (deletedOrderIds.length > 0) {
+        const orderItemsToDelete = await prisma.orderItem.findMany({
+          where: { orderId: { in: deletedOrderIds } },
+          select: { id: true }
+        })
+        const orderItemIdsToDelete = orderItemsToDelete.map(oi => oi.id)
+
+        if (orderItemIdsToDelete.length > 0) {
+          await prisma.cancellation.deleteMany({
+            where: { orderItemId: { in: orderItemIdsToDelete } }
+          }).catch(() => {})
+        }
+
+        await prisma.payment.deleteMany({
+          where: { orderId: { in: deletedOrderIds } }
+        }).catch(() => {})
+
+        await prisma.orderItem.deleteMany({
+          where: { orderId: { in: deletedOrderIds } }
+        }).catch(() => {})
+
+        await prisma.order.deleteMany({
+          where: { id: { in: deletedOrderIds } }
+        }).catch(() => {})
+
+        for (const tableId of affectedTableIds) {
+          if (tableId.startsWith('tbl_static_')) continue
+          const remainingOpen = await prisma.order.count({
+            where: { tableId, status: 'OPEN' }
+          })
+          if (remainingOpen === 0) {
+            await prisma.table.update({
+              where: { id: tableId },
+              data: { status: 'FREE', mergedWithId: null }
+            }).catch(() => {})
+          }
+        }
+      }
+
+      // Reconcile standalone deleted Payments
+      const { rows: allCloudPayments } = await pg.query(`SELECT id FROM "Payment"`)
+      const cloudPaymentIds = new Set(allCloudPayments.map(p => p.id))
+      const localSyncedPayments = await prisma.payment.findMany({
+        where: { pendingSync: false },
+        select: { id: true }
+      })
+      for (const lp of localSyncedPayments) {
+        if (!cloudPaymentIds.has(lp.id)) {
+          await prisma.payment.delete({ where: { id: lp.id } }).catch(() => {})
+        }
+      }
+
+      // Reconcile standalone deleted OrderItems
+      const { rows: allCloudOrderItems } = await pg.query(`SELECT id FROM "OrderItem"`)
+      const cloudOrderItemIds = new Set(allCloudOrderItems.map(oi => oi.id))
+      const localSyncedOrderItems = await prisma.orderItem.findMany({
+        where: { pendingSync: false },
+        select: { id: true }
+      })
+      for (const loi of localSyncedOrderItems) {
+        if (!cloudOrderItemIds.has(loi.id)) {
+          await prisma.cancellation.deleteMany({ where: { orderItemId: loi.id } }).catch(() => {})
+          await prisma.orderItem.delete({ where: { id: loi.id } }).catch(() => {})
+        }
+      }
+    } catch (orderReconcileErr) {
+      console.warn('[Pull order reconciliation warning]', String(orderReconcileErr))
+      errors.push(`Order reconciliation warning: ${String(orderReconcileErr)}`)
     }
 
     // Fetch local OPEN orders to check if they were updated/paid on cloud
@@ -1042,6 +1151,31 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       }
     }
 
+    // ── Floor Table Status Self-Healing ───────────────────────────────────────
+    try {
+      const activeTables = await prisma.table.findMany({
+        where: {
+          id: { notIn: ['tbl_static_delivery', 'tbl_static_takeaway', '__archived_orders_table__'] }
+        },
+        select: { id: true, status: true, pendingSync: true }
+      })
+      for (const t of activeTables) {
+        if (t.pendingSync) continue
+        const openCount = await prisma.order.count({
+          where: { tableId: t.id, status: 'OPEN' }
+        })
+        const correctStatus = openCount > 0 ? 'OCCUPIED' : 'FREE'
+        if (t.status !== correctStatus) {
+          await prisma.table.update({
+            where: { id: t.id },
+            data: { status: correctStatus, mergedWithId: openCount > 0 ? undefined : null }
+          }).catch(() => {})
+        }
+      }
+    } catch (healErr) {
+      console.warn('[Floor table heal warning]', String(healErr))
+    }
+
     // ── Pull Cancellations from Cloud ──────────────────────────────────────────
     try {
       const { rows: cloudCancellations } = await pg.query(
@@ -1071,6 +1205,18 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               pendingSync: false,
             },
           })
+        }
+      }
+
+      // Delete local Cancellations that were deleted on cloud
+      const cloudCancellationIds = new Set(cloudCancellations.map(cc => cc.id))
+      const localSyncedCancellations = await prisma.cancellation.findMany({
+        where: { pendingSync: false },
+        select: { id: true }
+      })
+      for (const lc of localSyncedCancellations) {
+        if (!cloudCancellationIds.has(lc.id)) {
+          await prisma.cancellation.delete({ where: { id: lc.id } }).catch(() => {})
         }
       }
     } catch (e) {
@@ -1113,6 +1259,19 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             pendingSync: false,
           },
         })
+      }
+
+      // Delete local InventoryLogs that were deleted on cloud
+      const { rows: allCloudInvLogs } = await pg.query(`SELECT id FROM "InventoryLog"`)
+      const cloudInvLogIds = new Set(allCloudInvLogs.map(l => l.id))
+      const localSyncedInvLogs = await prisma.inventoryLog.findMany({
+        where: { pendingSync: false },
+        select: { id: true }
+      })
+      for (const ll of localSyncedInvLogs) {
+        if (!cloudInvLogIds.has(ll.id)) {
+          await prisma.inventoryLog.delete({ where: { id: ll.id } }).catch(() => {})
+        }
       }
     } catch (e) {
       console.warn('[Pull inventory logs warning]', String(e))
@@ -1159,6 +1318,18 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             pendingSync: false,
           },
         })
+      }
+
+      // Delete local WasteLogs that were deleted on cloud
+      const cloudWasteIds = new Set(cloudWaste.map(w => w.id))
+      const localSyncedWasteLogs = await prisma.wasteLog.findMany({
+        where: { pendingSync: false },
+        select: { id: true }
+      })
+      for (const lw of localSyncedWasteLogs) {
+        if (!cloudWasteIds.has(lw.id)) {
+          await prisma.wasteLog.delete({ where: { id: lw.id } }).catch(() => {})
+        }
       }
     } catch (e) {
       console.warn('[Pull waste logs warning]', String(e))

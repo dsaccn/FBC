@@ -320,94 +320,159 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: `Invalid model: ${model}` }, { status: 400 })
     }
 
-    if (ids.length === 1) {
-      const singleId = ids[0]
-      const previousState = await delegate.findUnique({ where: { id: singleId } }).catch(() => null)
-      if (!previousState) {
-        return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+    // Helper to execute deletions on Neon Cloud PostgreSQL directly
+    const deleteFromNeon = async (sql: string, params: any[] = []) => {
+      const url = process.env.NEON_DATABASE_URL
+      if (!url) return
+      try {
+        const { Pool } = await import('pg')
+        const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+        await p.query(sql, params)
+        await p.end().catch(() => {})
+      } catch (err: any) {
+        console.warn(`[DELETE records] Neon propagation warning for ${model}:`, err?.message)
       }
-
-      await delegate.delete({ where: { id: singleId } })
-
-      // Cascade deletions between WasteLog and InventoryLog to keep both in sync
-      if (model === 'WasteLog') {
-        await prisma.inventoryLog.deleteMany({ where: { id: singleId } }).catch(() => {})
-        try {
-          const url = process.env.NEON_DATABASE_URL
-          if (url) {
-            const { Pool } = await import('pg')
-            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-            await p.query('DELETE FROM "WasteLog" WHERE id = $1', [singleId]).catch(() => {})
-            await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [singleId]).catch(() => {})
-            await p.end().catch(() => {})
-          }
-        } catch {}
-      } else if (model === 'InventoryLog') {
-        await prisma.wasteLog.deleteMany({ where: { id: singleId } }).catch(() => {})
-        try {
-          const url = process.env.NEON_DATABASE_URL
-          if (url) {
-            const { Pool } = await import('pg')
-            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-            await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [singleId]).catch(() => {})
-            await p.query('DELETE FROM "WasteLog" WHERE id = $1', [singleId]).catch(() => {})
-            await p.end().catch(() => {})
-          }
-        } catch {}
-      }
-
-      await logDevAction({
-        action: 'DELETE',
-        targetTable: model,
-        recordId: singleId,
-        previousState,
-        reason,
-        ipAddress: req.headers.get('x-forwarded-for') || undefined,
-      })
-
-      return NextResponse.json({ success: true, deletedId: singleId, count: 1 })
-    } else {
-      // Bulk delete
-      const previousRecords = await delegate.findMany({ where: { id: { in: ids } } }).catch(() => [])
-      const deleteResult = await delegate.deleteMany({ where: { id: { in: ids } } })
-
-      if (model === 'WasteLog') {
-        await prisma.inventoryLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
-        try {
-          const url = process.env.NEON_DATABASE_URL
-          if (url) {
-            const { Pool } = await import('pg')
-            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-            await p.query('DELETE FROM "WasteLog" WHERE id = ANY($1)', [ids]).catch(() => {})
-            await p.query('DELETE FROM "InventoryLog" WHERE id = ANY($1)', [ids]).catch(() => {})
-            await p.end().catch(() => {})
-          }
-        } catch {}
-      } else if (model === 'InventoryLog') {
-        await prisma.wasteLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
-        try {
-          const url = process.env.NEON_DATABASE_URL
-          if (url) {
-            const { Pool } = await import('pg')
-            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-            await p.query('DELETE FROM "InventoryLog" WHERE id = ANY($1)', [ids]).catch(() => {})
-            await p.query('DELETE FROM "WasteLog" WHERE id = ANY($1)', [ids]).catch(() => {})
-            await p.end().catch(() => {})
-          }
-        } catch {}
-      }
-
-      await logDevAction({
-        action: 'DELETE',
-        targetTable: model,
-        recordId: `bulk_${ids.length}`,
-        previousState: { count: previousRecords.length, sampleIds: ids.slice(0, 5) },
-        reason: `${reason} (${deleteResult.count} records)`,
-        ipAddress: req.headers.get('x-forwarded-for') || undefined,
-      })
-
-      return NextResponse.json({ success: true, count: deleteResult.count, deletedIds: ids })
     }
+
+    // ── Cascading Deletion Preparation for All Models ─────────────────────────
+    if (model === 'Order') {
+      const ois = await prisma.orderItem.findMany({ where: { orderId: { in: ids } }, select: { id: true, tableId: true } as any }).catch(() => [])
+      const oiIds = ois.map((x: any) => x.id)
+      if (oiIds.length > 0) {
+        await prisma.cancellation.deleteMany({ where: { orderItemId: { in: oiIds } } }).catch(() => {})
+      }
+      await prisma.payment.deleteMany({ where: { orderId: { in: ids } } }).catch(() => {})
+      await prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } }).catch(() => {})
+
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "orderId" = ANY($1))`, [ids])
+        await deleteFromNeon(`DELETE FROM "Payment" WHERE "orderId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "OrderItem" WHERE "orderId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "Order" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'OrderItem') {
+      await prisma.cancellation.deleteMany({ where: { orderItemId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "Cancellation" WHERE "orderItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "OrderItem" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'Table') {
+      const filteredIds = ids.filter(id => !['tbl_static_delivery', 'tbl_static_takeaway', '__archived_orders_table__'].includes(id))
+      if (filteredIds.length === 0) {
+        return NextResponse.json({ error: 'Cannot delete static system tables' }, { status: 400 })
+      }
+      ids = filteredIds
+      await prisma.order.updateMany({ where: { tableId: { in: ids } }, data: { tableId: '__archived_orders_table__' } }).catch(() => {})
+      await prisma.table.updateMany({ where: { mergedWithId: { in: ids } }, data: { mergedWithId: null } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`UPDATE "Order" SET "tableId" = '__archived_orders_table__' WHERE "tableId" = ANY($1)`, [ids])
+        await deleteFromNeon(`UPDATE "Table" SET "mergedWithId" = NULL WHERE "mergedWithId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "Table" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'MenuItem') {
+      await prisma.menuItem.updateMany({ where: { parentItemId: { in: ids } }, data: { parentItemId: null } }).catch(() => {})
+      await prisma.recipe.deleteMany({ where: { menuItemId: { in: ids } } }).catch(() => {})
+      await prisma.staffRecipe.deleteMany({ where: { staffMenuItemId: { in: ids } } }).catch(() => {})
+      await prisma.staffMenuItem.deleteMany({ where: { linkedMenuItemId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`UPDATE "MenuItem" SET "parentItemId" = NULL WHERE "parentItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "Recipe" WHERE "menuItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffRecipe" WHERE "staffMenuItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffMenuItem" WHERE "linkedMenuItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "MenuItem" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'Category') {
+      await prisma.menuItem.updateMany({ where: { categoryId: { in: ids } }, data: { categoryId: null } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`UPDATE "MenuItem" SET "categoryId" = NULL WHERE "categoryId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "Category" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'Ingredient') {
+      await prisma.recipe.deleteMany({ where: { ingredientId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "Recipe" WHERE "ingredientId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "Ingredient" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'StaffMember') {
+      const sms = await prisma.staffMeal.findMany({ where: { staffMemberId: { in: ids } }, select: { id: true } }).catch(() => [])
+      const smIds = sms.map(x => x.id)
+      if (smIds.length > 0) {
+        await prisma.staffMealItem.deleteMany({ where: { staffMealId: { in: smIds } } }).catch(() => {})
+      }
+      await prisma.staffMeal.deleteMany({ where: { staffMemberId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "StaffMealItem" WHERE "staffMealId" IN (SELECT id FROM "StaffMeal" WHERE "staffMemberId" = ANY($1))`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffMeal" WHERE "staffMemberId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffMember" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'StaffMenuItem') {
+      await prisma.staffMealItem.deleteMany({ where: { staffMenuItemId: { in: ids } } }).catch(() => {})
+      await prisma.staffRecipe.deleteMany({ where: { staffMenuItemId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "StaffMealItem" WHERE "staffMenuItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffRecipe" WHERE "staffMenuItemId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffMenuItem" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'StaffIngredient') {
+      await prisma.staffRecipe.deleteMany({ where: { staffIngredientId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "StaffRecipe" WHERE "staffIngredientId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffIngredient" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'StaffMeal') {
+      await prisma.staffMealItem.deleteMany({ where: { staffMealId: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "StaffMealItem" WHERE "staffMealId" = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "StaffMeal" WHERE id = ANY($1)`, [ids])
+      }
+    } else if (model === 'WasteLog' || model === 'InventoryLog') {
+      await prisma.wasteLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+      await prisma.inventoryLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "WasteLog" WHERE id = ANY($1)`, [ids])
+        await deleteFromNeon(`DELETE FROM "InventoryLog" WHERE id = ANY($1)`, [ids])
+      }
+    } else {
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`DELETE FROM "${model}" WHERE id = ANY($1)`, [ids])
+      }
+    }
+
+    // ── Execute Primary Model Deletion in Current Database ────────────────────
+    const previousRecords = await delegate.findMany({ where: { id: { in: ids } } }).catch(() => [])
+    const deleteResult = await delegate.deleteMany({ where: { id: { in: ids } } })
+
+    // If orders were deleted, heal table statuses
+    if (model === 'Order') {
+      const activeTables = await prisma.table.findMany({
+        where: { id: { notIn: ['tbl_static_delivery', 'tbl_static_takeaway', '__archived_orders_table__'] } },
+        select: { id: true }
+      }).catch(() => [])
+      for (const t of activeTables) {
+        const openCount = await prisma.order.count({ where: { tableId: t.id, status: 'OPEN' } })
+        if (openCount === 0) {
+          await prisma.table.update({ where: { id: t.id }, data: { status: 'FREE', mergedWithId: null } }).catch(() => {})
+        }
+      }
+      if (!process.env.VERCEL) {
+        await deleteFromNeon(`
+          UPDATE "Table" SET status = 'FREE', "mergedWithId" = NULL 
+          WHERE id NOT IN ('tbl_static_delivery', 'tbl_static_takeaway', '__archived_orders_table__')
+            AND id NOT IN (SELECT DISTINCT "tableId" FROM "Order" WHERE status = 'OPEN');
+        `)
+      }
+    }
+
+    await logDevAction({
+      action: 'DELETE',
+      targetTable: model,
+      recordId: ids.length === 1 ? ids[0] : `bulk_${ids.length}`,
+      previousState: { count: previousRecords.length, sampleIds: ids.slice(0, 5) },
+      reason: `${reason} (${deleteResult.count} records)`,
+      ipAddress: req.headers.get('x-forwarded-for') || undefined,
+    })
+
+    return NextResponse.json({ success: true, count: deleteResult.count, deletedIds: ids })
   } catch (err: any) {
     console.error('[DELETE /api/system/records]', err)
     return NextResponse.json({ error: err.message || 'Delete record failed' }, { status: 500 })

@@ -351,6 +351,42 @@ export default function AbebeDeveloperPortal() {
     }
   }
 
+  async function handleResetSystem(mode: 'transactions' | 'all') {
+    const isTrans = mode === 'transactions'
+    const promptMsg = isTrans
+      ? 'ARE YOU SURE YOU WANT TO RESET ALL TRANSACTIONS TO ZERO?\\n\\nThis will permanently delete all orders, payments, order items, cancellations, waste logs, and inventory logs across BOTH Cloud (Neon) and Offline Localhost databases.\\n\\nYour Menu Catalog, Inventory Items, and Staff Accounts will be safely kept.\\n\\nType "RESET" to confirm:'
+      : 'WARNING: FULL CLEAN SLATE RESET!\\n\\nThis will wipe all data including menu items and categories across BOTH databases.\\n\\nType "CLEAN SLATE" to confirm:'
+
+    const confirmation = prompt(promptMsg)
+    const expected = isTrans ? 'RESET' : 'CLEAN SLATE'
+    if (confirmation !== expected) {
+      if (confirmation) alert('Reset cancelled: Confirmation text did not match.')
+      return
+    }
+
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/system/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, reason: `Triggered from Abebe Portal (${mode})` }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setActionSuccess(data.message || 'System reset completed successfully!')
+        refreshSync()
+        loadRecords()
+        setTimeout(() => setActionSuccess(''), 6000)
+      } else {
+        setActionError(data.error || 'System reset failed')
+      }
+    } catch (e: any) {
+      setActionError(e.message || 'System reset error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   async function refreshHealth() {
     try {
       const res = await fetch('/api/system/health')
@@ -1350,6 +1386,59 @@ export default function AbebeDeveloperPortal() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Reset / Start from Zero Danger Zone */}
+          <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <AlertTriangle size={20} color="#E11D48" />
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#9F1239', margin: 0 }}>Start From Zero & Clean Slate Operations</h3>
+            </div>
+            <p style={{ fontSize: '13px', color: '#BE123C', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              Use these options when you want to wipe transactions to test fresh or start from zero. Any reset executed here updates <strong>BOTH</strong> Online Cloud (Neon) and Offline Localhost databases synchronously.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleResetSystem('transactions')}
+                disabled={syncing}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  border: '1px solid #E11D48',
+                  background: '#E11D48',
+                  color: '#FFFFFF',
+                  fontWeight: '600',
+                  fontSize: '13px',
+                  cursor: syncing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Reset All Transactions to Zero (Keep Menu & Users)</span>
+              </button>
+              <button
+                onClick={() => handleResetSystem('all')}
+                disabled={syncing}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  border: '1px solid #FDA4AF',
+                  background: '#FFFFFF',
+                  color: '#9F1239',
+                  fontWeight: '600',
+                  fontSize: '13px',
+                  cursor: syncing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <ShieldAlert size={15} />
+                <span>Full System Clean Slate (Wipe All Data)</span>
+              </button>
             </div>
           </div>
         </div>
