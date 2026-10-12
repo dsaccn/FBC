@@ -7,7 +7,7 @@ import {
   Search, Plus, Trash2, Edit3, ArrowRight, Download, CheckCircle2,
   XCircle, Clock, HardDrive, Eye, EyeOff, Layers, ExternalLink,
   ChevronRight, Lock, Unlock, Filter, LogOut, KeyRound, User as UserIcon,
-  Copy, Check
+  Copy, Check, CheckSquare
 } from 'lucide-react'
 
 interface ModelMeta {
@@ -25,9 +25,11 @@ interface AuthUser {
   role: string
 }
 
+type AuthStatus = 'checking' | 'unauthenticated' | 'authenticated'
+
 export default function AbebeDeveloperPortal() {
-  // Auth state: default to 'unauthenticated' so the Login Page is ALWAYS presented first on /abebe
-  const [authStatus, setAuthStatus] = useState<'unauthenticated' | 'authenticated'>('unauthenticated')
+  // Auth state: default to 'checking' so login screen does not flash on reload
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [loginUsername, setLoginUsername] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -55,12 +57,13 @@ export default function AbebeDeveloperPortal() {
   const [models, setModels] = useState<ModelMeta[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('User')
 
-  // Table Data State
+  // Table Data & Bulk Selection State
   const [records, setRecords] = useState<any[]>([])
   const [totalCount, setTotalCount] = useState<number>(0)
   const [page, setPage] = useState<number>(1)
   const [search, setSearch] = useState<string>('')
   const [loadingRecords, setLoadingRecords] = useState<boolean>(false)
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
 
   // Row Inspector & Edit Modal
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null)
@@ -86,13 +89,31 @@ export default function AbebeDeveloperPortal() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [auditTotal, setAuditTotal] = useState<number>(0)
 
-  // 1. Only restore flight control session if explicitly unlocked in this tab
+  // 1. Session check: per-tab lifecycle (destroyed when tab is closed, preserved on refresh)
   useEffect(() => {
     async function checkAuth() {
       const isUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('abebe_unlocked') === 'true'
       if (!isUnlocked) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('abebe_unlocked')
+          sessionStorage.removeItem('abebe_user')
+        }
+        // Invalidate server session if tab was closed or opened brand new
+        fetch('/api/abebe/auth', { method: 'DELETE' }).catch(() => {})
         setAuthStatus('unauthenticated')
         return
+      }
+
+      // Restore user immediately from tab storage to prevent any UI flashing on reload
+      if (typeof window !== 'undefined') {
+        const cachedUserStr = sessionStorage.getItem('abebe_user')
+        if (cachedUserStr) {
+          try {
+            const cachedUser = JSON.parse(cachedUserStr)
+            setCurrentUser(cachedUser)
+            setAuthStatus('authenticated')
+          } catch {}
+        }
       }
 
       try {
@@ -101,6 +122,9 @@ export default function AbebeDeveloperPortal() {
           const data = await res.json()
           if (data.authenticated && data.user?.role === 'ADMIN') {
             setCurrentUser(data.user)
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('abebe_user', JSON.stringify(data.user))
+            }
             setAuthStatus('authenticated')
             return
           }
@@ -109,7 +133,10 @@ export default function AbebeDeveloperPortal() {
         console.error('Session check error:', err)
       }
 
-      if (typeof window !== 'undefined') sessionStorage.removeItem('abebe_unlocked')
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('abebe_unlocked')
+        sessionStorage.removeItem('abebe_user')
+      }
       setAuthStatus('unauthenticated')
     }
     checkAuth()
@@ -145,6 +172,7 @@ export default function AbebeDeveloperPortal() {
 
   // 4. Load records on model, page, tab change
   useEffect(() => {
+    setSelectedRowIds(new Set())
     if (authStatus === 'authenticated' && activeTab === 'explorer') {
       loadRecords()
     }
@@ -181,6 +209,7 @@ export default function AbebeDeveloperPortal() {
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('abebe_unlocked', 'true')
+        sessionStorage.setItem('abebe_user', JSON.stringify(data.user))
       }
       setCurrentUser(data.user)
       setAuthStatus('authenticated')
@@ -197,6 +226,7 @@ export default function AbebeDeveloperPortal() {
     } catch {}
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('abebe_unlocked')
+      sessionStorage.removeItem('abebe_user')
     }
     setCurrentUser(null)
     setAuthStatus('unauthenticated')
@@ -432,6 +462,86 @@ export default function AbebeDeveloperPortal() {
     }
   }
 
+  function handleToggleRow(id: string) {
+    setSelectedRowIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleToggleSelectAll() {
+    if (records.length === 0) return
+    const allSelected = records.every(r => r.id && selectedRowIds.has(r.id))
+    if (allSelected) {
+      setSelectedRowIds(prev => {
+        const next = new Set(prev)
+        records.forEach(r => { if (r.id) next.delete(r.id) })
+        return next
+      })
+    } else {
+      setSelectedRowIds(prev => {
+        const next = new Set(prev)
+        records.forEach(r => { if (r.id) next.add(r.id) })
+        return next
+      })
+    }
+  }
+
+  function handleClearSelection() {
+    setSelectedRowIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    if (!writeMode) return
+    const ids = Array.from(selectedRowIds)
+    if (ids.length === 0) return
+
+    if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE ${ids.length} selected records from ${selectedModel}?`)) {
+      return
+    }
+
+    const reason = prompt(`Enter reason for deleting ${ids.length} records from ${selectedModel}:`, 'Bulk deletion via developer portal')
+    if (!reason || !reason.trim()) return
+
+    try {
+      const res = await fetch('/api/system/records', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          ids,
+          reason: reason.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setActionSuccess(`Successfully deleted ${data.count || ids.length} records from ${selectedModel}`)
+        setSelectedRowIds(new Set())
+        loadRecords()
+        setTimeout(() => setActionSuccess(''), 4000)
+      } else {
+        setActionError(data.error || 'Bulk delete failed')
+      }
+    } catch (e: any) {
+      setActionError(e.message)
+    }
+  }
+
+  function handleExportSelected() {
+    const selectedData = records.filter(r => r.id && selectedRowIds.has(r.id))
+    const blob = new Blob([JSON.stringify(selectedData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${selectedModel}_selected_${selectedRowIds.size}_records.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   function jumpToRelation(targetModel: string, targetId: string) {
     setSelectedModel(targetModel)
     setSearch(targetId)
@@ -460,6 +570,39 @@ export default function AbebeDeveloperPortal() {
   }
 
   const recordColumns = records.length > 0 ? Object.keys(records[0]) : []
+
+  // ── VIEW 0: CHECKING SESSION SPLASH (prevents login screen flash on refresh) ──
+  if (authStatus === 'checking') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'radial-gradient(ellipse at 50% 20%, #172033 0%, #0D131F 50%, #06090E 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '16px',
+        color: '#94A3B8',
+        fontFamily: "'Inter', sans-serif"
+      }}>
+        <div style={{
+          width: '52px',
+          height: '52px',
+          borderRadius: '12px',
+          background: 'rgba(59, 130, 246, 0.1)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <Shield className="animate-spin" size={26} style={{ color: '#3B82F6' }} />
+        </div>
+        <div style={{ fontSize: '13px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#64748B', fontWeight: 600 }}>
+          Authenticating Abebe Flight Control...
+        </div>
+      </div>
+    )
+  }
 
   // ── VIEW 1: STANDALONE LOGIN SCREEN AT /abebe ──
   if (authStatus === 'unauthenticated') {
@@ -880,12 +1023,102 @@ export default function AbebeDeveloperPortal() {
             </div>
           </div>
 
+          {/* Bulk Selection Action Bar */}
+          {selectedRowIds.size > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: '8px',
+              marginBottom: '14px',
+              fontSize: '13px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontWeight: '600', color: '#1E40AF', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckSquare size={16} />
+                  {selectedRowIds.size} {selectedRowIds.size === 1 ? 'record' : 'records'} selected
+                </span>
+                <button
+                  onClick={handleClearSelection}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563EB',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '500'
+                  }}
+                >
+                  Deselect all
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={handleExportSelected}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 13px',
+                    borderRadius: '6px',
+                    background: '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    color: '#334155',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Download size={13} />
+                  Export Selected ({selectedRowIds.size})
+                </button>
+
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={!writeMode}
+                  title={!writeMode ? 'Enable Write Mode in header to delete records' : `Permanently delete ${selectedRowIds.size} records`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 13px',
+                    borderRadius: '6px',
+                    background: writeMode ? '#DC2626' : '#E2E8F0',
+                    border: 'none',
+                    color: writeMode ? '#FFFFFF' : '#94A3B8',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: writeMode ? 'pointer' : 'not-allowed',
+                    boxShadow: writeMode ? '0 1px 2px rgba(220, 38, 38, 0.2)' : 'none'
+                  }}
+                >
+                  <Trash2 size={13} />
+                  Delete Selected ({selectedRowIds.size})
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* High-Density Data Grid */}
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
             <div style={{ overflowX: 'auto', maxHeight: '650px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '10px 14px', width: '38px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all records on current page"
+                        checked={records.length > 0 && records.every(r => r.id && selectedRowIds.has(r.id))}
+                        onChange={handleToggleSelectAll}
+                        style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563EB' }}
+                      />
+                    </th>
                     <th style={{ padding: '10px 14px', width: '90px' }}>Actions</th>
                     {recordColumns.map(col => (
                       <th key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
@@ -897,56 +1130,72 @@ export default function AbebeDeveloperPortal() {
                 <tbody>
                   {loadingRecords ? (
                     <tr>
-                      <td colSpan={recordColumns.length + 1} style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
+                      <td colSpan={recordColumns.length + 2} style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
                         Loading {selectedModel} records...
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan={recordColumns.length + 1} style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
+                      <td colSpan={recordColumns.length + 2} style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
                         No records found for {selectedModel}.
                       </td>
                     </tr>
                   ) : (
-                    records.map((row, idx) => (
-                      <tr
-                        key={row.id || idx}
-                        style={{
-                          borderBottom: '1px solid #F1F5F9',
-                          transition: 'background 0.15s ease',
-                          fontVariantNumeric: 'tabular-nums'
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <td style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <button
-                              onClick={() => openEditModal(row)}
-                              title="Inspect & Edit"
-                              style={{ padding: '4px 7px', borderRadius: '4px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer', color: '#0F172A' }}
-                            >
-                              <Edit3 size={13} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRecord(row.id)}
-                              disabled={!writeMode}
-                              title="Delete Record"
-                              style={{ padding: '4px 7px', borderRadius: '4px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: writeMode ? 'pointer' : 'not-allowed', color: '#DC2626', opacity: writeMode ? 1 : 0.4 }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                            {selectedModel === 'Order' && row.id && (
+                    records.map((row, idx) => {
+                      const isSelected = Boolean(row.id && selectedRowIds.has(row.id))
+                      return (
+                        <tr
+                          key={row.id || idx}
+                          style={{
+                            borderBottom: '1px solid #F1F5F9',
+                            transition: 'background 0.15s ease',
+                            fontVariantNumeric: 'tabular-nums',
+                            background: isSelected ? '#EFF6FF' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = '#F8FAFC'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'transparent'
+                          }}
+                        >
+                          <td style={{ padding: '8px 14px', width: '38px', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select record ${row.id}`}
+                              checked={isSelected}
+                              onChange={() => row.id && handleToggleRow(row.id)}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563EB' }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                               <button
-                                onClick={() => jumpToRelation('OrderItem', row.id)}
-                                title="Jump to Order Items"
-                                style={{ padding: '3px 6px', borderRadius: '4px', border: '1px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', color: '#1D4ED8', fontSize: '11px', fontWeight: '600' }}
+                                onClick={() => openEditModal(row)}
+                                title="Inspect & Edit"
+                                style={{ padding: '4px 7px', borderRadius: '4px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer', color: '#0F172A' }}
                               >
-                                Items →
+                                <Edit3 size={13} />
                               </button>
-                            )}
-                          </div>
-                        </td>
+                              <button
+                                onClick={() => handleDeleteRecord(row.id)}
+                                disabled={!writeMode}
+                                title="Delete Record"
+                                style={{ padding: '4px 7px', borderRadius: '4px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: writeMode ? 'pointer' : 'not-allowed', color: '#DC2626', opacity: writeMode ? 1 : 0.4 }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                              {selectedModel === 'Order' && row.id && (
+                                <button
+                                  onClick={() => jumpToRelation('OrderItem', row.id)}
+                                  title="Jump to Order Items"
+                                  style={{ padding: '3px 6px', borderRadius: '4px', border: '1px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', color: '#1D4ED8', fontSize: '11px', fontWeight: '600' }}
+                                >
+                                  Items →
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         {recordColumns.map(col => {
                           const val = row[col]
                           let displayVal = ''
@@ -984,9 +1233,10 @@ export default function AbebeDeveloperPortal() {
                           )
                         })}
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    )
+                  })
+                )}
+              </tbody>
               </table>
             </div>
 

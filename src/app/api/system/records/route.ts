@@ -289,12 +289,30 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url)
-    const model = searchParams.get('model')
-    const id = searchParams.get('id')
-    const reason = searchParams.get('reason') || 'Deleted record via developer portal'
+    let model = searchParams.get('model')
+    let id = searchParams.get('id')
+    let idsParam = searchParams.get('ids')
+    let reason = searchParams.get('reason') || 'Deleted record via developer portal'
+    let ids: string[] = []
 
-    if (!model || !id) {
-      return NextResponse.json({ error: 'Model and id required' }, { status: 400 })
+    // Also check if JSON body was provided
+    if (req.headers.get('content-type')?.includes('application/json')) {
+      const body = await req.json().catch(() => ({}))
+      if (body.model) model = body.model
+      if (body.id) id = body.id
+      if (Array.isArray(body.ids)) ids = body.ids.map((x: any) => String(x).trim()).filter(Boolean)
+      if (body.reason) reason = body.reason
+    }
+
+    if (idsParam) {
+      const parsed = idsParam.split(',').map(s => s.trim()).filter(Boolean)
+      ids = Array.from(new Set([...ids, ...parsed]))
+    } else if (id && ids.length === 0) {
+      ids = [id.trim()]
+    }
+
+    if (!model || ids.length === 0) {
+      return NextResponse.json({ error: 'Model and id(s) required' }, { status: 400 })
     }
 
     const delegate = getModelDelegate(model)
@@ -302,50 +320,94 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: `Invalid model: ${model}` }, { status: 400 })
     }
 
-    const previousState = await delegate.findUnique({ where: { id } }).catch(() => null)
-    if (!previousState) {
-      return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+    if (ids.length === 1) {
+      const singleId = ids[0]
+      const previousState = await delegate.findUnique({ where: { id: singleId } }).catch(() => null)
+      if (!previousState) {
+        return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+      }
+
+      await delegate.delete({ where: { id: singleId } })
+
+      // Cascade deletions between WasteLog and InventoryLog to keep both in sync
+      if (model === 'WasteLog') {
+        await prisma.inventoryLog.deleteMany({ where: { id: singleId } }).catch(() => {})
+        try {
+          const url = process.env.NEON_DATABASE_URL
+          if (url) {
+            const { Pool } = await import('pg')
+            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await p.query('DELETE FROM "WasteLog" WHERE id = $1', [singleId]).catch(() => {})
+            await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [singleId]).catch(() => {})
+            await p.end().catch(() => {})
+          }
+        } catch {}
+      } else if (model === 'InventoryLog') {
+        await prisma.wasteLog.deleteMany({ where: { id: singleId } }).catch(() => {})
+        try {
+          const url = process.env.NEON_DATABASE_URL
+          if (url) {
+            const { Pool } = await import('pg')
+            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [singleId]).catch(() => {})
+            await p.query('DELETE FROM "WasteLog" WHERE id = $1', [singleId]).catch(() => {})
+            await p.end().catch(() => {})
+          }
+        } catch {}
+      }
+
+      await logDevAction({
+        action: 'DELETE',
+        targetTable: model,
+        recordId: singleId,
+        previousState,
+        reason,
+        ipAddress: req.headers.get('x-forwarded-for') || undefined,
+      })
+
+      return NextResponse.json({ success: true, deletedId: singleId, count: 1 })
+    } else {
+      // Bulk delete
+      const previousRecords = await delegate.findMany({ where: { id: { in: ids } } }).catch(() => [])
+      const deleteResult = await delegate.deleteMany({ where: { id: { in: ids } } })
+
+      if (model === 'WasteLog') {
+        await prisma.inventoryLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+        try {
+          const url = process.env.NEON_DATABASE_URL
+          if (url) {
+            const { Pool } = await import('pg')
+            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await p.query('DELETE FROM "WasteLog" WHERE id = ANY($1)', [ids]).catch(() => {})
+            await p.query('DELETE FROM "InventoryLog" WHERE id = ANY($1)', [ids]).catch(() => {})
+            await p.end().catch(() => {})
+          }
+        } catch {}
+      } else if (model === 'InventoryLog') {
+        await prisma.wasteLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+        try {
+          const url = process.env.NEON_DATABASE_URL
+          if (url) {
+            const { Pool } = await import('pg')
+            const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await p.query('DELETE FROM "InventoryLog" WHERE id = ANY($1)', [ids]).catch(() => {})
+            await p.query('DELETE FROM "WasteLog" WHERE id = ANY($1)', [ids]).catch(() => {})
+            await p.end().catch(() => {})
+          }
+        } catch {}
+      }
+
+      await logDevAction({
+        action: 'DELETE',
+        targetTable: model,
+        recordId: `bulk_${ids.length}`,
+        previousState: { count: previousRecords.length, sampleIds: ids.slice(0, 5) },
+        reason: `${reason} (${deleteResult.count} records)`,
+        ipAddress: req.headers.get('x-forwarded-for') || undefined,
+      })
+
+      return NextResponse.json({ success: true, count: deleteResult.count, deletedIds: ids })
     }
-
-    await delegate.delete({ where: { id } })
-
-    // Cascade deletions between WasteLog and InventoryLog to keep both in sync
-    if (model === 'WasteLog') {
-      await prisma.inventoryLog.deleteMany({ where: { id } }).catch(() => {})
-      try {
-        const url = process.env.NEON_DATABASE_URL
-        if (url) {
-          const { Pool } = await import('pg')
-          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-          await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
-          await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
-          await p.end().catch(() => {})
-        }
-      } catch {}
-    } else if (model === 'InventoryLog') {
-      await prisma.wasteLog.deleteMany({ where: { id } }).catch(() => {})
-      try {
-        const url = process.env.NEON_DATABASE_URL
-        if (url) {
-          const { Pool } = await import('pg')
-          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
-          await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
-          await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
-          await p.end().catch(() => {})
-        }
-      } catch {}
-    }
-
-    await logDevAction({
-      action: 'DELETE',
-      targetTable: model,
-      recordId: id,
-      previousState,
-      reason,
-      ipAddress: req.headers.get('x-forwarded-for') || undefined,
-    })
-
-    return NextResponse.json({ success: true, deletedId: id })
   } catch (err: any) {
     console.error('[DELETE /api/system/records]', err)
     return NextResponse.json({ error: err.message || 'Delete record failed' }, { status: 500 })
