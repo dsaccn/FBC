@@ -38,6 +38,7 @@ $filesToCopy = @(
     "install-online.bat",
     "start-pos.bat",
     "stop-pos.bat",
+    "update-pos.bat",
     "README.md"
 )
 
