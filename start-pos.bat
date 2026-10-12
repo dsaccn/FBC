@@ -18,8 +18,8 @@ if not exist "package.json" (
     exit /b 1
 )
 
-:: 2. Ensure Node.js is accessible
-set "PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm;C:\Program Files (x86)\nodejs"
+:: 2. Ensure Node.js and Git are accessible
+set "PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm;C:\Program Files (x86)\nodejs;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
 
 where node >nul 2>&1
 if %errorlevel% neq 0 (
@@ -33,7 +33,29 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 3. Open the browser to the POS
+:: 3. Automatic Code Update Check (seamlessly pulls GitHub code edits if online)
+where git >nul 2>&1
+if %errorlevel% equ 0 (
+    git fetch origin main --quiet >nul 2>&1
+    if %errorlevel% equ 0 (
+        for /f %%i in ('git rev-list HEAD..origin/main --count 2^>nul') do (
+            if %%i gtr 0 (
+                echo.
+                echo =========================================================
+                echo  [UPDATE DETECTED] %%i new code edit(s) found on GitHub!
+                echo  Updating POS application automatically...
+                echo =========================================================
+                call git pull origin main --quiet
+                call npx prisma generate
+                call npm run build
+                echo [OK] POS updated to latest code successfully!
+                echo.
+            )
+        )
+    )
+)
+
+:: 4. Open the browser to the POS
 echo Opening http://localhost:3000 in your browser...
 start http://localhost:3000
 
