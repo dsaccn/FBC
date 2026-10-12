@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Printer, X, CheckCircle, AlertCircle, Plus } from 'lucide-react'
+import { Printer, X, CheckCircle, AlertCircle, Plus, Unlink, Merge } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
@@ -18,7 +18,14 @@ interface OrderItem {
 }
 interface Order {
   id: string
-  table: { number: string }
+  tableId: string
+  table: {
+    id: string
+    number: string
+    mergeGroupId?: string | null
+    mergeGroupLabel?: string | null
+    mergedWithId?: string | null
+  }
   waiter: { fullName: string }
   orderItems: OrderItem[]
   status: string
@@ -181,6 +188,25 @@ export default function OrderDetailPage() {
   if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>Loading...</div>
   if (!order) return <div style={{ textAlign: 'center', padding: '60px', color: 'var(--danger-light)' }}>Order not found.</div>
 
+  async function handleUnmerge() {
+    if (!order?.table?.id) return
+    if (!confirm(`Dismerge / Unmerge these tables? The active order will remain safely on Table ${order.table.number}.`)) return
+    try {
+      const res = await fetch(`/api/tables/merge?tableId=${encodeURIComponent(order.table.id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Tables unmerged successfully!')
+        load()
+      } else {
+        toast.error(data.error || 'Failed to unmerge tables')
+      }
+    } catch {
+      toast.error('Network error unmerging tables')
+    }
+  }
+
   const activeItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
   const total = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
 
@@ -188,7 +214,16 @@ export default function OrderDetailPage() {
     <div className="animate-fade-in" style={{ maxWidth: '760px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700' }}><span className="gold-text">Order — Table {order.table.number}</span></h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
+              <span className="gold-text">Order — Table {order.table.mergeGroupLabel || order.table.number}</span>
+            </h1>
+            {order.table.mergeGroupId && (
+              <span className="badge" style={{ background: 'rgba(201,168,76,0.18)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.35)', fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <Merge size={11} /> Merged Unit [{order.table.mergeGroupId}]
+              </span>
+            )}
+          </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
             Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-US', {
               weekday: 'long',
@@ -206,7 +241,12 @@ export default function OrderDetailPage() {
           {order.status === 'PAID' && <button className="btn btn-outline btn-sm" onClick={printReceipt}><Printer size={14} /> Print Receipt</button>}
           {order.status === 'OPEN' && (
             <>
-              <Link href={`/dashboard/orders/new?tableId=${order.table.number}`} className="btn btn-outline btn-sm"><Plus size={14} /> Add Items</Link>
+              {order.table.mergeGroupId && (
+                <button className="btn btn-outline btn-sm" onClick={handleUnmerge} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Unlink size={14} /> Unmerge Tables
+                </button>
+              )}
+              <Link href={`/dashboard/orders/new?tableId=${order.table.id}`} className="btn btn-outline btn-sm"><Plus size={14} /> Add Items</Link>
               <Link href={`/dashboard/payment?orderId=${order.id}`} className="btn btn-gold btn-sm">Process Payment</Link>
             </>
           )}

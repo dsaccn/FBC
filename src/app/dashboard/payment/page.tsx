@@ -8,7 +8,7 @@ import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
 
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
-interface Order { id: string; table: { number: string; id: string }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
+interface Order { id: string; table: { number: string; id: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
 
 const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
 
@@ -63,18 +63,23 @@ export default function PaymentPage() {
   const total = Math.max(0, subtotal - discountAmt + (isDigitalPayment ? tipAmt : 0))
 
   // Helper: parse delivery/takeaway or standard table
-  const parseOrderInfo = (tableNumber: string, items?: any[]) => {
+  const parseOrderInfo = (table: { number: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }, items?: any[]) => {
+    const tableNumber = table.number || ''
     const lower = tableNumber.toLowerCase()
     const isDelivery = lower.startsWith('delivery')
     const isTakeaway = lower.startsWith('takeaway')
 
     if (!isDelivery && !isTakeaway) {
+      const isMerged = Boolean(table.mergeGroupId || table.mergeGroupLabel)
+      const displayTitle = table.mergeGroupLabel ? `Table ${table.mergeGroupLabel}` : `Table ${tableNumber}`
       return {
         isSpecial: false,
         type: 'TABLE' as const,
-        title: `Table ${tableNumber}`,
-        boxLabel: tableNumber,
+        title: displayTitle,
+        boxLabel: table.mergeGroupLabel || tableNumber,
         phone: null,
+        credential: table.mergeGroupId || null,
+        isMerged,
       }
     }
 
@@ -108,10 +113,12 @@ export default function PaymentPage() {
       title: cleanName || (isDelivery ? 'Delivery Order' : 'Takeaway Order'),
       boxLabel: isDelivery ? '🛵' : '🥡',
       phone: extractedPhone,
+      credential: null,
+      isMerged: false,
     }
   }
 
-  const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table.number, selectedOrder.orderItems) : null
+  const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table, selectedOrder.orderItems) : null
 
   async function handlePay() {
     if (!selectedOrder) {
@@ -148,7 +155,7 @@ export default function PaymentPage() {
   function printReceipt() {
     if (!selectedOrder) return
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
-    const info = parseOrderInfo(selectedOrder.table.number, selectedOrder.orderItems)
+    const info = parseOrderInfo(selectedOrder.table, selectedOrder.orderItems)
     const html = `<html>
       <head>
         <title>Receipt</title>
@@ -167,7 +174,7 @@ export default function PaymentPage() {
         <b>RECEIPT</b>
       </div>
       <div style="margin-bottom:10px;font-size:13px;">
-        <b>${info.isSpecial ? (info.type === 'DELIVERY' ? 'Delivery:' : 'Takeaway:') : 'Table:'}</b> ${info.isSpecial ? info.title : selectedOrder.table.number}<br/>
+        <b>${info.isSpecial ? (info.type === 'DELIVERY' ? 'Delivery:' : 'Takeaway:') : 'Table:'}</b> ${info.title}${info.credential ? ` [${info.credential}]` : ''}<br/>
         ${info.phone ? `<b>Phone:</b> ${info.phone}<br/>` : ''}
         <b>Waiter:</b> ${selectedOrder.waiter.fullName}<br/>
         <b>Cashier:</b> ${session?.fullName || '-'}<br/>
@@ -230,7 +237,7 @@ export default function PaymentPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {orders.map(o => {
                 const t = o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
-                const info = parseOrderInfo(o.table.number, o.orderItems)
+                const info = parseOrderInfo(o.table, o.orderItems)
                 return (
                   <div
                     key={o.id}
@@ -332,6 +339,19 @@ export default function PaymentPage() {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <h3 style={{ fontWeight: '600', fontSize: '16px', margin: 0 }}>{selectedInfo?.title} — Bill</h3>
+                    {selectedInfo?.isMerged && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: 'rgba(201,168,76,0.15)',
+                        color: 'var(--gold)',
+                        border: '1px solid rgba(201,168,76,0.3)',
+                        fontWeight: '600',
+                      }}>
+                        🔗 Merged Unit {selectedInfo.credential ? `[${selectedInfo.credential}]` : ''}
+                      </span>
+                    )}
                     {selectedInfo?.isSpecial && (
                       <span style={{
                         fontSize: '11px',

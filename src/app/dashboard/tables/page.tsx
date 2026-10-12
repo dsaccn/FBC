@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2, Unlink } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { Plus, RefreshCw, Merge, ArrowRightLeft, Trash2, Unlink, ShieldCheck } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 
@@ -13,6 +13,22 @@ interface Table {
   mergedWithNumber?: string | null
   mergedFromNumbers?: string[]
   isMerged?: boolean
+  mergeGroupId?: string | null
+  mergeGroupLabel?: string | null
+  memberNumbers?: string[]
+  displayLabel?: string
+  credential?: string | null
+}
+
+interface FloorItem {
+  id: string              // Primary / Host table ID
+  primaryNumber: string   // e.g. "1"
+  displayNumber: string   // e.g. "T1 + T2" or "1"
+  status: 'FREE' | 'OCCUPIED' | 'WAITING_PAYMENT'
+  isMerged: boolean
+  credential: string | null // e.g. "MG-12-8F2A"
+  memberNumbers: string[] // e.g. ["1", "2"]
+  memberIds: string[]     // all table IDs in this unit
 }
 
 const STATUS_COLORS = {
@@ -32,9 +48,9 @@ export default function TablesPage() {
   const [mergeSelected, setMergeSelected] = useState<string[]>([])
   const [transferMode, setTransferMode] = useState(false)
   const [transferSelected, setTransferSelected] = useState<string[]>([])
+  const [unmergingId, setUnmergingId] = useState<string | null>(null)
 
   const load = useCallback(async (isBackground = false) => {
-    // Only show full-page loading spinner on very first mount
     if (!hasLoadedRef.current && !isBackground) {
       setLoading(true)
     } else {
@@ -69,14 +85,12 @@ export default function TablesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Silent auto-refresh when OfflineBanner pulls new cloud orders or completes sync
   useEffect(() => {
     const handleCloudPull = () => load(true)
     const handleSyncComplete = () => load(true)
     window.addEventListener('cloud-pull-complete', handleCloudPull)
     window.addEventListener('sync-complete', handleSyncComplete)
 
-    // Poll every 30s silently so table status stays live across terminals with 0 screen flash
     const interval = setInterval(() => load(true), 30_000)
 
     return () => {
@@ -85,6 +99,78 @@ export default function TablesPage() {
       clearInterval(interval)
     }
   }, [load])
+
+  // Group tables: merged tables are combined into a SINGLE unified FloorItem
+  const floorItems = useMemo<FloorItem[]>(() => {
+    const items: FloorItem[] = []
+    const processedIds = new Set<string>()
+
+    for (const table of tables) {
+      if (processedIds.has(table.id)) continue
+
+      const isMerged = Boolean(
+        table.isMerged ||
+        table.mergedWithId ||
+        (table.mergedFromNumbers && table.mergedFromNumbers.length > 0) ||
+        table.mergeGroupId
+      )
+
+      if (isMerged) {
+        let groupMembers: Table[] = []
+
+        if (table.mergeGroupId) {
+          groupMembers = tables.filter(t => t.mergeGroupId === table.mergeGroupId)
+        } else {
+          const hostId = table.mergedWithId || table.id
+          groupMembers = tables.filter(t => t.id === hostId || t.mergedWithId === hostId)
+        }
+
+        if (groupMembers.length === 0) groupMembers = [table]
+        groupMembers.forEach(m => processedIds.add(m.id))
+
+        // Host table is the one with no mergedWithId, or first
+        const host = groupMembers.find(m => !m.mergedWithId) || groupMembers[0]
+
+        const memberNumbers = groupMembers
+          .map(m => m.number)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+
+        let groupStatus: 'FREE' | 'OCCUPIED' | 'WAITING_PAYMENT' = 'FREE'
+        if (groupMembers.some(m => m.status === 'WAITING_PAYMENT')) groupStatus = 'WAITING_PAYMENT'
+        else if (groupMembers.some(m => m.status === 'OCCUPIED')) groupStatus = 'OCCUPIED'
+
+        const credential = host.credential || host.mergeGroupId || table.mergeGroupId || `MG-${memberNumbers.join('')}`
+        const displayLabel = host.mergeGroupLabel || table.mergeGroupLabel || memberNumbers.map(n => `T${n}`).join('+')
+
+        items.push({
+          id: host.id,
+          primaryNumber: host.number,
+          displayNumber: displayLabel,
+          status: groupStatus,
+          isMerged: true,
+          credential,
+          memberNumbers,
+          memberIds: groupMembers.map(m => m.id),
+        })
+      } else {
+        processedIds.add(table.id)
+        items.push({
+          id: table.id,
+          primaryNumber: table.number,
+          displayNumber: table.number,
+          status: table.status,
+          isMerged: false,
+          credential: null,
+          memberNumbers: [table.number],
+          memberIds: [table.id],
+        })
+      }
+    }
+
+    // Sort items naturally
+    items.sort((a, b) => a.primaryNumber.localeCompare(b.primaryNumber, undefined, { numeric: true, sensitivity: 'base' }))
+    return items
+  }, [tables])
 
   async function addTable() {
     if (!newNumber.trim()) {
@@ -113,7 +199,6 @@ export default function TablesPage() {
 
   async function updateStatus(id: string, status: string) {
     const prevTables = [...tables]
-    // Optimistic UI update: instantly update UI without waiting for network roundtrip
     setTables(prev => prev.map(t => t.id === id ? { ...t, status: status as any } : t))
 
     try {
@@ -125,11 +210,11 @@ export default function TablesPage() {
       if (res.ok) {
         toast.success(`Table status updated to ${status.replace('_', ' ')}`)
       } else {
-        setTables(prevTables) // Revert on failure
+        setTables(prevTables)
         toast.error('Failed to update table status')
       }
     } catch {
-      setTables(prevTables) // Revert on network error
+      setTables(prevTables)
       toast.error('Network error updating table status')
     }
   }
@@ -137,13 +222,13 @@ export default function TablesPage() {
   async function deleteTable(id: string, number: string) {
     if (!confirm(`Delete Table ${number}? Any past order history will be safely preserved.`)) return
     const prevTables = [...tables]
-    setTables(prev => prev.filter(t => t.id !== id)) // Optimistic delete
+    setTables(prev => prev.filter(t => t.id !== id))
 
     try {
       const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setTables(prevTables) // Revert on failure
+        setTables(prevTables)
         toast.error(data.error || 'Failed to delete table')
       } else {
         toast.success(`Table ${number} deleted`)
@@ -169,7 +254,7 @@ export default function TablesPage() {
       })
       const data = await res.json()
       if (res.ok) {
-        toast.success(data.message || 'Tables merged successfully!')
+        toast.success(data.message || 'Tables combined successfully!')
         setMergeMode(false)
         setMergeSelected([])
         load()
@@ -181,7 +266,14 @@ export default function TablesPage() {
     }
   }
 
-  async function unmergeTable(tableId: string) {
+  async function unmergeTable(tableId: string, memberNumbers?: string[]) {
+    const confirmMsg = memberNumbers && memberNumbers.length > 1
+      ? `Dismerge / Unmerge ${memberNumbers.map(n => 'Table ' + n).join(' & ')}?\n\n• Active order will stay safely on Table ${memberNumbers[0]}.\n• Table ${memberNumbers.slice(1).join(', ')} will be freed immediately.`
+      : 'Unmerge tables?'
+
+    if (!confirm(confirmMsg)) return
+
+    setUnmergingId(tableId)
     try {
       const res = await fetch(`/api/tables/merge?tableId=${encodeURIComponent(tableId)}`, {
         method: 'DELETE',
@@ -195,6 +287,8 @@ export default function TablesPage() {
       }
     } catch {
       toast.error('Network error unmerging tables')
+    } finally {
+      setUnmergingId(null)
     }
   }
 
@@ -206,7 +300,6 @@ export default function TablesPage() {
     if (transferSelected.length !== 2) return
     const [fromId, toId] = transferSelected
     try {
-      // Get open order from source table
       const res = await fetch(`/api/orders?tableId=${fromId}&status=OPEN`)
       const orders = await res.json()
       if (orders.length > 0) {
@@ -246,12 +339,12 @@ export default function TablesPage() {
             <span className="gold-text">Floor Map</span>
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
-            {tables.length} tables · {tables.filter(t => t.status === 'FREE').length} free · {tables.filter(t => t.status === 'OCCUPIED').length} occupied
+            {floorItems.length} units ({tables.length} physical tables) · {floorItems.filter(t => t.status === 'FREE').length} free · {floorItems.filter(t => t.status === 'OCCUPIED').length} occupied
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={() => load(false)}><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /> Refresh</button>
-          <button className={`btn btn-sm ${mergeMode ? 'btn-gold' : 'btn-outline'}`} onClick={() => { setMergeMode(!mergeMode); setMergeSelected([]); setTransferMode(false) }}><Merge size={15} /> Merge</button>
+          <button className={`btn btn-sm ${mergeMode ? 'btn-gold' : 'btn-outline'}`} onClick={() => { setMergeMode(!mergeMode); setMergeSelected([]); setTransferMode(false) }}><Merge size={15} /> Merge Tables</button>
           <button className={`btn btn-sm ${transferMode ? 'btn-gold' : 'btn-outline'}`} onClick={() => { setTransferMode(!transferMode); setTransferSelected([]); setMergeMode(false) }}><ArrowRightLeft size={15} /> Transfer</button>
           <button className="btn btn-gold btn-sm" onClick={() => setShowAdd(true)}><Plus size={15} /> Add Table</button>
         </div>
@@ -266,27 +359,27 @@ export default function TablesPage() {
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--gold)' }} />
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Merged / Linked</span>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--gold)', boxShadow: '0 0 6px rgba(201,168,76,0.6)' }} />
+          <span style={{ fontSize: '13px', color: 'var(--gold)', fontWeight: '600' }}>Combined Merged Unit</span>
         </div>
       </div>
 
       {/* Merge/Transfer instruction */}
       {(mergeMode || transferMode) && (
-        <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px', fontSize: '14px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '10px', padding: '14px 18px', marginBottom: '22px', fontSize: '14px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           <span>
             {mergeMode
               ? mergeSelected.length === 0
                 ? 'Select first table to merge (0/2 selected)'
                 : mergeSelected.length === 1
-                ? `Table ${tables.find(t => t.id === mergeSelected[0])?.number} selected. Now select second table (1/2 selected)`
-                : `Ready to merge Table ${tables.find(t => t.id === mergeSelected[0])?.number} & Table ${tables.find(t => t.id === mergeSelected[1])?.number} (2/2 selected)`
+                ? `Table ${floorItems.find(t => t.id === mergeSelected[0])?.displayNumber} selected. Select second table to combine (1/2 selected)`
+                : `Ready to combine ${floorItems.find(t => t.id === mergeSelected[0])?.displayNumber} & ${floorItems.find(t => t.id === mergeSelected[1])?.displayNumber} into ONE merged unit (2/2 selected)`
               : `Select source then destination table (${transferSelected.length}/2 selected)`}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             {mergeMode && mergeSelected.length === 2 && (
               <button className="btn btn-gold btn-sm" onClick={confirmMerge}>
-                Confirm Merge (T{tables.find(t => t.id === mergeSelected[0])?.number} + T{tables.find(t => t.id === mergeSelected[1])?.number})
+                Combine into One Unit ({floorItems.find(t => t.id === mergeSelected[0])?.displayNumber} + {floorItems.find(t => t.id === mergeSelected[1])?.displayNumber})
               </button>
             )}
             {transferMode && transferSelected.length === 2 && <button className="btn btn-gold btn-sm" onClick={confirmTransfer}>Confirm Transfer</button>}
@@ -295,86 +388,151 @@ export default function TablesPage() {
         </div>
       )}
 
-      {/* Tables Grid */}
+      {/* Floor Grid */}
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px', color: 'var(--text-muted)' }}>Loading tables...</div>
-      ) : tables.length === 0 ? (
+      ) : floorItems.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>🪑</div>
           <p>No tables yet. Add your first table!</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
-          {tables.map(table => {
-            const colors = STATUS_COLORS[table.status]
-            const isMergeSelected = mergeSelected.includes(table.id)
-            const isTransferSelected = transferSelected.includes(table.id)
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '14px' }}>
+          {floorItems.map(item => {
+            const colors = STATUS_COLORS[item.status]
+            const isMergeSelected = mergeSelected.includes(item.id)
+            const isTransferSelected = transferSelected.includes(item.id)
             const isSelected = isMergeSelected || isTransferSelected
-            const isMerged = Boolean(table.isMerged || table.mergedWithId || (table.mergedFromNumbers && table.mergedFromNumbers.length > 0))
 
             return (
               <div
-                key={table.id}
+                key={item.id}
                 className="card-hover"
                 onClick={() => {
-                  if (mergeMode) handleMergeClick(table.id)
-                  else if (transferMode) handleTransferClick(table.id)
-                  else if (table.status === 'WAITING_PAYMENT') window.location.href = `/dashboard/payment`
-                  else {
-                    const targetTableId = table.mergedWithId || table.id
-                    window.location.href = `/dashboard/orders/new?tableId=${targetTableId}`
-                  }
+                  if (mergeMode) handleMergeClick(item.id)
+                  else if (transferMode) handleTransferClick(item.id)
+                  else if (item.status === 'WAITING_PAYMENT') window.location.href = `/dashboard/payment`
+                  else window.location.href = `/dashboard/orders/new?tableId=${item.id}`
                 }}
                 style={{
-                  background: isSelected ? 'rgba(201,168,76,0.12)' : isMerged ? 'rgba(201,168,76,0.06)' : colors.bg,
-                  border: `2px solid ${isSelected ? 'var(--gold)' : isMerged ? 'rgba(201,168,76,0.7)' : colors.border}`,
-                  borderRadius: '12px',
-                  padding: '16px 12px',
+                  background: isSelected
+                    ? 'rgba(201,168,76,0.18)'
+                    : item.isMerged
+                    ? 'linear-gradient(145deg, rgba(201,168,76,0.12) 0%, rgba(20,20,20,0.85) 100%)'
+                    : colors.bg,
+                  border: isSelected
+                    ? '2px solid var(--gold)'
+                    : item.isMerged
+                    ? '2px solid rgba(201,168,76,0.85)'
+                    : `2px solid ${colors.border}`,
+                  borderRadius: '14px',
+                  padding: item.isMerged ? '14px 12px 12px' : '16px 12px',
                   textAlign: 'center',
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  boxShadow: isMerged ? '0 0 12px rgba(201,168,76,0.15)' : undefined,
+                  boxShadow: item.isMerged ? '0 0 16px rgba(201,168,76,0.22)' : undefined,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: item.isMerged ? '180px' : '150px',
                 }}
               >
+                {/* Top Badge: Selection check or Merged Unit Header */}
                 {isSelected && (
-                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'var(--gold)', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'var(--black)', fontWeight: '700' }}>✓</div>
+                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'var(--gold)', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'var(--black)', fontWeight: '700', zIndex: 2 }}>✓</div>
                 )}
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '2px' }}>TABLE</div>
-                <div style={{ fontSize: '26px', fontWeight: '700', fontFamily: 'Cinzel, serif', color: 'var(--text-primary)', marginBottom: '8px' }}>{table.number}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                  <span className={`badge ${colors.badge}`} style={{ fontSize: '10px', padding: '3px 8px' }}>{colors.label}</span>
-                  {table.mergedWithId && (
-                    <span className="badge" style={{ background: 'rgba(201,168,76,0.2)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)', fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                      <Merge size={10} /> Joined with T{table.mergedWithNumber || '?'}
-                    </span>
+
+                <div>
+                  {item.isMerged ? (
+                    <div style={{ marginBottom: '6px' }}>
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: 'rgba(201,168,76,0.25)',
+                        color: 'var(--gold)',
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        letterSpacing: '0.5px',
+                        border: '1px solid rgba(201,168,76,0.4)',
+                        marginBottom: '4px'
+                      }}>
+                        <Merge size={11} /> COMBINED UNIT
+                      </div>
+                      {item.credential && (
+                        <div style={{
+                          fontFamily: 'monospace',
+                          fontSize: '10px',
+                          color: 'var(--text-secondary)',
+                          letterSpacing: '1px',
+                          fontWeight: '600'
+                        }}>
+                          ID: <span style={{ color: 'var(--gold)' }}>{item.credential}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', letterSpacing: '1px', fontWeight: '600' }}>TABLE</div>
                   )}
-                  {table.mergedFromNumbers && table.mergedFromNumbers.length > 0 && (
-                    <span className="badge" style={{ background: 'rgba(201,168,76,0.2)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)', fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                      <Merge size={10} /> Merged: +T{table.mergedFromNumbers.join(', T')}
-                    </span>
+
+                  {/* Main Table Display */}
+                  <div style={{
+                    fontSize: item.isMerged ? '22px' : '28px',
+                    fontWeight: '700',
+                    fontFamily: 'Cinzel, serif',
+                    color: item.isMerged ? 'var(--gold)' : 'var(--text-primary)',
+                    marginBottom: '6px',
+                    lineHeight: '1.2',
+                    wordBreak: 'break-word',
+                  }}>
+                    {item.isMerged ? item.displayNumber : item.primaryNumber}
+                  </div>
+
+                  {item.isMerged && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      Includes: {item.memberNumbers.map(n => `T${n}`).join(', ')}
+                    </div>
                   )}
+
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+                    <span className={`badge ${colors.badge}`} style={{ fontSize: '10px', padding: '3px 10px', fontWeight: '600' }}>{colors.label}</span>
+                  </div>
                 </div>
+
+                {/* Bottom Action Buttons */}
                 {!mergeMode && !transferMode && (
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-                    {table.status !== 'FREE' && (
-                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 6px', fontSize: '11px' }} onClick={() => updateStatus(table.id, 'WAITING_PAYMENT')}>
+                  <div style={{ marginTop: 'auto', display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }} onClick={e => e.stopPropagation()}>
+                    {item.status !== 'FREE' && (
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={() => updateStatus(item.id, 'WAITING_PAYMENT')}>
                         Pay
                       </button>
                     )}
-                    {isMerged && (
+
+                    {item.isMerged ? (
                       <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '4px 6px', fontSize: '11px', color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                        onClick={() => unmergeTable(table.id)}
-                        title="Unmerge table"
+                        className="btn btn-gold btn-sm"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontWeight: '600',
+                        }}
+                        onClick={() => unmergeTable(item.id, item.memberNumbers)}
+                        disabled={unmergingId === item.id}
+                        title="Dismerge / Unmerge these tables"
                       >
-                        <Unlink size={11} /> Unmerge
+                        <Unlink size={11} /> {unmergingId === item.id ? 'Unmerging...' : 'Unmerge'}
+                      </button>
+                    ) : (
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(item.id, item.primaryNumber)}>
+                        <Trash2 size={11} />
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 6px', fontSize: '11px', color: 'var(--danger-light)' }} onClick={() => deleteTable(table.id, table.number)}>
-                      <Trash2 size={11} />
-                    </button>
                   </div>
                 )}
               </div>

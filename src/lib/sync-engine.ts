@@ -559,7 +559,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
 
       // 5. Tables
       const { rows: cloudTables } = await pg.query(
-        `SELECT id, number, status, "mergedWithId", "createdAt" FROM "Table"`
+        `SELECT id, number, status, "mergedWithId", "mergeGroupId", "mergeGroupLabel", "createdAt" FROM "Table"`
       )
 
       for (const t of cloudTables) {
@@ -571,6 +571,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             number: t.number,
             status: t.status,
             mergedWithId: t.mergedWithId,
+            mergeGroupId: t.mergeGroupId,
+            mergeGroupLabel: t.mergeGroupLabel,
             createdAt: new Date(t.createdAt),
             pendingSync: false,
           },
@@ -579,6 +581,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             number: t.number,
             status: t.status,
             mergedWithId: t.mergedWithId,
+            mergeGroupId: t.mergeGroupId,
+            mergeGroupLabel: t.mergeGroupLabel,
             createdAt: new Date(t.createdAt),
             pendingSync: false,
           },
@@ -1157,18 +1161,50 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         where: {
           id: { notIn: ['tbl_static_delivery', 'tbl_static_takeaway', '__archived_orders_table__'] }
         },
-        select: { id: true, status: true, pendingSync: true }
+        select: { id: true, status: true, pendingSync: true, mergedWithId: true, mergeGroupId: true }
       })
       for (const t of activeTables) {
         if (t.pendingSync) continue
+
+        // If this table is merged with another (child table), its status mirrors the host
+        if (t.mergedWithId) {
+          const hostOpenCount = await prisma.order.count({
+            where: { tableId: t.mergedWithId, status: 'OPEN' }
+          })
+          const targetStatus = hostOpenCount > 0 ? 'OCCUPIED' : 'FREE'
+          if (t.status !== targetStatus) {
+            await prisma.table.update({
+              where: { id: t.id },
+              data: { status: targetStatus }
+            }).catch(() => {})
+          }
+          continue
+        }
+
+        // Host table or standalone table: check orders on itself and on any merged children
+        const relatedTableIds = [t.id]
+        if (t.mergeGroupId) {
+          const groupTables = await prisma.table.findMany({
+            where: { mergeGroupId: t.mergeGroupId },
+            select: { id: true }
+          })
+          groupTables.forEach(gt => { if (!relatedTableIds.includes(gt.id)) relatedTableIds.push(gt.id) })
+        } else {
+          const childTables = await prisma.table.findMany({
+            where: { mergedWithId: t.id },
+            select: { id: true }
+          })
+          childTables.forEach(ct => { if (!relatedTableIds.includes(ct.id)) relatedTableIds.push(ct.id) })
+        }
+
         const openCount = await prisma.order.count({
-          where: { tableId: t.id, status: 'OPEN' }
+          where: { tableId: { in: relatedTableIds }, status: 'OPEN' }
         })
         const correctStatus = openCount > 0 ? 'OCCUPIED' : 'FREE'
         if (t.status !== correctStatus) {
           await prisma.table.update({
             where: { id: t.id },
-            data: { status: correctStatus, mergedWithId: openCount > 0 ? undefined : null }
+            data: { status: correctStatus }
           }).catch(() => {})
         }
       }
@@ -1440,12 +1476,15 @@ export async function syncToCloud(): Promise<SyncResult> {
     for (const t of allLocalTables) {
       try {
         await pg.query(
-          `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
-           VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO "Table" (id, number, status, "mergedWithId", "mergeGroupId", "mergeGroupLabel", "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (id) DO UPDATE SET
              number           = EXCLUDED.number,
-             "mergedWithId"   = EXCLUDED."mergedWithId"`,
-          [t.id, t.number, t.status, t.mergedWithId, toUtcIso(t.createdAt)]
+             status           = EXCLUDED.status,
+             "mergedWithId"   = EXCLUDED."mergedWithId",
+             "mergeGroupId"   = EXCLUDED."mergeGroupId",
+             "mergeGroupLabel" = EXCLUDED."mergeGroupLabel"`,
+          [t.id, t.number, t.status, t.mergedWithId, t.mergeGroupId, t.mergeGroupLabel, toUtcIso(t.createdAt)]
         )
         if (t.pendingSync) {
           await prisma.table.update({
@@ -1467,10 +1506,10 @@ export async function syncToCloud(): Promise<SyncResult> {
         const orderTable = await prisma.table.findUnique({ where: { id: o.tableId } })
         if (orderTable) {
           await pg.query(
-            `INSERT INTO "Table" (id, number, status, "mergedWithId", "createdAt")
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO "Table" (id, number, status, "mergedWithId", "mergeGroupId", "mergeGroupLabel", "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (id) DO NOTHING`,
-            [orderTable.id, orderTable.number, orderTable.status, orderTable.mergedWithId, toUtcIso(orderTable.createdAt)]
+            [orderTable.id, orderTable.number, orderTable.status, orderTable.mergedWithId, orderTable.mergeGroupId, orderTable.mergeGroupLabel, toUtcIso(orderTable.createdAt)]
           )
         } else {
           // If table was deleted locally, create placeholder table in cloud so FK doesn't fail

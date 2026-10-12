@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, Plus, Minus, X, AlertCircle, ShoppingBag, ArrowLeft } from 'lucide-react'
+import { Printer, Plus, Minus, X, AlertCircle, ShoppingBag, ArrowLeft, Unlink, Merge } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 import { printTicketHtml } from '@/lib/printer'
@@ -10,7 +10,7 @@ import { printTicketHtml } from '@/lib/printer'
 interface MenuItem { id: string; name: string; price: number; description?: string; category?: { name: string; type: string } | null }
 interface Category { id: string; name: string; type: string; menuItems: MenuItem[] }
 interface CartItem { menuItem: MenuItem; quantity: number; notes: string }
-interface Order { id: string; table: { number: string }; waiter: { fullName: string }; orderItems: OrderItemType[]; status: string }
+interface Order { id: string; table: { number: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }; waiter: { fullName: string }; orderItems: OrderItemType[]; status: string }
 interface OrderItemType { id: string; menuItem: MenuItem & { category?: { name: string; type: string } | null }; quantity: number; notes?: string; status: string }
 
 export default function NewOrderPage() {
@@ -25,6 +25,7 @@ export default function NewOrderPage() {
   const [orderError, setOrderError] = useState('')
   const [existingOrder, setExistingOrder] = useState<Order | null>(null)
   const [tableNumber, setTableNumber] = useState<string>('')
+  const [tableInfo, setTableInfo] = useState<any>(null)
   const [session, setSession] = useState<{ id: string; fullName: string; role: string } | null>(null)
   const [noteTarget, setNoteTarget] = useState<string | null>(null)
   const [tempNote, setTempNote] = useState('')
@@ -55,8 +56,11 @@ export default function NewOrderPage() {
         ])
         if (tableRes.ok) {
           const tables = await tableRes.json()
-          const found = tables.find((t: { id: string; number: string }) => t.id === tableId)
-          if (found) setTableNumber(found.number)
+          const found = tables.find((t: any) => t.id === tableId)
+          if (found) {
+            setTableNumber(found.displayLabel || found.mergeGroupLabel || found.number)
+            setTableInfo(found)
+          }
         } else {
           console.error('Failed to load tables:', tableRes.statusText)
         }
@@ -117,7 +121,7 @@ export default function NewOrderPage() {
           </div>
         </div>
         <div style="margin:8px 0;">
-          <div><b>Table:</b> ${tableNumber}</div>
+          <div><b>Table:</b> ${tableNumber}${tableInfo?.credential ? ` [${tableInfo.credential}]` : ''}</div>
           <div><b>Waiter:</b> ${waiterName}</div>
           <div><b>Date:</b> ${now}</div>
         </div>
@@ -330,16 +334,52 @@ export default function NewOrderPage() {
     </>
   )
 
+  async function handleUnmergeFromOrder() {
+    if (!tableId) return
+    if (!confirm('Dismerge / Unmerge these tables? The active order will remain safely on the primary table.')) return
+    try {
+      const res = await fetch(`/api/tables/merge?tableId=${encodeURIComponent(tableId)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Tables unmerged successfully!')
+        loadData()
+      } else {
+        toast.error(data.error || 'Failed to unmerge tables')
+      }
+    } catch {
+      toast.error('Network error unmerging tables')
+    }
+  }
+
   return (
     <div className="animate-fade-in" style={{ display: 'flex', gap: '20px', minHeight: 'calc(100vh - 90px)' }}>
       {/* Left: Menu Section */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: cart.length > 0 ? '70px' : '0' }}>
-        <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           <div>
-            <h1 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700' }}>
-              <span className="gold-text">{existingOrder ? 'Add More Items' : 'New Order'}</span>
-              {(tableNumber || tableId) && <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginLeft: '10px', fontFamily: 'Inter' }}>Table {tableNumber || tableId}</span>}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h1 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>
+                <span className="gold-text">{existingOrder ? 'Add More Items' : 'New Order'}</span>
+                {(tableNumber || tableId) && <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginLeft: '10px', fontFamily: 'Inter' }}>Table {tableNumber || tableId}</span>}
+              </h1>
+              {tableInfo?.isMerged && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="badge" style={{ background: 'rgba(201,168,76,0.18)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.35)', fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Merge size={11} /> Merged Unit {tableInfo.credential ? `[${tableInfo.credential}]` : ''}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '3px 8px', fontSize: '11px', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    onClick={handleUnmergeFromOrder}
+                    title="Dismerge / Unmerge tables"
+                  >
+                    <Unlink size={11} /> Unmerge
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {/* Quick mobile cart button in header */}
           <button

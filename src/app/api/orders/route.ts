@@ -23,7 +23,28 @@ export async function GET(req: Request) {
     }
 
     const whereClause: any = {}
-    if (tableId) whereClause.tableId = tableId
+    if (tableId) {
+      const queriedTable = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+      if (queriedTable?.mergeGroupId) {
+        const groupTables = await prisma.table.findMany({
+          where: { mergeGroupId: queriedTable.mergeGroupId },
+          select: { id: true },
+        })
+        whereClause.tableId = { in: groupTables.map(t => t.id) }
+      } else if (queriedTable?.mergedWithId) {
+        whereClause.tableId = { in: [tableId, queriedTable.mergedWithId] }
+      } else {
+        const childTables = await prisma.table.findMany({
+          where: { mergedWithId: tableId },
+          select: { id: true },
+        })
+        if (childTables.length > 0) {
+          whereClause.tableId = { in: [tableId, ...childTables.map(t => t.id)] }
+        } else {
+          whereClause.tableId = tableId
+        }
+      }
+    }
 
     if (status === 'OPEN') {
       whereClause.status = 'OPEN'
@@ -91,9 +112,14 @@ export async function POST(req: Request) {
     const waiterId = waiter.id   // always use the authoritative local id
 
     const isOfflineLocal = !process.env.VERCEL
+
+    // If requested table is a merged child, anchor the order to the host table
+    const targetTableRecord = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+    const effectiveTableId = targetTableRecord?.mergedWithId || tableId
+
     const order = await prisma.order.create({
       data: {
-        tableId,
+        tableId: effectiveTableId,
         waiterId,
         pendingSync: isOfflineLocal,
         orderItems: {
@@ -112,8 +138,42 @@ export async function POST(req: Request) {
       },
     })
 
-    // Update table status to OCCUPIED
-    await prisma.table.update({ where: { id: tableId }, data: { status: 'OCCUPIED' } })
+    // Update table status to OCCUPIED for all tables in the merge group
+    const clusterIds = [effectiveTableId]
+    if (targetTableRecord?.mergeGroupId) {
+      const groupTables = await prisma.table.findMany({
+        where: { mergeGroupId: targetTableRecord.mergeGroupId },
+        select: { id: true },
+      })
+      groupTables.forEach(gt => { if (!clusterIds.includes(gt.id)) clusterIds.push(gt.id) })
+    } else {
+      const childTables = await prisma.table.findMany({
+        where: { mergedWithId: effectiveTableId },
+        select: { id: true },
+      })
+      childTables.forEach(ct => { if (!clusterIds.includes(ct.id)) clusterIds.push(ct.id) })
+    }
+
+    await prisma.table.updateMany({
+      where: { id: { in: clusterIds } },
+      data: { status: 'OCCUPIED' },
+    })
+
+    // Also update Neon if running locally
+    if (isOfflineLocal) {
+      try {
+        const url = process.env.NEON_DATABASE_URL
+        if (url) {
+          const { Pool } = await import('pg')
+          const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 3000 })
+          await pool.query(
+            `UPDATE "Table" SET status = 'OCCUPIED' WHERE id = ANY($1)`,
+            [clusterIds]
+          ).catch(() => {})
+          await pool.end().catch(() => {})
+        }
+      } catch {}
+    }
 
     // Deduct stock for food, drinks, and recipe ingredients
     await deductOrderStock(items)

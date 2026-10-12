@@ -84,14 +84,28 @@ export async function POST(req: Request) {
     // 6. Free up physical floor table if not delivery/takeaway
     const tableId = order.tableId
     if (tableId && tableId !== 'tbl_static_delivery' && tableId !== 'tbl_static_takeaway') {
+      const currentTable = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+      const targetGroupId = currentTable?.mergeGroupId || null
+
+      const clusterWhere: any = {
+        OR: [
+          { id: tableId },
+          { mergedWithId: tableId },
+        ],
+      }
+      if (targetGroupId) {
+        clusterWhere.OR.push({ mergeGroupId: targetGroupId })
+      }
+
       await prisma.table.updateMany({
-        where: {
-          OR: [
-            { id: tableId },
-            { mergedWithId: tableId },
-          ],
+        where: clusterWhere,
+        data: {
+          status: 'FREE',
+          mergedWithId: null,
+          mergeGroupId: null,
+          mergeGroupLabel: null,
+          pendingSync: isOfflineLocal,
         },
-        data: { status: 'FREE', mergedWithId: null, pendingSync: isOfflineLocal },
       }).catch(() => {})
 
       // Sync table status directly to Neon Cloud PostgreSQL if running offline local
@@ -102,8 +116,10 @@ export async function POST(req: Request) {
             const { Pool } = await import('pg')
             const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 3000 })
             await pool.query(
-              `UPDATE "Table" SET status = 'FREE', "mergedWithId" = NULL WHERE id = $1 OR "mergedWithId" = $1`,
-              [tableId]
+              `UPDATE "Table"
+               SET status = 'FREE', "mergedWithId" = NULL, "mergeGroupId" = NULL, "mergeGroupLabel" = NULL
+               WHERE id = $1 OR "mergedWithId" = $1 OR ($2::text IS NOT NULL AND "mergeGroupId" = $2)`,
+              [tableId, targetGroupId]
             ).catch(() => {})
             await pool.end().catch(() => {})
           }

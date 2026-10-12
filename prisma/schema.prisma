@@ -56,12 +56,14 @@ model MenuItem {
 }
 
 model Table {
-  id           String   @id @default(cuid())
-  number       String   @unique
-  status       String   @default("FREE") // FREE, OCCUPIED, WAITING_PAYMENT
-  mergedWithId String?
-  createdAt    DateTime @default(now())
-  pendingSync  Boolean  @default(true)
+  id              String   @id @default(cuid())
+  number          String   @unique
+  status          String   @default("FREE") // FREE, OCCUPIED, WAITING_PAYMENT
+  mergedWithId    String?
+  mergeGroupId    String?  // Shared ID for all tables in a merge cluster
+  mergeGroupLabel String?  // Human-readable label like "T1+T2"
+  createdAt       DateTime @default(now())
+  pendingSync     Boolean  @default(true)
 
   orders Order[]
 }

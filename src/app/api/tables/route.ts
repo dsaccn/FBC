@@ -66,12 +66,37 @@ export async function GET() {
 
   const tableMap = new Map(tables.map(t => [t.id, t.number]))
 
-  const enrichedTables = tables.map(t => ({
-    ...t,
-    mergedWithNumber: t.mergedWithId ? tableMap.get(t.mergedWithId) || null : null,
-    mergedFromNumbers: tables.filter(other => other.mergedWithId === t.id).map(other => other.number),
-    isMerged: Boolean(t.mergedWithId || tables.some(other => other.mergedWithId === t.id)),
-  }))
+  const enrichedTables = tables.map(t => {
+    const isMerged = Boolean(t.mergedWithId || tables.some(other => other.mergedWithId === t.id) || t.mergeGroupId)
+    const isHost = Boolean(t.mergeGroupId ? !t.mergedWithId : (!t.mergedWithId && tables.some(other => other.mergedWithId === t.id)))
+
+    let memberNumbers: string[] = [t.number]
+    if (t.mergeGroupId) {
+      memberNumbers = tables
+        .filter(other => other.mergeGroupId === t.mergeGroupId)
+        .map(other => other.number)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    } else if (t.mergedWithId) {
+      const host = tables.find(other => other.id === t.mergedWithId)
+      if (host) memberNumbers = [host.number, t.number].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    } else {
+      const children = tables.filter(other => other.mergedWithId === t.id).map(other => other.number)
+      if (children.length > 0) {
+        memberNumbers = [t.number, ...children].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      }
+    }
+
+    return {
+      ...t,
+      mergedWithNumber: t.mergedWithId ? tableMap.get(t.mergedWithId) || null : null,
+      mergedFromNumbers: tables.filter(other => other.mergedWithId === t.id).map(other => other.number),
+      isMerged,
+      isHost,
+      memberNumbers,
+      displayLabel: isMerged ? (t.mergeGroupLabel || memberNumbers.map(n => `T${n}`).join('+')) : `T${t.number}`,
+      credential: t.mergeGroupId || (isMerged ? `MG-${memberNumbers.join('')}` : null),
+    }
+  })
 
   return NextResponse.json(enrichedTables)
 }
