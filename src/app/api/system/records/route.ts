@@ -105,42 +105,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Auto-backfill WasteLog from historical InventoryLog if any are missing
-    if (model === 'WasteLog') {
-      try {
-        const historicalWaste = await prisma.inventoryLog.findMany({
-          where: { action: { startsWith: 'WASTE' } },
-        }).catch(() => [])
-
-        for (const log of historicalWaste) {
-          const reason = (log.action || '').replace(/^WASTE:\s*/i, '')
-          const isIng = log.type === 'INGREDIENT'
-          const loc = isIng ? null : (log.type === 'BAR' ? 'BAR' : 'STORE')
-          await delegate.upsert({
-            where: { id: log.id },
-            update: {},
-            create: {
-              id: log.id,
-              itemName: log.itemName,
-              itemType: isIng ? 'INGREDIENT' : 'MENU_ITEM',
-              location: loc,
-              quantity: log.quantity,
-              unit: null,
-              costPerUnit: 0,
-              totalCost: 0,
-              reason: reason || 'Waste',
-              notes: 'Imported from historical inventory log',
-              loggedBy: log.userName || 'System',
-              createdAt: log.createdAt,
-              pendingSync: false,
-            },
-          }).catch(() => {})
-        }
-      } catch {
-        // Non-critical auto-backfill failure
-      }
-    }
-
     const totalCount = await delegate.count({ where }).catch(() => 0)
 
     // Determine default ordering if createdAt exists
@@ -344,6 +308,33 @@ export async function DELETE(req: NextRequest) {
     }
 
     await delegate.delete({ where: { id } })
+
+    // Cascade deletions between WasteLog and InventoryLog to keep both in sync
+    if (model === 'WasteLog') {
+      await prisma.inventoryLog.deleteMany({ where: { id } }).catch(() => {})
+      try {
+        const url = process.env.NEON_DATABASE_URL
+        if (url) {
+          const { Pool } = await import('pg')
+          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+          await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
+          await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
+          await p.end().catch(() => {})
+        }
+      } catch {}
+    } else if (model === 'InventoryLog') {
+      await prisma.wasteLog.deleteMany({ where: { id } }).catch(() => {})
+      try {
+        const url = process.env.NEON_DATABASE_URL
+        if (url) {
+          const { Pool } = await import('pg')
+          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+          await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
+          await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
+          await p.end().catch(() => {})
+        }
+      } catch {}
+    }
 
     await logDevAction({
       action: 'DELETE',

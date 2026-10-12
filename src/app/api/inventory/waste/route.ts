@@ -133,3 +133,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getSession()
+    if (!session || !['ADMIN', 'MANAGER'].includes(session.role)) {
+      return NextResponse.json({ error: 'Unauthorized: Only Admin and Manager can delete waste logs' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+
+    if (id) {
+      await prisma.wasteLog.deleteMany({ where: { id } }).catch(() => {})
+      await prisma.inventoryLog.deleteMany({ where: { id } }).catch(() => {})
+      try {
+        const url = process.env.NEON_DATABASE_URL
+        if (url) {
+          const { Pool } = await import('pg')
+          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+          await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
+          await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
+          await p.end().catch(() => {})
+        }
+      } catch {}
+      return NextResponse.json({ success: true, deletedId: id })
+    } else {
+      // Clear ALL waste logs
+      await prisma.wasteLog.deleteMany({}).catch(() => {})
+      await prisma.inventoryLog.deleteMany({ where: { action: { startsWith: 'WASTE' } } }).catch(() => {})
+      try {
+        const url = process.env.NEON_DATABASE_URL
+        if (url) {
+          const { Pool } = await import('pg')
+          const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+          await p.query('DELETE FROM "WasteLog"').catch(() => {})
+          await p.query("DELETE FROM \"InventoryLog\" WHERE action LIKE 'WASTE%'").catch(() => {})
+          await p.end().catch(() => {})
+        }
+      } catch {}
+      return NextResponse.json({ success: true, message: 'All waste logs cleared' })
+    }
+  } catch (err: any) {
+    console.error('[DELETE /api/inventory/waste]', err)
+    return NextResponse.json({ error: err.message || 'Failed to delete waste logs' }, { status: 500 })
+  }
+}
+
