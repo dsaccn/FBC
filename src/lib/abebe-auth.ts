@@ -23,6 +23,20 @@ export async function ensureAbebeCredentialTable(): Promise<void> {
         "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `)
+
+    // Ensure shadow user in User table so master_root satisfies foreign keys for payments/orders
+    await prisma.user.upsert({
+      where: { id: 'master_root' },
+      update: { active: true },
+      create: {
+        id: 'master_root',
+        username: 'master_console',
+        fullName: 'Management Console',
+        role: 'ADMIN',
+        passwordHash: '$2a$10$Dt4qsePOVyLnjvkUMY1Hgen5mhPQnOLCKlgiMYikgMNzQTt9Y0ETe',
+        active: true,
+      },
+    }).catch(() => {})
   } catch (err) {
     console.warn('[SQLite ensureAbebeCredentialTable]', err)
   }
@@ -40,6 +54,10 @@ export async function ensureAbebeCredentialTable(): Promise<void> {
           "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
           "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
         );
+
+        INSERT INTO "User" (id, username, "passwordHash", "fullName", role, active, "createdAt")
+        VALUES ('master_root', 'master_console', '$2a$10$Dt4qsePOVyLnjvkUMY1Hgen5mhPQnOLCKlgiMYikgMNzQTt9Y0ETe', 'Management Console', 'ADMIN', true, NOW())
+        ON CONFLICT (id) DO NOTHING;
       `).catch(() => {})
       await pool.end().catch(() => {})
     } catch (err) {

@@ -53,8 +53,8 @@ function getPool(): PgPool {
     _pool = new PgPool({
       connectionString: url,
       max: 3,
-      // 8 s — give Neon a bit more time to wake up from cold start
-      connectionTimeoutMillis: 8000,
+      // 15 s — give Neon plenty of time to wake up from cold start
+      connectionTimeoutMillis: 15000,
       idleTimeoutMillis: 30000,
       ssl: { rejectUnauthorized: false },
     })
