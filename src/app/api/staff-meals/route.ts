@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
+import { parseDateFilter } from '@/lib/date-utils'
 
 export async function GET(req: Request) {
   const session = await getSession()
@@ -11,19 +12,14 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const from = url.searchParams.get('from')
     const to = url.searchParams.get('to')
+    const tz = url.searchParams.get('tz')
     const staffMemberId = url.searchParams.get('staffMemberId')
     const mealType = url.searchParams.get('mealType')
 
     const where: any = {}
 
     if (from || to) {
-      where.servedAt = {}
-      if (from) {
-        where.servedAt.gte = new Date(from + 'T00:00:00')
-      }
-      if (to) {
-        where.servedAt.lte = new Date(to + 'T23:59:59.999')
-      }
+      where.servedAt = parseDateFilter(from, to, tz)
     }
 
     if (staffMemberId) {

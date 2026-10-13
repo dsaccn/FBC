@@ -60,6 +60,7 @@ export default function OrdersPage() {
       if (filter !== 'OPEN') {
         if (dateFrom) params.set('from', dateFrom)
         if (dateTo) params.set('to', dateTo)
+        params.set('tz', String(new Date().getTimezoneOffset()))
       }
       const res = await fetch(`/api/orders?${params.toString()}`)
       if (res.ok) {

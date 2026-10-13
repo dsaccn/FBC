@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { parseDateFilter } from '@/lib/date-utils'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from')
   const to = searchParams.get('to')
+  const tz = searchParams.get('tz')
 
-  const dateFilter = {
-    ...(from && { gte: new Date(from) }),
-    ...(to && { lte: new Date(to + 'T23:59:59') }),
-  }
+  const dateFilter = parseDateFilter(from, to, tz)
 
   const [payments, orders, orderItems, cancellations, inventory, inventoryLogs, allIngredients] = await Promise.all([
     prisma.payment.findMany({

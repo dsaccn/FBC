@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
 import { deductOrderStock } from '@/lib/stock'
+import { parseDateFilter } from '@/lib/date-utils'
 
 
 export async function GET(req: Request) {
@@ -11,16 +12,9 @@ export async function GET(req: Request) {
     const status = searchParams.get('status')
     const from = searchParams.get('from')
     const to = searchParams.get('to')
+    const tz = searchParams.get('tz')
 
-    const dateWhere: Record<string, Date> = {}
-    if (from) {
-      const d = new Date(from + 'T00:00:00')
-      dateWhere.gte = isNaN(d.getTime()) ? new Date(from) : d
-    }
-    if (to) {
-      const d = new Date(to + 'T23:59:59.999')
-      dateWhere.lte = isNaN(d.getTime()) ? new Date(to) : d
-    }
+    const dateWhere = parseDateFilter(from, to, tz)
 
     const whereClause: any = {}
     if (tableId) {

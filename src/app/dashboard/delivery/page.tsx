@@ -121,6 +121,7 @@ export default function DeliveryPage() {
       const params = new URLSearchParams()
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo) params.set('to', dateTo)
+      params.set('tz', String(new Date().getTimezoneOffset()))
       const res = await fetch(`/api/delivery-orders?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()

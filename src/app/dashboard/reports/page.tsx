@@ -210,6 +210,7 @@ export default function ReportsPage() {
       const params = new URLSearchParams()
       if (from) params.set('from', from)
       if (to) params.set('to', to)
+      params.set('tz', String(new Date().getTimezoneOffset()))
       const res = await fetch(`/api/reports?${params.toString()}`)
       if (res.ok) {
         setData(await res.json())
