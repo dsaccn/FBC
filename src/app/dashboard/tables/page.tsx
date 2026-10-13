@@ -397,12 +397,18 @@ export default function TablesPage() {
           <p>No tables yet. Add your first table!</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '14px' }}>
           {floorItems.map(item => {
             const colors = STATUS_COLORS[item.status]
             const isMergeSelected = mergeSelected.includes(item.id)
             const isTransferSelected = transferSelected.includes(item.id)
             const isSelected = isMergeSelected || isTransferSelected
+
+            const mergedBg = item.status === 'FREE'
+              ? 'linear-gradient(145deg, #FFFFFF 0%, #FEFCE8 60%, #FEF9C3 100%)'
+              : item.status === 'OCCUPIED'
+              ? 'linear-gradient(145deg, #FFFFFF 0%, #FFF7ED 60%, #FFEDD5 100%)'
+              : 'linear-gradient(145deg, #FFFFFF 0%, #FEF2F2 60%, #FEE2E2 100%)'
 
             return (
               <div
@@ -418,12 +424,12 @@ export default function TablesPage() {
                   background: isSelected
                     ? 'rgba(201,168,76,0.18)'
                     : item.isMerged
-                    ? 'linear-gradient(145deg, rgba(201,168,76,0.12) 0%, rgba(20,20,20,0.85) 100%)'
+                    ? mergedBg
                     : colors.bg,
                   border: isSelected
                     ? '2px solid var(--gold)'
                     : item.isMerged
-                    ? '2px solid rgba(201,168,76,0.85)'
+                    ? '2px solid #D97706'
                     : `2px solid ${colors.border}`,
                   borderRadius: '14px',
                   padding: item.isMerged ? '14px 12px 12px' : '16px 12px',
@@ -431,7 +437,7 @@ export default function TablesPage() {
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  boxShadow: item.isMerged ? '0 0 16px rgba(201,168,76,0.22)' : undefined,
+                  boxShadow: item.isMerged ? '0 4px 16px -2px rgba(217, 119, 6, 0.22), 0 2px 6px -1px rgba(0,0,0,0.05)' : undefined,
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
@@ -450,14 +456,14 @@ export default function TablesPage() {
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
-                        background: 'rgba(201,168,76,0.25)',
-                        color: 'var(--gold)',
+                        background: '#FEF3C7',
+                        color: '#92400E',
                         padding: '3px 8px',
                         borderRadius: '999px',
                         fontSize: '10px',
-                        fontWeight: '700',
+                        fontWeight: '800',
                         letterSpacing: '0.5px',
-                        border: '1px solid rgba(201,168,76,0.4)',
+                        border: '1px solid #FCD34D',
                         marginBottom: '4px'
                       }}>
                         <Merge size={11} /> COMBINED UNIT
@@ -466,11 +472,11 @@ export default function TablesPage() {
                         <div style={{
                           fontFamily: 'monospace',
                           fontSize: '10px',
-                          color: 'var(--text-secondary)',
-                          letterSpacing: '1px',
+                          color: '#64748B',
+                          letterSpacing: '0.8px',
                           fontWeight: '600'
                         }}>
-                          ID: <span style={{ color: 'var(--gold)' }}>{item.credential}</span>
+                          ID: <span style={{ color: '#B45309', fontWeight: '800' }}>{item.credential}</span>
                         </div>
                       )}
                     </div>
@@ -481,9 +487,9 @@ export default function TablesPage() {
                   {/* Main Table Display */}
                   <div style={{
                     fontSize: item.isMerged ? '22px' : '28px',
-                    fontWeight: '700',
+                    fontWeight: '800',
                     fontFamily: 'Cinzel, serif',
-                    color: item.isMerged ? 'var(--gold)' : 'var(--text-primary)',
+                    color: '#0F172A',
                     marginBottom: '6px',
                     lineHeight: '1.2',
                     wordBreak: 'break-word',
@@ -492,7 +498,7 @@ export default function TablesPage() {
                   </div>
 
                   {item.isMerged && (
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '500', marginBottom: '8px' }}>
                       Includes: {item.memberNumbers.map(n => `T${n}`).join(', ')}
                     </div>
                   )}
@@ -504,7 +510,11 @@ export default function TablesPage() {
 
                 {/* Bottom Action Buttons */}
                 {!mergeMode && !transferMode && (
-                  <div style={{ marginTop: 'auto', display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }} onClick={e => e.stopPropagation()}>
+                  <div style={{
+                    marginTop: 'auto', display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap',
+                    paddingTop: '6px',
+                    borderTop: item.isMerged ? '1px solid #FDE68A' : '1px solid #F1F5F9'
+                  }} onClick={e => e.stopPropagation()}>
                     {item.status !== 'FREE' && (
                       <button className="btn btn-ghost btn-sm" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={() => updateStatus(item.id, 'WAITING_PAYMENT')}>
                         Pay
@@ -513,14 +523,19 @@ export default function TablesPage() {
 
                     {item.isMerged ? (
                       <button
-                        className="btn btn-gold btn-sm"
                         style={{
-                          padding: '3px 8px',
+                          padding: '4px 10px',
                           fontSize: '11px',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px',
-                          fontWeight: '600',
+                          fontWeight: '700',
+                          background: '#FEF3C7',
+                          border: '1px solid #F59E0B',
+                          color: '#92400E',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
                         }}
                         onClick={() => unmergeTable(item.id, item.memberNumbers)}
                         disabled={unmergingId === item.id}

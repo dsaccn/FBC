@@ -745,12 +745,13 @@ export default function DeliveryPage() {
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
           {filteredOrders.map(order => {
             const meta = parseDeliveryMeta(order.table.number, order.orderItems)
             const activeItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
             const total = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
             const isOpen = order.status === 'OPEN'
+            const isDelivery = meta.type === 'DELIVERY'
 
             return (
               <div
@@ -758,59 +759,71 @@ export default function DeliveryPage() {
                 className="card"
                 style={{
                   display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                  border: isOpen ? '1px solid rgba(201,168,76,0.35)' : '1px solid var(--black-border)',
-                  background: isOpen ? 'linear-gradient(180deg, rgba(201,168,76,0.04) 0%, rgba(20,20,20,0.6) 100%)' : 'var(--black-card)',
-                  boxShadow: isOpen ? '0 4px 20px rgba(0,0,0,0.4)' : 'none',
-                  borderRadius: '12px', padding: '16px', position: 'relative'
+                  border: isOpen
+                    ? (isDelivery ? '2px solid #0284c7' : '2px solid #ea580c')
+                    : '1px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  boxShadow: isOpen
+                    ? (isDelivery
+                        ? '0 6px 20px -2px rgba(2, 132, 199, 0.16), 0 2px 6px -1px rgba(0, 0, 0, 0.05)'
+                        : '0 6px 20px -2px rgba(234, 88, 12, 0.16), 0 2px 6px -1px rgba(0, 0, 0, 0.05)')
+                    : '0 1px 3px rgba(0, 0, 0, 0.05)',
+                  borderRadius: '14px', padding: '16px', position: 'relative'
                 }}
               >
                 <div>
                   {/* Top Bar: Type + Status Badges */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                      padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '800',
                       letterSpacing: '0.5px',
-                      background: meta.type === 'DELIVERY' ? 'rgba(56,189,248,0.12)' : 'rgba(249,115,22,0.12)',
-                      color: meta.type === 'DELIVERY' ? '#38bdf8' : '#f97316',
-                      border: `1px solid ${meta.type === 'DELIVERY' ? 'rgba(56,189,248,0.3)' : 'rgba(249,115,22,0.3)'}`
+                      background: isDelivery ? '#E0F2FE' : '#FFEDD5',
+                      color: isDelivery ? '#0369A1' : '#C2410C',
+                      border: `1px solid ${isDelivery ? '#BAE6FD' : '#FED7AA'}`
                     }}>
-                      {meta.type === 'DELIVERY' ? <Bike size={13} /> : <ShoppingBag size={13} />}
+                      {isDelivery ? <Bike size={13} /> : <ShoppingBag size={13} />}
                       <span>{meta.type}</span>
                     </div>
 
-                    <span className={`badge ${isOpen ? 'badge-open' : order.status === 'PAID' ? 'badge-paid' : 'badge-cancelled'}`} style={{ fontSize: '11px' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '999px',
+                      background: isOpen ? '#ECFDF5' : order.status === 'PAID' ? '#F1F5F9' : '#FEF2F2',
+                      color: isOpen ? '#047857' : order.status === 'PAID' ? '#475569' : '#DC2626',
+                      border: `1px solid ${isOpen ? '#A7F3D0' : order.status === 'PAID' ? '#CBD5E1' : '#FECACA'}`
+                    }}>
                       {isOpen ? '● Active' : order.status}
                     </span>
                   </div>
 
                   {/* Order Name / Customer */}
-                  <div style={{ marginBottom: '8px' }}>
+                  <div style={{ marginBottom: '10px' }}>
                     <h3 style={{
-                      fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)',
-                      margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px'
+                      fontSize: '19px', fontWeight: '800', color: '#0F172A',
+                      margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px'
                     }}>
-                      <span className="gold-text">{meta.orderName}</span>
+                      <span>{meta.orderName}</span>
                     </h3>
 
                     {/* Contact & Address */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '12px' }}>
                       {meta.phone && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Phone size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                          <a href={`tel:${meta.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Phone size={13} style={{ color: '#D97706', flexShrink: 0 }} />
+                          <a href={`tel:${meta.phone}`} style={{ color: '#0F172A', fontWeight: '600', textDecoration: 'none' }}>
                             {meta.phone}
                           </a>
                         </div>
                       )}
                       {meta.address && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <MapPin size={13} style={{ color: '#38bdf8', flexShrink: 0 }} />
-                          <span style={{ color: 'var(--text-primary)' }}>{meta.address}</span>
+                          <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                          <span style={{ color: '#334155', fontWeight: '500' }}>{meta.address}</span>
                         </div>
                       )}
                       {meta.deliveryNotes && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontStyle: 'italic', color: '#64748B' }}>
                           <FileText size={13} style={{ flexShrink: 0 }} />
                           <span>{meta.deliveryNotes}</span>
                         </div>
@@ -820,34 +833,35 @@ export default function DeliveryPage() {
 
                   {/* Server & Time Info */}
                   <div style={{
-                    fontSize: '11px', color: 'var(--text-muted)',
+                    fontSize: '11px', color: '#64748B',
                     display: 'flex', justifyContent: 'space-between',
-                    padding: '6px 0', borderTop: '1px dashed var(--black-border)', borderBottom: '1px dashed var(--black-border)',
-                    marginBottom: '10px'
+                    padding: '8px 0', borderTop: '1px dashed #E2E8F0', borderBottom: '1px dashed #E2E8F0',
+                    marginBottom: '12px'
                   }}>
-                    <span>Server: <b style={{ color: 'var(--text-secondary)' }}>{order.waiter?.fullName || 'Staff'}</b></span>
-                    <span>{new Date(order.createdAt).toLocaleTimeString('en-ET', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>Server: <b style={{ color: '#0F172A' }}>{order.waiter?.fullName || 'Staff'}</b></span>
+                    <span style={{ fontWeight: '500', color: '#64748B' }}>{new Date(order.createdAt).toLocaleTimeString('en-ET', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
 
                   {/* Ordered Items Preview */}
                   <div style={{ marginBottom: '14px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#64748B', marginBottom: '8px' }}>
                       Ordered Items ({activeItems.length})
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {activeItems.map(item => {
                         const cleanNote = item.notes?.replace(/\[.*?\]/, '').trim()
                         return (
                           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                             <div style={{ flex: 1, paddingRight: '8px' }}>
-                              <span style={{ fontWeight: '600' }}>{item.quantity}x</span> {item.menuItem.name}
+                              <span style={{ fontWeight: '700', color: '#0F172A' }}>{item.quantity}x</span>{' '}
+                              <span style={{ color: '#1E293B', fontWeight: '500' }}>{item.menuItem.name}</span>
                               {cleanNote && (
-                                <div style={{ fontSize: '11px', color: 'var(--warning-light)', fontStyle: 'italic', paddingLeft: '8px' }}>
+                                <div style={{ fontSize: '11px', color: '#B45309', fontStyle: 'italic', paddingLeft: '8px', marginTop: '2px' }}>
                                   ↳ {cleanNote}
                                 </div>
                               )}
                             </div>
-                            <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>
+                            <span style={{ fontWeight: '700', color: '#0F172A' }}>
                               {(item.menuItem.price * item.quantity).toFixed(2)}
                             </span>
                           </div>
@@ -858,19 +872,23 @@ export default function DeliveryPage() {
                 </div>
 
                 {/* Bottom Section: Total & Action Buttons */}
-                <div style={{ borderTop: '1px solid var(--black-border)', paddingTop: '12px' }}>
+                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total Amount</span>
-                    <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gold)' }}>
-                      {total.toFixed(2)} <span style={{ fontSize: '12px', fontWeight: '500' }}>ETB</span>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Total Amount</span>
+                    <span style={{ fontSize: '22px', fontWeight: '800', color: '#B48A1E' }}>
+                      {total.toFixed(2)} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748B' }}>ETB</span>
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {/* Print Customer Ticket */}
                     <button
                       className="btn btn-outline btn-sm"
-                      style={{ flex: 1, minWidth: '90px', padding: '6px 10px', fontSize: '12px' }}
+                      style={{
+                        flex: 1, minWidth: '85px', padding: '8px 10px', fontSize: '12px',
+                        fontWeight: '600', background: '#FFFFFF', border: '1.5px solid #CBD5E1',
+                        color: '#0F172A', borderRadius: '8px'
+                      }}
                       onClick={() => printCustomerReceipt(order)}
                       title="Print Customer Delivery Receipt"
                     >
@@ -880,7 +898,11 @@ export default function DeliveryPage() {
                     {/* Print Kitchen Slip */}
                     <button
                       className="btn btn-ghost btn-sm"
-                      style={{ padding: '6px 10px', fontSize: '12px' }}
+                      style={{
+                        padding: '8px 10px', fontSize: '12px', fontWeight: '600',
+                        background: '#F8FAFC', border: '1.5px solid #CBD5E1',
+                        color: '#0F172A', borderRadius: '8px'
+                      }}
                       onClick={() => printKitchenSlip(order)}
                       title="Print Kitchen Preparation Slip"
                     >
@@ -891,7 +913,10 @@ export default function DeliveryPage() {
                     {isOpen ? (
                       <button
                         className="btn btn-gold btn-sm"
-                        style={{ flex: 1, minWidth: '90px', padding: '6px 10px', fontSize: '12px' }}
+                        style={{
+                          flex: 1, minWidth: '85px', padding: '8px 12px', fontSize: '12px',
+                          borderRadius: '8px', fontWeight: '700'
+                        }}
                         onClick={() => setOrderToPay(order)}
                       >
                         <CreditCard size={14} /> Pay
@@ -899,8 +924,8 @@ export default function DeliveryPage() {
                     ) : (
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: '4px',
-                        fontSize: '11px', color: 'var(--success-light)', fontWeight: '600',
-                        padding: '6px 10px'
+                        fontSize: '11px', color: '#047857', fontWeight: '700',
+                        padding: '6px 10px', background: '#ECFDF5', borderRadius: '8px', border: '1px solid #A7F3D0'
                       }}>
                         <CheckCircle size={14} /> Paid ({order.payment?.method || 'Settled'})
                       </div>

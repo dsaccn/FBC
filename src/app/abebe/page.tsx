@@ -663,7 +663,7 @@ export default function AbebeDeveloperPortal() {
           filter: 'blur(60px)', pointerEvents: 'none'
         }} />
 
-        <div style={{
+        <div className="abebe-login-card" style={{
           width: '100%', maxWidth: '440px',
           background: 'rgba(15, 23, 42, 0.75)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -802,12 +802,135 @@ export default function AbebeDeveloperPortal() {
 
   // ── VIEW 3: FULL STANDALONE DEVELOPER PORTAL (/abebe) ──
   return (
-    <div style={{
+    <div className="abebe-portal-root" style={{
       minHeight: '100vh', background: '#F8FAFC', color: '#0F172A',
       fontFamily: "'Inter', sans-serif", padding: '24px 28px', maxWidth: '1600px', margin: '0 auto'
     }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .abebe-portal-root {
+            padding: 12px 10px 40px !important;
+          }
+          .abebe-header {
+            padding: 14px !important;
+            gap: 12px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .abebe-header-actions {
+            width: 100% !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+          .abebe-header-actions > * {
+            flex: 1 1 calc(50% - 6px) !important;
+            justify-content: center !important;
+            font-size: 11px !important;
+            padding: 7px 8px !important;
+            min-height: 36px !important;
+            box-sizing: border-box !important;
+          }
+          .abebe-tabs-bar {
+            overflow-x: auto !important;
+            white-space: nowrap !important;
+            flex-wrap: nowrap !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 8px !important;
+            margin-bottom: 12px !important;
+            gap: 6px !important;
+          }
+          .abebe-tabs-bar::-webkit-scrollbar {
+            display: none !important;
+          }
+          .abebe-tabs-bar > button {
+            flex-shrink: 0 !important;
+            font-size: 12px !important;
+            padding: 7px 12px !important;
+          }
+          .abebe-explorer-controls {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+          .abebe-explorer-search-group {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+          .abebe-explorer-search-group select {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+          .abebe-explorer-search-input-row {
+            display: flex !important;
+            width: 100% !important;
+            gap: 6px !important;
+          }
+          .abebe-explorer-action-group {
+            width: 100% !important;
+            display: flex !important;
+            gap: 8px !important;
+          }
+          .abebe-explorer-action-group > * {
+            flex: 1 !important;
+            justify-content: center !important;
+            font-size: 12px !important;
+            padding: 8px 10px !important;
+          }
+          .abebe-security-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .abebe-audit-diff {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+          }
+          .abebe-sync-card-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .abebe-sync-card-header > div:last-child {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            border-top: 1px solid #E2E8F0 !important;
+            padding-top: 10px !important;
+          }
+          .abebe-danger-actions {
+            flex-direction: column !important;
+          }
+          .abebe-danger-actions button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+          .abebe-pagination-bar {
+            flex-direction: column !important;
+            gap: 10px !important;
+            align-items: center !important;
+            text-align: center !important;
+          }
+          .abebe-modal-overlay {
+            padding: 10px !important;
+          }
+          .abebe-modal-card {
+            max-height: 94vh !important;
+            margin: 0 !important;
+            border-radius: 12px !important;
+          }
+          .abebe-login-card {
+            padding: 24px 18px !important;
+            margin: 0 8px !important;
+          }
+        }
+      `}</style>
       {/* Flight Control Header */}
-      <div style={{
+      <div className="abebe-header" style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         marginBottom: '20px', flexWrap: 'wrap', gap: '16px', background: '#FFFFFF',
         padding: '16px 20px', borderRadius: '12px', border: '1px solid #E2E8F0',
@@ -833,7 +956,7 @@ export default function AbebeDeveloperPortal() {
         </div>
 
         {/* Action Controls, Admin Status & Lock Console */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="abebe-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Neon Cloud Status Badge */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px',
@@ -954,7 +1077,7 @@ export default function AbebeDeveloperPortal() {
       )}
 
       {/* Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px', flexWrap: 'wrap' }}>
+      <div className="abebe-tabs-bar" style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px', flexWrap: 'wrap' }}>
         {[
           { id: 'explorer', label: '18-Table Data Explorer & CRUD', icon: <Database size={15} /> },
           { id: 'sync', label: 'Sync Flight Control', icon: <RefreshCw size={15} /> },
@@ -984,8 +1107,8 @@ export default function AbebeDeveloperPortal() {
       {activeTab === 'explorer' && (
         <div>
           {/* Controls Bar: Model Selector, Search, Insert */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '300px' }}>
+          <div className="abebe-explorer-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <div className="abebe-explorer-search-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '300px' }}>
               <select
                 value={selectedModel}
                 onChange={(e) => { setSelectedModel(e.target.value); setPage(1); }}
@@ -1002,35 +1125,37 @@ export default function AbebeDeveloperPortal() {
                 ))}
               </select>
 
-              {/* Search Bar */}
-              <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-                <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                <input
-                  type="text"
-                  placeholder={`Search ${selectedModel} records...`}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && loadRecords()}
-                  style={{
-                    width: '100%', padding: '9px 12px 9px 36px', borderRadius: '8px',
-                    border: '1px solid #CBD5E1', background: '#FFFFFF',
-                    color: '#0F172A', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-                  }}
-                />
-              </div>
+              {/* Search Bar Row with responsive container */}
+              <div className="abebe-explorer-search-input-row" style={{ display: 'flex', gap: '8px', flex: 1, maxWidth: '480px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                  <input
+                    type="text"
+                    placeholder={`Search ${selectedModel} records...`}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && loadRecords()}
+                    style={{
+                      width: '100%', padding: '9px 12px 9px 36px', borderRadius: '8px',
+                      border: '1px solid #CBD5E1', background: '#FFFFFF',
+                      color: '#0F172A', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
 
-              <button
-                onClick={loadRecords}
-                style={{
-                  padding: '9px 16px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #CBD5E1',
-                  fontSize: '13px', fontWeight: '600', cursor: 'pointer', color: '#334155'
-                }}
-              >
-                Search
-              </button>
+                <button
+                  onClick={loadRecords}
+                  style={{
+                    padding: '9px 16px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #CBD5E1',
+                    fontSize: '13px', fontWeight: '600', cursor: 'pointer', color: '#334155', flexShrink: 0
+                  }}
+                >
+                  Search
+                </button>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="abebe-explorer-action-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <button
                 onClick={openCreateModal}
                 disabled={!writeMode}
@@ -1277,7 +1402,7 @@ export default function AbebeDeveloperPortal() {
             </div>
 
             {/* Pagination Controls */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', fontSize: '12px', color: '#64748B' }}>
+            <div className="abebe-pagination-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', fontSize: '12px', color: '#64748B' }}>
               <div>
                 Showing {records.length} of {totalCount} total records in <strong>{selectedModel}</strong>
               </div>
@@ -1308,7 +1433,7 @@ export default function AbebeDeveloperPortal() {
         <div>
           {/* Neon Cloud Connectivity Card */}
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div className="abebe-sync-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Database size={20} color="#059669" />
@@ -1346,7 +1471,7 @@ export default function AbebeDeveloperPortal() {
 
           {/* Pending Queue Breakdown */}
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
+            <div className="abebe-sync-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>
@@ -1398,7 +1523,7 @@ export default function AbebeDeveloperPortal() {
             <p style={{ fontSize: '13px', color: '#BE123C', margin: '0 0 16px 0', lineHeight: 1.5 }}>
               Use these options when you want to wipe transactions to test fresh or start from zero. Any reset executed here updates <strong>BOTH</strong> Online Cloud (Neon) and Offline Localhost databases synchronously.
             </p>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="abebe-danger-actions" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleResetSystem('transactions')}
                 disabled={syncing}
@@ -1554,7 +1679,7 @@ export default function AbebeDeveloperPortal() {
                     Developer: <strong>{log.developerUsername}</strong> · Reason: <em>{log.reason}</em>
                   </div>
                   {log.previousState && log.newState && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', fontSize: '11px', fontFamily: 'monospace' }}>
+                    <div className="abebe-audit-diff" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', fontSize: '11px', fontFamily: 'monospace' }}>
                       <div style={{ background: '#FFF1F2', padding: '8px', borderRadius: '4px', border: '1px solid #FECDD3', overflowX: 'auto' }}>
                         <div style={{ color: '#E11D48', fontWeight: '700', marginBottom: '2px' }}>Previous State</div>
                         <pre style={{ margin: 0 }}>{log.previousState}</pre>
@@ -1574,7 +1699,7 @@ export default function AbebeDeveloperPortal() {
 
       {/* TAB 5: STANDALONE MASTER SECURITY & CREDENTIALS MANAGEMENT */}
       {activeTab === 'security' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 420px) 1fr', gap: '24px', alignItems: 'start' }}>
+        <div className="abebe-security-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 420px) 1fr', gap: '24px', alignItems: 'start' }}>
           {/* Column 1: Current Master Identity Profile */}
           <div style={{
             background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0',
@@ -1831,13 +1956,14 @@ export default function AbebeDeveloperPortal() {
       {/* RECORD INSPECT & EDIT MODAL */}
       {(isEditing || isCreating) && (
         <div
+          className="abebe-modal-overlay"
           onClick={(e) => { if (e.target === e.currentTarget) { setIsEditing(false); setIsCreating(false); } }}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
           }}
         >
-          <div style={{
+          <div className="abebe-modal-card" style={{
             background: '#FFFFFF', borderRadius: '14px', maxWidth: '750px', width: '100%', maxHeight: '90vh',
             display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden'
           }}>
@@ -1923,13 +2049,14 @@ export default function AbebeDeveloperPortal() {
       {/* MASTER CREDENTIALS EDIT MODAL (Triggered when clicking ROOT badge) */}
       {isCredModalOpen && (
         <div
+          className="abebe-modal-overlay"
           onClick={(e) => { if (e.target === e.currentTarget) setIsCredModalOpen(false) }}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
           }}
         >
-          <div style={{
+          <div className="abebe-modal-card" style={{
             background: '#FFFFFF', borderRadius: '16px', maxWidth: '480px', width: '100%',
             display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4)',
             overflow: 'hidden', border: '1px solid #E2E8F0'
