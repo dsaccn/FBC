@@ -123,28 +123,22 @@ echo [5/5] Registering auto-start and creating Desktop shortcuts...
 schtasks /delete /tn "DivaAddis POS Server" /f >nul 2>&1
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
-schtasks /create ^
-  /tn "%TASK_NAME%" ^
-  /tr "cmd.exe /c \"%BAT_FILE%\" --background" ^
-  /sc ONSTART ^
-  /delay 0000:30 ^
-  /ru SYSTEM ^
-  /rl HIGHEST ^
-  /f >nul 2>&1
+:: Configure Auto-Start on computer boot via Windows Startup folder (Silent)
+powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $startup=[Environment]::GetFolderPath('Startup'); $s=$ws.CreateShortcut(\"$startup\Kogna-POS.lnk\"); $s.TargetPath='%POS_DIR%start-silent.vbs'; $s.WorkingDirectory='%POS_DIR%'; $s.Save()" >nul 2>&1
+echo    Auto-start on boot (Silent): OK
 
-if %errorlevel% neq 0 (
-    echo    [WARNING] Could not register automatic background startup task.
-    echo    You can still start the server manually anytime using the Desktop shortcut.
-) else (
-    echo    Auto-start registered: OK (starts automatically on computer boot)
-)
-
-:: Create Desktop Shortcut
+:: Create Desktop Shortcuts
 set "DESKTOP=%USERPROFILE%\Desktop"
 if exist "%DESKTOP%" (
     echo [InternetShortcut] > "%DESKTOP%\Open Kogna POS.url"
     echo URL=http://localhost:3000 >> "%DESKTOP%\Open Kogna POS.url"
     echo    Desktop shortcut 'Open Kogna POS' created: OK
+
+    powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $d='%DESKTOP%'; $s=$ws.CreateShortcut(\"$d\Start Kogna POS (Silent).lnk\"); $s.TargetPath='%POS_DIR%start-silent.vbs'; $s.WorkingDirectory='%POS_DIR%'; $s.Save()" >nul 2>&1
+    echo    Desktop shortcut 'Start Kogna POS (Silent)' created: OK
+
+    powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $d='%DESKTOP%'; $s=$ws.CreateShortcut(\"$d\Stop Kogna POS.lnk\"); $s.TargetPath='%POS_DIR%stop-pos.bat'; $s.WorkingDirectory='%POS_DIR%'; $s.Save()" >nul 2>&1
+    echo    Desktop shortcut 'Stop Kogna POS' created: OK
 )
 echo.
 
@@ -154,13 +148,18 @@ echo  Installation Complete!
 echo =========================================================
 echo.
 echo  The Kogna Coffee POS is now installed on this computer.
+echo  It will start automatically & silently whenever this computer boots up.
 echo.
 echo  To start the POS server:
-echo    1. Double-click: start-pos.bat
-echo    2. Double-click 'Open Kogna POS' on Desktop (or open http://localhost:3000)
+echo    1. Double-click: 'Start Kogna POS (Silent)' on your Desktop
+echo       (or start-silent.vbs)
+echo    2. Double-click: 'Open Kogna POS' on Desktop (or open http://localhost:3000)
+echo.
+echo  To start with visible console logs instead:
+echo    Double-click: start-pos.bat
 echo.
 echo  To stop the server:
-echo    Double-click: stop-pos.bat
+echo    Double-click: 'Stop Kogna POS' on Desktop (or stop-pos.bat)
 echo.
 echo =========================================================
 pause

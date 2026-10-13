@@ -56,8 +56,12 @@ copy "postcss.config.mjs" "%DIST_DIR%\" >nul
 copy "tsconfig.json" "%DIST_DIR%\" >nul
 copy "install-online.bat" "%DIST_DIR%\" >nul
 copy "install-offline.bat" "%DIST_DIR%\" >nul
+copy "setup-and-autostart.bat" "%DIST_DIR%\" >nul
+copy "start-silent.vbs" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
 copy "stop-pos.bat" "%DIST_DIR%\" >nul
+copy "update-pos.bat" "%DIST_DIR%\" >nul
+copy "package-offline.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
 
 :: Copy Node.js installer if present

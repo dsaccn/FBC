@@ -36,9 +36,13 @@ $filesToCopy = @(
     "tsconfig.json",
     "install-offline.bat",
     "install-online.bat",
+    "setup-and-autostart.bat",
+    "start-silent.vbs",
     "start-pos.bat",
     "stop-pos.bat",
     "update-pos.bat",
+    "package-offline.bat",
+    "kogna.db",
     "README.md"
 )
 

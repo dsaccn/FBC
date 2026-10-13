@@ -11,10 +11,18 @@ function createPrismaClient() {
     ? (process.env.DATABASE_URL ?? process.env.DATABASE_URL_UNPOOLED)
     : process.env.DATABASE_URL
 
-  return new PrismaClient({
+  const client = new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
     ...(url ? { datasources: { db: { url } } } : {}),
   })
+
+  // On local SQLite, ensure WAL mode and 5000ms busy_timeout so background file locks never cause 'readonly database' errors
+  if (!process.env.VERCEL) {
+    client.$queryRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {})
+    client.$queryRawUnsafe('PRAGMA busy_timeout = 5000;').catch(() => {})
+  }
+
+  return client
 }
 
 function getPrismaInstance(): PrismaClient {
