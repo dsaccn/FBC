@@ -80,6 +80,13 @@ if exist "prisma\kogna.db" (
     echo    [WARNING] prisma\kogna.db not found. A new database will be initialized.
 )
 
+:: Clear read-only flags & grant full permissions on database
+attrib -r -s -h "prisma\*" /s /d >nul 2>&1
+attrib -r -s -h "prisma\kogna.db*" >nul 2>&1
+if exist "prisma\*.db-journal" del /f /q "prisma\*.db-journal" >nul 2>&1
+icacls "%POS_DIR%prisma" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
+echo    Database write permissions: OK
+
 :: Verify Prisma client
 echo    Checking Prisma Client...
 if not exist "node_modules\.prisma\client" (

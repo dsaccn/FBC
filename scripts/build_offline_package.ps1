@@ -42,7 +42,7 @@ $filesToCopy = @(
     "stop-pos.bat",
     "update-pos.bat",
     "package-offline.bat",
-    "kogna.db",
+    "fix-readonly-db.bat",
     "README.md"
 )
 

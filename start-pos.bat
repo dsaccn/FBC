@@ -33,6 +33,12 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Ensure database file permissions & clear stale locks
+attrib -r -s -h "prisma\*" /s /d >nul 2>&1
+attrib -r -s -h "prisma\kogna.db*" >nul 2>&1
+if exist "prisma\*.db-journal" del /f /q "prisma\*.db-journal" >nul 2>&1
+icacls "%~dp0prisma" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
+
 :: 3. Automatic Code Update Check (seamlessly pulls GitHub code edits if online)
 where git >nul 2>&1
 if %errorlevel% equ 0 (

@@ -32,8 +32,12 @@ if %errorlevel% neq 0 (
 echo    Node.js: OK
 echo.
 
-:: 2. Generate Prisma Database Client
-echo [2/4] Linking local SQLite database...
+:: 2. Generate Prisma Database Client & Ensure Write Permissions
+echo [2/4] Linking local SQLite database & setting permissions...
+attrib -r -s -h "prisma\*" /s /d >nul 2>&1
+attrib -r -s -h "prisma\kogna.db*" >nul 2>&1
+if exist "prisma\*.db-journal" del /f /q "prisma\*.db-journal" >nul 2>&1
+icacls "%POS_DIR%prisma" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
 call npx --no-install prisma generate
 echo    Prisma Client: OK
 echo.
