@@ -893,3 +893,78 @@ html, body {
   75% { transform: translateX(4px); }
 }
 
+/* ==========================================================================
+   Mobile QR Scanner Viewfinder & Camera Styles
+   ========================================================================== */
+#kogna-qr-reader {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+#kogna-qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 18px !important;
+  display: block !important;
+}
+
+#kogna-qr-reader canvas {
+  display: none !important;
+}
+
+#kogna-qr-reader img {
+  display: none !important;
+}
+
+#kogna-qr-reader__scan_region {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#kogna-qr-reader__dashboard_section,
+#kogna-qr-reader__dashboard_section_csr,
+#kogna-qr-reader__header_message {
+  display: none !important;
+}
+
+/* Pulsing Scanner Laser Animation */
+@keyframes kognaScanLine {
+  0% {
+    top: 5%;
+    opacity: 0.3;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.3;
+  }
+}
+
+.kogna-laser-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #D4AF37, #FFFFFF, #D4AF37, transparent);
+  box-shadow: 0 0 12px 2px rgba(212, 175, 55, 0.95);
+  animation: kognaScanLine 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+

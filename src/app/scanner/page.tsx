@@ -298,9 +298,15 @@ export default function QRScannerPage() {
       html5QrCodeRef.current = html5QrCode
 
       const config = {
-        fps: 15,
-        qrbox: { width: 240, height: 240 },
-        aspectRatio: 1.0,
+        fps: 20,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+          const edge = Math.max(180, Math.floor(minEdge * 0.78))
+          return { width: edge, height: edge }
+        },
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
       }
 
       // Primary constraint: modern browser native facingMode ('environment' triggers standard autofocus rear camera)
@@ -401,9 +407,12 @@ export default function QRScannerPage() {
       fontFamily: 'Inter, system-ui, sans-serif',
       display: 'flex',
       flexDirection: 'column',
+      width: '100%',
       maxWidth: '560px',
       margin: '0 auto',
-      position: 'relative'
+      position: 'relative',
+      boxSizing: 'border-box',
+      overflowX: 'hidden'
     }}>
       
       {/* 1. App Header */}
@@ -411,13 +420,15 @@ export default function QRScannerPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '16px 20px',
+        padding: 'max(14px, env(safe-area-inset-top)) 16px 14px 16px',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(15,23,42,0.85)',
+        background: 'rgba(15,23,42,0.92)',
         backdropFilter: 'blur(12px)',
         position: 'sticky',
         top: 0,
-        zIndex: 40
+        zIndex: 40,
+        width: '100%',
+        boxSizing: 'border-box'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link
@@ -788,43 +799,39 @@ export default function QRScannerPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{
               width: '100%',
-              aspectRatio: '1 / 1',
-              maxWidth: '360px',
+              maxWidth: '440px',
+              height: 'min(50vh, 380px)',
               background: '#000000',
               borderRadius: '20px',
               overflow: 'hidden',
               position: 'relative',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
               border: '2px solid rgba(212,175,55,0.4)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              boxSizing: 'border-box'
             }}>
               {/* html5-qrcode video element mounts here */}
               <div id={scannerContainerId} style={{ width: '100%', height: '100%' }} />
 
-              {/* Viewfinder Overlay Targeting Reticle */}
+              {/* Viewfinder Overlay Targeting Reticle with Apple-style cutout */}
               <div style={{
                 position: 'absolute',
                 top: '50%',
                 left: '50%',
                 transform: 'translate(-50%, -50%)',
-                width: '210px',
-                height: '210px',
-                border: '2px dashed rgba(212,175,55,0.6)',
-                borderRadius: '16px',
+                width: 'min(76%, 260px)',
+                height: 'min(76%, 260px)',
+                border: '2px dashed rgba(212,175,55,0.75)',
+                borderRadius: '18px',
                 pointerEvents: 'none',
+                boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <div style={{
-                  position: 'absolute',
-                  width: '100%',
-                  height: '2px',
-                  background: 'linear-gradient(90deg, transparent, #D4AF37, transparent)',
-                  boxShadow: '0 0 8px #D4AF37'
-                }} />
+                <div className="kogna-laser-line" />
               </div>
 
               {cameraError && (
@@ -959,7 +966,7 @@ export default function QRScannerPage() {
             )}
 
             {/* Camera Controls & Secondary Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '360px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '440px', marginTop: '16px', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94A3B8' }}>
                   <Zap size={14} color="var(--gold-light)" />
@@ -970,20 +977,21 @@ export default function QRScannerPage() {
                   type="button"
                   onClick={toggleFacingMode}
                   style={{
-                    padding: '6px 12px',
-                    fontSize: '11px',
+                    padding: '8px 14px',
+                    fontSize: '12px',
                     fontWeight: '600',
-                    borderRadius: '6px',
+                    borderRadius: '8px',
                     background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.12)',
                     color: '#E2E8F0',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '6px',
+                    touchAction: 'manipulation'
                   }}
                 >
-                  <RefreshCw size={11} /> Flip Cam
+                  <RefreshCw size={12} /> Flip Cam
                 </button>
               </div>
 
@@ -994,21 +1002,23 @@ export default function QRScannerPage() {
                 disabled={fileScanning}
                 style={{
                   width: '100%',
-                  padding: '9px 14px',
-                  borderRadius: '8px',
+                  minHeight: '44px',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
                   background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   color: '#CBD5E1',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: '600',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px'
+                  gap: '8px',
+                  touchAction: 'manipulation'
                 }}
               >
-                <Upload size={13} color="var(--gold)" />
+                <Upload size={14} color="var(--gold)" />
                 <span>Snap Photo / Upload QR Screenshot</span>
               </button>
             </div>
@@ -1148,7 +1158,10 @@ export default function QRScannerPage() {
       <footer style={{
         borderTop: '1px solid rgba(255,255,255,0.08)',
         background: 'rgba(15,23,42,0.95)',
-        backdropFilter: 'blur(10px)'
+        backdropFilter: 'blur(10px)',
+        width: '100%',
+        boxSizing: 'border-box',
+        paddingBottom: 'max(10px, env(safe-area-inset-bottom))'
       }}>
         <button
           type="button"
