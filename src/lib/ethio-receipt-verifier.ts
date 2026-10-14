@@ -4,7 +4,7 @@
  * Supports Telebirr, Commercial Bank of Ethiopia (CBE), and general receipt URL links.
  */
 
-export const DEFAULT_CBE_ACCOUNT = ''
+export const DEFAULT_CBE_ACCOUNT = process.env.DEFAULT_CBE_ACCOUNT || ''
 
 export interface VerifiedReceipt {
   success: boolean
@@ -172,10 +172,10 @@ export async function verifyCbeReceipt(
   let fetchUrl = clean
   let ftCode = clean.toUpperCase()
 
-  // Use provided account digits if supplied
+  // Use provided account digits or default configured account
   const targetAcc = (accountDigits && accountDigits.trim().length > 0)
     ? accountDigits.trim()
-    : ''
+    : (DEFAULT_CBE_ACCOUNT || '')
 
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     fetchUrl = clean
@@ -210,25 +210,31 @@ export async function verifyCbeReceipt(
     })
 
     if (!res.ok) {
+      const isMissingAccount = ftCode.length === 12 && !targetAcc
       return {
         success: false,
         provider: 'CBE',
         reference: ftCode,
         currency: 'ETB',
         status: 'FAILED',
-        errorMessage: `CBE verification server returned HTTP ${res.status}`,
+        errorMessage: isMissingAccount
+          ? 'CBE requires the last 8 digits of your receiving account to verify an FT code (e.g. FT26287TNCW3 + your account last 8 digits), or scan the customer\'s QR code directly.'
+          : `CBE verification server returned HTTP ${res.status}. Please check the reference code or link.`,
       }
     }
 
     const contentType = res.headers.get('content-type') || ''
     if (!contentType.includes('pdf')) {
+      const isMissingAccount = ftCode.length === 12 && !targetAcc
       return {
         success: false,
         provider: 'CBE',
         reference: ftCode,
         currency: 'ETB',
         status: 'FAILED',
-        errorMessage: 'Invalid CBE reference. No transaction PDF found.',
+        errorMessage: isMissingAccount
+          ? 'CBE requires the last 8 digits of the receiving account to verify this FT reference. Please enter the last 8 digits or scan the customer\'s QR code.'
+          : 'Invalid CBE reference. No transaction PDF found on CBE server.',
       }
     }
 

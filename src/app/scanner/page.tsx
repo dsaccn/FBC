@@ -24,7 +24,9 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
-  Info
+  Info,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react'
 
 interface VerifiedReceipt {
@@ -79,6 +81,9 @@ export default function QRScannerPage() {
   const html5QrCodeRef = useRef<any>(null)
   const scannerContainerId = 'kogna-qr-reader'
   const expectedAmountRef = useRef(expectedAmount)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [fileScanning, setFileScanning] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   useEffect(() => {
     expectedAmountRef.current = expectedAmount
@@ -193,9 +198,12 @@ export default function QRScannerPage() {
         }
         setHistory(prev => [historyEntry, ...prev.slice(0, 19)])
       } else {
+        const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
+          ? 'CBE'
+          : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : (prov === 'AUTO' ? 'UNKNOWN' : prov))
         const failReceipt: VerifiedReceipt = {
           success: false,
-          provider: prov === 'AUTO' ? 'UNKNOWN' : prov,
+          provider: detectedProv,
           reference: clean,
           currency: 'ETB',
           status: 'FAILED',
@@ -206,9 +214,12 @@ export default function QRScannerPage() {
         triggerHaptic(false)
       }
     } catch (err: any) {
+      const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
+        ? 'CBE'
+        : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : 'UNKNOWN')
       const netErrorReceipt: VerifiedReceipt = {
         success: false,
-        provider: 'UNKNOWN',
+        provider: detectedProv,
         reference: clean,
         currency: 'ETB',
         status: 'FAILED',
@@ -238,9 +249,43 @@ export default function QRScannerPage() {
     setCameraActive(false)
   }, [])
 
+  // Handle scanning an image file / native camera snapshot
+  const handleFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileScanning(true)
+    setFileError(null)
+
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      await stopScanner()
+      
+      const scanner = new Html5Qrcode(scannerContainerId)
+      const decodedText = await scanner.scanFile(file, true)
+      try { await scanner.clear() } catch {}
+      
+      const expAmt = expectedAmountRef.current ? parseFloat(expectedAmountRef.current) : undefined
+      verifyReference(decodedText, 'AUTO', undefined, expAmt)
+    } catch (err: any) {
+      console.warn('[Scanner] File scan failed:', err)
+      setFileError('Could not detect a clear QR code in this photo. Please hold the phone closer to the QR code and try again, or enter the reference code manually.')
+    } finally {
+      setFileScanning(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   // Start camera stream using html5-qrcode
   const startScanner = useCallback(async (facing: 'environment' | 'user') => {
     setCameraError(null)
+    setFileError(null)
+
+    // Check secure context requirement (Chrome blocks getUserMedia on plain HTTP)
+    if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      setCameraError('Live camera requires HTTPS or localhost. Please access via https://kogna.coffee/scanner or use "Snap / Upload Photo" below.')
+      setCameraActive(false)
+      return
+    }
 
     // Dynamic import to prevent SSR issues
     const { Html5Qrcode } = await import('html5-qrcode')
@@ -257,25 +302,47 @@ export default function QRScannerPage() {
         aspectRatio: 1.0,
       }
 
-      await html5QrCode.start(
-        { facingMode: facing },
-        config,
-        async (decodedText: string) => {
-          // Detected QR code successfully!
-          // Temporarily pause scanner while verifying
-          await stopScanner()
-          const expAmt = expectedAmountRef.current ? parseFloat(expectedAmountRef.current) : undefined
-          verifyReference(decodedText, 'AUTO', undefined, expAmt)
-        },
-        () => {
-          // Frame scanned without QR (ignore continuous frames)
+      // Try camera enumeration to pick back or front camera directly
+      let cameraConstraint: any = { facingMode: facing }
+      try {
+        const cameras = await Html5Qrcode.getCameras()
+        if (cameras && cameras.length > 0) {
+          if (facing === 'environment') {
+            const backCam = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1]
+            if (backCam) cameraConstraint = backCam.id
+          } else {
+            cameraConstraint = cameras[0].id
+          }
         }
-      )
+      } catch (enumErr) {
+        console.warn('[Scanner] Camera enumeration error:', enumErr)
+      }
+
+      const onScanSuccess = async (decodedText: string) => {
+        await stopScanner()
+        const expAmt = expectedAmountRef.current ? parseFloat(expectedAmountRef.current) : undefined
+        verifyReference(decodedText, 'AUTO', undefined, expAmt)
+      }
+
+      try {
+        await html5QrCode.start(cameraConstraint, config, onScanSuccess, () => {})
+      } catch (firstTryErr) {
+        console.warn('[Scanner] First start attempt failed, trying fallback facingMode:', firstTryErr)
+        // Fallback to simple facingMode string constraint
+        await html5QrCode.start({ facingMode: facing }, config, onScanSuccess, () => {})
+      }
 
       setCameraActive(true)
     } catch (err: any) {
       console.error('[Scanner] Start failed:', err)
-      setCameraError(err.message || 'Camera permission denied or camera not found.')
+      const msg = err?.message || ''
+      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+        setCameraError('Camera permission is blocked. Please tap the lock / settings icon 🔒 in your browser URL bar, allow Camera access, and tap "Retry Camera".')
+      } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError')) {
+        setCameraError('No camera detected on this device. You can snap a photo with your native camera or enter the reference code manually.')
+      } else {
+        setCameraError(msg || 'Camera permission denied or camera not found.')
+      }
       setCameraActive(false)
     }
   }, [stopScanner, verifyReference])
@@ -709,66 +776,185 @@ export default function QRScannerPage() {
                 <div style={{
                   position: 'absolute',
                   inset: 0,
-                  background: 'rgba(11,15,25,0.95)',
-                  padding: '24px',
+                  background: 'rgba(11,15,25,0.96)',
+                  padding: '24px 20px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  zIndex: 20
                 }}>
-                  <CameraOff size={36} color="#DC2626" style={{ marginBottom: '12px' }} />
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#FFFFFF', marginBottom: '6px' }}>
+                  <CameraOff size={38} color="#EF4444" style={{ marginBottom: '12px' }} />
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#FFFFFF', marginBottom: '6px' }}>
                     Camera Unavailable
                   </div>
-                  <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '16px', lineHeight: 1.4 }}>
+                  <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '18px', lineHeight: 1.5, maxWidth: '280px' }}>
                     {cameraError}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => startScanner(facingMode)}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      background: 'var(--gold)',
-                      border: 'none',
-                      color: '#FFFFFF',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Retry Camera
-                  </button>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '240px' }}>
+                    <button
+                      type="button"
+                      onClick={() => startScanner(facingMode)}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        background: 'var(--gold)',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <RefreshCw size={14} /> Retry Camera
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: '#F1F5F9',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Camera size={14} color="var(--gold)" /> Snap / Upload QR Photo
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMode('manual')}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#94A3B8',
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      Enter Reference Code Manually
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Camera Controls & Guidance */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '360px', marginTop: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94A3B8' }}>
-                <Zap size={14} color="var(--gold-light)" />
-                <span>Point camera at Telebirr or CBE QR</span>
+            {/* Hidden native camera / photo upload input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileScan}
+              style={{ display: 'none' }}
+            />
+
+            {/* File Scanning Spinner */}
+            {fileScanning && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                background: 'rgba(201,168,76,0.1)',
+                border: '1px solid rgba(201,168,76,0.3)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '12px',
+                color: 'var(--gold-light)'
+              }}>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>Reading QR code from photo...</span>
+              </div>
+            )}
+
+            {/* File Scan Error Message */}
+            {fileError && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 12px',
+                background: 'rgba(220,38,38,0.1)',
+                border: '1px solid rgba(220,38,38,0.3)',
+                borderRadius: '8px',
+                fontSize: '12px',
+                color: '#FCA5A5',
+                lineHeight: 1.4
+              }}>
+                {fileError}
+              </div>
+            )}
+
+            {/* Camera Controls & Secondary Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '360px', marginTop: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94A3B8' }}>
+                  <Zap size={14} color="var(--gold-light)" />
+                  <span>Point at Telebirr or CBE QR</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleFacingMode}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#E2E8F0',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <RefreshCw size={11} /> Flip Cam
+                </button>
               </div>
 
+              {/* Snap / Upload Fallback Button */}
               <button
                 type="button"
-                onClick={toggleFacingMode}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={fileScanning}
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  borderRadius: '6px',
-                  background: 'rgba(255,255,255,0.06)',
+                  width: '100%',
+                  padding: '9px 14px',
+                  borderRadius: '8px',
+                  background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#E2E8F0',
+                  color: '#CBD5E1',
+                  fontSize: '12px',
+                  fontWeight: '600',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  justifyContent: 'center',
+                  gap: '6px'
                 }}
               >
-                <RefreshCw size={11} /> Flip Cam
+                <Upload size={13} color="var(--gold)" />
+                <span>Snap Photo / Upload QR Screenshot</span>
               </button>
             </div>
           </div>
