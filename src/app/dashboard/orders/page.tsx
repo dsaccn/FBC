@@ -363,6 +363,35 @@ export default function OrdersPage() {
     let openCount = 0
     let cancelledCount = 0
 
+    for (const o of targetOrders) {
+      if (o.status === 'OPEN') {
+        openCount++
+        openTotalValue += getOrderTotal(o)
+      } else if (o.status === 'CANCELLED') {
+        cancelledCount++
+      } else if (o.status === 'PAID') {
+        const total = getOrderTotal(o)
+        paidCount++
+        totalPaidRevenue += total
+        totalDiscounts += o.payment?.discount || 0
+
+        const methodStr = (o.payment?.method || 'Cash').toLowerCase()
+        if (methodStr.includes('cash')) {
+          totalCash += total
+          cashCount++
+        } else if (methodStr.includes('telebirr')) {
+          totalTelebirr += total
+          telebirrCount++
+        } else if (methodStr.includes('cbe') || methodStr.includes('bank')) {
+          totalCbe += total
+          cbeCount++
+        } else {
+          totalOther += total
+          otherCount++
+        }
+      }
+    }
+
     return {
       totalPaidRevenue,
       paidCount,
