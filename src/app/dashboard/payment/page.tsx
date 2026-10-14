@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, CheckCircle, Bike, ShoppingBag } from 'lucide-react'
+import { Printer, CheckCircle, Bike, ShoppingBag, QrCode, ExternalLink } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
@@ -406,21 +406,40 @@ export default function PaymentPage() {
               ))}
             </div>
 
-            {/* Official Digital Receipt Verifier (Telebirr, CBE, etc.) - Commented out for now */}
-            {/*
-            <ReceiptVerifier
-              method={method}
-              expectedAmount={total}
-              onVerified={(receipt) => {
-                const verifiedTag = `[Verified ${receipt.provider} | Ref: ${receipt.reference}${receipt.payerName ? ` | Payer: ${receipt.payerName}` : ''}]`
-                setNotes(prev => prev ? `${prev} ${verifiedTag}` : verifiedTag)
-                toast.success(`Verified official ${receipt.provider} slip: ${receipt.amount ? `${receipt.amount.toFixed(2)} ETB` : 'Confirmed'}`)
-              }}
-              onClear={() => {
-                setNotes(prev => prev.replace(/\[Verified[^\]]+\]/g, '').trim())
-              }}
-            />
-            */}
+            {/* Quick Link to Standalone QR Scanner PWA */}
+            {isDigitalPayment && (
+              <div style={{
+                marginBottom: '14px',
+                background: 'rgba(201,168,76,0.08)',
+                border: '1px solid rgba(201,168,76,0.25)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#F1F5F9', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <QrCode size={15} color="var(--gold)" />
+                    Verify {method} Slip
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
+                    Open standalone camera scanner
+                  </div>
+                </div>
+                <a
+                  href={`/scanner?amount=${total}&provider=${method.toUpperCase()}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm btn-gold"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', padding: '5px 10px', height: 'auto' }}
+                >
+                  Scan QR
+                  <ExternalLink size={12} />
+                </a>
+              </div>
+            )}
 
             {/* Tip for digital payments */}
             {isDigitalPayment && (

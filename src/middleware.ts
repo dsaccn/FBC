@@ -15,6 +15,7 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/dashboard/orders':      ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/payment':     ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard':             ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
+  '/scanner':               ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
 
   // API Routes
   '/api/system':            ['ADMIN'],

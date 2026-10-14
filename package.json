@@ -25,6 +25,7 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "html5-qrcode": "^2.3.8",
     "jose": "^5.9.6",
     "lru-cache": "^11.5.2",
     "lucide-react": "^0.511.0",
