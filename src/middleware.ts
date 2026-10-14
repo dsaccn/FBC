@@ -15,11 +15,9 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/dashboard/orders':      ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard/payment':     ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/dashboard':             ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
-  '/scanner':               ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
 
   // API Routes
   '/api/system':            ['ADMIN'],
-  '/api/verify-receipt':    ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/delivery-orders':   ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'],
   '/api/staff-members':     ['ADMIN'],
   '/api/staff-menu-items':  ['ADMIN'],
@@ -52,8 +50,10 @@ export async function middleware(req: NextRequest) {
     )
   }
 
-  // Allow public authentication, standalone abebe flight control, and static assets
+  // Allow public authentication, standalone abebe flight control, scanner verification, and static assets
   if (
+    pathname === '/scanner' ||
+    pathname === '/api/verify-receipt' ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/abebe') ||
     pathname === '/login' ||
