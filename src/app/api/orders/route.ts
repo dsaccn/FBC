@@ -58,11 +58,15 @@ export async function GET(req: Request) {
       where: whereClause,
       include: {
         table: true,
-        waiter: { select: { id: true, fullName: true, username: true } },
+        waiter: { select: { id: true, fullName: true, username: true, role: true } },
         orderItems: {
           include: { menuItem: { include: { category: true } }, cancellation: true },
         },
-        payment: true,
+        payment: {
+          include: {
+            cashier: { select: { id: true, fullName: true, username: true, role: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })

@@ -20,9 +20,8 @@ import {
   Search,
   CheckCircle2,
   DollarSign,
-  UtensilsCrossed,
   Receipt,
-  Percent,
+  ChevronDown,
 } from 'lucide-react'
 import Portal from '@/components/Portal'
 import { printTicketHtml } from '@/lib/printer'
@@ -38,7 +37,8 @@ interface OrderItem {
 interface Order {
   id: string
   table: { number: string }
-  waiter: { fullName: string }
+  waiterId?: string
+  waiter: { id?: string; fullName: string; username?: string; role?: string }
   orderItems: OrderItem[]
   status: string
   createdAt: string
@@ -50,7 +50,16 @@ interface Order {
     discountType?: string
     notes?: string
     createdAt?: string
+    cashierId?: string
+    cashier?: { id: string; fullName: string; username: string; role?: string }
   } | null
+}
+
+interface StaffUser {
+  id: string
+  fullName: string
+  username?: string
+  role?: string
 }
 
 export default function OrdersPage() {
@@ -63,14 +72,32 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState('OPEN')
   const [searchQuery, setSearchQuery] = useState('')
   const [showReportModal, setShowReportModal] = useState(false)
+  const [staffList, setStaffList] = useState<StaffUser[]>([])
   const [currentUser, setCurrentUser] = useState<{ id?: string; fullName: string; role: string } | null>(null)
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL')
 
-  // Fetch current session for cashier report attribution
+  // Fetch current session: if cashier, default selection to their own account
   useEffect(() => {
     fetch('/api/auth/me')
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
-        if (data?.user) setCurrentUser(data.user)
+        const user = data?.user || data
+        if (user?.id) {
+          setCurrentUser(user)
+          if ((user.role || '').toUpperCase() === 'CASHIER') {
+            setSelectedStaffId(user.id)
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fetch staff list for selection (admins, cashiers, managers, waiters)
+  useEffect(() => {
+    fetch('/api/staff')
+      .then(res => (res.ok ? res.json() : []))
+      .then(data => {
+        if (Array.isArray(data)) setStaffList(data)
       })
       .catch(() => {})
   }, [])
@@ -87,7 +114,7 @@ export default function OrdersPage() {
   const [dateFrom, setDateFrom] = useState(() => getLocalDateStr())
   const [dateTo, setDateTo] = useState(() => getLocalDateStr())
 
-  // Fetch orders: fetch all statuses for the period so the Sales Summary is always complete
+  // Fetch orders: fetch all statuses for the period
   const load = useCallback(async (isBackground = false) => {
     if (!hasLoadedRef.current && !isBackground) {
       setLoading(true)
@@ -201,8 +228,125 @@ export default function OrdersPage() {
     }
   }
 
-  // Compute Sales Report statistics for Cashiers
-  const stats = useMemo(() => {
+  // Overall counts for tabs
+  const tabCounts = useMemo(() => {
+    let open = 0
+    let paid = 0
+    let cancelled = 0
+    for (const o of orders) {
+      if (o.status === 'OPEN') open++
+      else if (o.status === 'PAID') paid++
+      else if (o.status === 'CANCELLED') cancelled++
+    }
+    return { open, paid, cancelled, total: orders.length }
+  }, [orders])
+
+  // Check if current user is restricted to cashier-only view
+  const isCashier = (currentUser?.role || '').toUpperCase() === 'CASHIER'
+
+  // Extract available staff based on user role permissions:
+  // If Cashier is viewing: they only have permission to see Cashiers!
+  // If Admin/Manager is viewing: they can see all staff (Admins, Managers, Cashiers, Waiters)
+  const availableStaff = useMemo(() => {
+    const map = new Map<string, { id: string; fullName: string; role?: string }>()
+
+    if (isCashier) {
+      // CASHIER VIEW: Only include staff with role 'CASHIER'
+      for (const s of staffList) {
+        if (s.id && s.fullName && (s.role || '').toUpperCase() === 'CASHIER') {
+          map.set(s.id, { id: s.id, fullName: s.fullName, role: 'CASHIER' })
+        }
+      }
+      if (currentUser?.id && currentUser?.fullName && (currentUser.role || '').toUpperCase() === 'CASHIER') {
+        map.set(currentUser.id, { id: currentUser.id, fullName: currentUser.fullName, role: 'CASHIER' })
+      }
+      for (const o of orders) {
+        if (o.payment?.cashier?.id && o.payment?.cashier?.fullName) {
+          const cRole = (o.payment.cashier.role || '').toUpperCase()
+          if (cRole === 'CASHIER' || !cRole) {
+            map.set(o.payment.cashier.id, {
+              id: o.payment.cashier.id,
+              fullName: o.payment.cashier.fullName,
+              role: 'CASHIER',
+            })
+          }
+        }
+      }
+    } else {
+      // ADMIN / MANAGER VIEW: Include all staff & order creators
+      for (const s of staffList) {
+        if (s.id && s.fullName) {
+          map.set(s.id, { id: s.id, fullName: s.fullName, role: s.role || 'STAFF' })
+        }
+      }
+      if (currentUser?.id && currentUser?.fullName && !map.has(currentUser.id)) {
+        map.set(currentUser.id, {
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          role: currentUser.role || 'USER',
+        })
+      }
+      for (const o of orders) {
+        if (o.waiter?.id && o.waiter?.fullName && !map.has(o.waiter.id)) {
+          map.set(o.waiter.id, {
+            id: o.waiter.id,
+            fullName: o.waiter.fullName,
+            role: o.waiter.role || 'WAITER',
+          })
+        }
+        if (o.payment?.cashier?.id && o.payment?.cashier?.fullName && !map.has(o.payment.cashier.id)) {
+          map.set(o.payment.cashier.id, {
+            id: o.payment.cashier.id,
+            fullName: o.payment.cashier.fullName,
+            role: o.payment.cashier.role || 'CASHIER',
+          })
+        } else if (o.payment?.cashierId && !map.has(o.payment.cashierId)) {
+          map.set(o.payment.cashierId, {
+            id: o.payment.cashierId,
+            fullName: `Cashier (${o.payment.cashierId.slice(-4)})`,
+            role: 'CASHIER',
+          })
+        }
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName))
+  }, [staffList, currentUser, orders, isCashier])
+
+  const selectedStaffObj = availableStaff.find(c => c.id === selectedStaffId)
+  const selectedStaffName = selectedStaffId === 'ALL'
+    ? (isCashier ? 'All Cashiers' : 'All Staff & Cashiers')
+    : (selectedStaffObj?.fullName || (isCashier ? 'Cashier' : 'Selected Staff'))
+
+  // Compute stats specifically for the Report Modal based on selectedStaffId & permissions
+  const reportStats = useMemo(() => {
+    const targetOrders = selectedStaffId === 'ALL'
+      ? (isCashier
+          ? orders.filter(o => {
+              // Cashier view: only orders processed by a cashier
+              const cRole = (o.payment?.cashier?.role || '').toUpperCase()
+              return cRole === 'CASHIER' || !cRole
+            })
+          : orders)
+      : orders.filter(o => {
+          const selName = selectedStaffObj?.fullName?.toLowerCase().trim()
+
+          // Matches as cashier (settled payment)
+          const matchesCashier =
+            o.payment?.cashierId === selectedStaffId ||
+            o.payment?.cashier?.id === selectedStaffId ||
+            (selName && o.payment?.cashier?.fullName?.toLowerCase().trim() === selName)
+
+          // Matches as waiter / order creator
+          const matchesWaiter =
+            o.waiter?.id === selectedStaffId ||
+            o.waiterId === selectedStaffId ||
+            (selName && o.waiter?.fullName?.toLowerCase().trim() === selName)
+
+          // If Cashier is viewing, they only match payments processed as cashier
+          return isCashier ? matchesCashier : (matchesCashier || matchesWaiter)
+        })
+
     let totalPaidRevenue = 0
     let totalCash = 0
     let totalTelebirr = 0
@@ -213,43 +357,27 @@ export default function OrdersPage() {
     let cbeCount = 0
     let otherCount = 0
     let totalDiscounts = 0
+    let paidCount = 0
 
     let openTotalValue = 0
     let openCount = 0
-    let paidCount = 0
     let cancelledCount = 0
 
-    let dineInRevenue = 0
-    let dineInCount = 0
-    let takeawayRevenue = 0
-    let takeawayCount = 0
-    let deliveryRevenue = 0
-    let deliveryCount = 0
-
-    const waiterMap: Record<string, { name: string; orders: number; revenue: number }> = {}
     const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
 
-    for (const order of orders) {
-      const isPaid = order.status === 'PAID'
-      const isOpen = order.status === 'OPEN'
-      const isCancelled = order.status === 'CANCELLED'
-      const total = getOrderTotal(order)
-
-      const tableLower = (order.table?.number || '').toLowerCase()
-      const isDel = tableLower.startsWith('delivery')
-      const isTak = tableLower.startsWith('takeaway')
-
-      if (isOpen) {
+    for (const o of targetOrders) {
+      if (o.status === 'OPEN') {
         openCount++
-        openTotalValue += total
-      } else if (isCancelled) {
+        openTotalValue += getOrderTotal(o)
+      } else if (o.status === 'CANCELLED') {
         cancelledCount++
-      } else if (isPaid) {
+      } else if (o.status === 'PAID') {
+        const total = getOrderTotal(o)
         paidCount++
         totalPaidRevenue += total
-        totalDiscounts += order.payment?.discount || 0
+        totalDiscounts += o.payment?.discount || 0
 
-        const methodStr = (order.payment?.method || 'Cash').toLowerCase()
+        const methodStr = (o.payment?.method || 'Cash').toLowerCase()
         if (methodStr.includes('cash')) {
           totalCash += total
           cashCount++
@@ -264,25 +392,7 @@ export default function OrdersPage() {
           otherCount++
         }
 
-        if (isDel) {
-          deliveryCount++
-          deliveryRevenue += total
-        } else if (isTak) {
-          takeawayCount++
-          takeawayRevenue += total
-        } else {
-          dineInCount++
-          dineInRevenue += total
-        }
-
-        // Waiter performance
-        const wName = order.waiter?.fullName || 'Unknown'
-        if (!waiterMap[wName]) waiterMap[wName] = { name: wName, orders: 0, revenue: 0 }
-        waiterMap[wName].orders++
-        waiterMap[wName].revenue += total
-
-        // Items breakdown
-        for (const it of order.orderItems) {
+        for (const it of o.orderItems) {
           if (it.status !== 'CANCELLED' && it.menuItem) {
             const iName = it.menuItem.name
             if (!itemMap[iName]) itemMap[iName] = { name: iName, quantity: 0, revenue: 0 }
@@ -296,9 +406,6 @@ export default function OrdersPage() {
     const topItems = Object.values(itemMap)
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 5)
-
-    const staffPerformance = Object.values(waiterMap)
-      .sort((a, b) => b.revenue - a.revenue)
 
     return {
       totalPaidRevenue,
@@ -315,17 +422,9 @@ export default function OrdersPage() {
       openTotalValue,
       openCount,
       cancelledCount,
-      totalOrders: orders.length,
-      dineInRevenue,
-      dineInCount,
-      takeawayRevenue,
-      takeawayCount,
-      deliveryRevenue,
-      deliveryCount,
       topItems,
-      staffPerformance,
     }
-  }, [orders])
+  }, [orders, selectedStaffId, selectedStaffObj, isCashier])
 
   // Filtered and searched orders for display
   const displayedOrders = useMemo(() => {
@@ -350,7 +449,7 @@ export default function OrdersPage() {
     })
   }, [orders, filter, searchQuery])
 
-  // Print Cashier Shift Report on Thermal Slip
+  // Print Cashier / Staff Shift Report on Thermal Slip
   const printShiftSummary = () => {
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
     const dateRangeStr = dateFrom === dateTo ? dateFrom : `${dateFrom} to ${dateTo}`
@@ -372,33 +471,32 @@ export default function OrdersPage() {
           <b style="font-size: 18px; letter-spacing: 2px;">KOGNA COFFEE</b><br/>
           <span style="font-size: 11px;">Addis Ababa, Ethiopia</span><br/>
           <hr/>
-          <b style="font-size: 14px;">CASHIER SALES REPORT</b><br/>
+          <b style="font-size: 14px;">SHIFT SALES REPORT</b><br/>
           <span style="font-size: 11px;">Period: ${dateRangeStr}</span><br/>
           <span style="font-size: 11px;">Printed: ${now}</span><br/>
-          <span style="font-size: 11px;">Cashier: ${currentUser?.fullName || 'Active Shift'}</span>
+          <span style="font-size: 11px;">${isCashier ? 'Cashier' : 'Staff'}: ${selectedStaffName}</span>
         </div>
         <hr/>
-        <div class="row"><span>TOTAL PAID SALES:</span><span>${stats.totalPaidRevenue.toFixed(2)} ETB</span></div>
-        <div class="row"><span>Paid Orders Count:</span><span>${stats.paidCount}</span></div>
-        ${stats.totalDiscounts > 0 ? `<div class="row"><span>Total Discounts:</span><span>-${stats.totalDiscounts.toFixed(2)} ETB</span></div>` : ''}
+        <div class="row"><span>TOTAL PAID SALES:</span><span>${reportStats.totalPaidRevenue.toFixed(2)} ETB</span></div>
+        <div class="row"><span>Paid Orders Count:</span><span>${reportStats.paidCount}</span></div>
+        ${reportStats.totalDiscounts > 0 ? `<div class="row"><span>Total Discounts:</span><span>-${reportStats.totalDiscounts.toFixed(2)} ETB</span></div>` : ''}
         <hr/>
         <div style="font-size: 12px; margin-bottom: 4px;"><b>PAYMENT BREAKDOWN:</b></div>
-        <div class="row"><span>  [CASH] In Drawer:</span><span>${stats.totalCash.toFixed(2)} ETB (${stats.cashCount})</span></div>
-        <div class="row"><span>  [TELEBIRR]:</span><span>${stats.totalTelebirr.toFixed(2)} ETB (${stats.telebirrCount})</span></div>
-        <div class="row"><span>  [CBE / BANK]:</span><span>${stats.totalCbe.toFixed(2)} ETB (${stats.cbeCount})</span></div>
-        ${stats.totalOther > 0 ? `<div class="row"><span>  [OTHER]:</span><span>${stats.totalOther.toFixed(2)} ETB (${stats.otherCount})</span></div>` : ''}
+        <div class="row"><span>  [CASH] In Drawer:</span><span>${reportStats.totalCash.toFixed(2)} ETB (${reportStats.cashCount})</span></div>
+        <div class="row"><span>  [TELEBIRR]:</span><span>${reportStats.totalTelebirr.toFixed(2)} ETB (${reportStats.telebirrCount})</span></div>
+        <div class="row"><span>  [CBE / BANK]:</span><span>${reportStats.totalCbe.toFixed(2)} ETB (${reportStats.cbeCount})</span></div>
+        ${reportStats.totalOther > 0 ? `<div class="row"><span>  [OTHER]:</span><span>${reportStats.totalOther.toFixed(2)} ETB (${reportStats.otherCount})</span></div>` : ''}
         <hr/>
-        <div style="font-size: 12px; margin-bottom: 4px;"><b>ORDER TYPES:</b></div>
-        <div class="row"><span>  🍽️ Dine-in:</span><span>${stats.dineInRevenue.toFixed(2)} ETB (${stats.dineInCount})</span></div>
-        <div class="row"><span>  🥡 Takeaway:</span><span>${stats.takeawayRevenue.toFixed(2)} ETB (${stats.takeawayCount})</span></div>
-        <div class="row"><span>  🛵 Delivery:</span><span>${stats.deliveryRevenue.toFixed(2)} ETB (${stats.deliveryCount})</span></div>
-        <hr/>
-        <div class="row"><span>OPEN (PENDING):</span><span>${stats.openTotalValue.toFixed(2)} ETB (${stats.openCount})</span></div>
-        <div class="row"><span>CANCELLED:</span><span>${stats.cancelledCount} orders</span></div>
-        <hr/>
-        ${stats.topItems.length > 0 ? `
+        ${reportStats.openCount > 0 ? `
+          <div class="row"><span>OPEN (PENDING):</span><span>${reportStats.openTotalValue.toFixed(2)} ETB (${reportStats.openCount})</span></div>
+        ` : ''}
+        ${reportStats.cancelledCount > 0 ? `
+          <div class="row"><span>CANCELLED:</span><span>${reportStats.cancelledCount} orders</span></div>
+          <hr/>
+        ` : ''}
+        ${reportStats.topItems.length > 0 ? `
           <div style="font-size: 12px; margin-bottom: 4px;"><b>TOP ITEMS SOLD:</b></div>
-          ${stats.topItems.map(it => `<div class="row"><span>  ${it.name} (x${it.quantity})</span><span>${it.revenue.toFixed(2)} ETB</span></div>`).join('')}
+          ${reportStats.topItems.map(it => `<div class="row"><span>  ${it.name} (x${it.quantity})</span><span>${it.revenue.toFixed(2)} ETB</span></div>`).join('')}
           <hr/>
         ` : ''}
         <div class="title" style="font-size: 10px; color: #555; letter-spacing: 1px; margin-top: 10px;">
@@ -418,10 +516,10 @@ export default function OrdersPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '14px' }}>
         <div>
           <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700' }}>
-            <span className="gold-text">Orders &amp; Sales</span>
+            <span className="gold-text">Orders</span>
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '3px' }}>
-            {displayedOrders.length} orders shown · <strong style={{ color: 'var(--gold)' }}>{stats.totalPaidRevenue.toFixed(2)} ETB</strong> paid in selected period
+            {displayedOrders.length} orders found
           </p>
         </div>
 
@@ -472,7 +570,7 @@ export default function OrdersPage() {
             className="btn btn-outline btn-sm"
             style={{ borderColor: 'var(--gold)', color: 'var(--gold)', gap: '6px' }}
             onClick={() => setShowReportModal(true)}
-            title="View Full Cashier Shift Report & Print"
+            title="View Shift & Sales Report"
           >
             <FileText size={14} /> Report
           </button>
@@ -487,148 +585,6 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* ── TOP CASHIER SALES SUMMARY REPORT CARDS ─────────────────────────────── */}
-      <div style={{
-        marginBottom: '22px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '12px',
-      }}>
-        {/* Card 1: Total Paid Sales */}
-        <div
-          onClick={() => setFilter('PAID')}
-          style={{
-            cursor: 'pointer',
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(180, 138, 30, 0.1) 0%, rgba(180, 138, 30, 0.02) 100%)',
-            border: filter === 'PAID' ? '2px solid var(--gold)' : '1px solid rgba(180, 138, 30, 0.35)',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--gold)' }}>
-              Total Paid Sales
-            </span>
-            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(180, 138, 30, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={15} color="var(--gold)" />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'Cinzel, serif' }}>
-              {stats.totalPaidRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--gold)' }}>ETB</span>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span><b>{stats.paidCount}</b> orders paid</span>
-              <span>·</span>
-              <span>Avg {stats.paidCount > 0 ? (stats.totalPaidRevenue / stats.paidCount).toFixed(0) : '0'} ETB</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Cash in Drawer */}
-        <div
-          style={{
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.09) 0%, rgba(5, 150, 105, 0.02) 100%)',
-            border: '1px solid rgba(5, 150, 105, 0.35)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--success-light)' }}>
-              Cash in Drawer
-            </span>
-            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(5, 150, 105, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Wallet size={15} color="var(--success-light)" />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'Cinzel, serif' }}>
-              {stats.totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--success-light)' }}>ETB</span>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span><b>{stats.cashCount}</b> cash orders</span>
-              <span>·</span>
-              <span>{stats.totalPaidRevenue > 0 ? Math.round((stats.totalCash / stats.totalPaidRevenue) * 100) : 0}% of sales</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Digital & Bank Payments */}
-        <div
-          style={{
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.09) 0%, rgba(59, 130, 246, 0.02) 100%)',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#2563eb' }}>
-              Digital &amp; Bank
-            </span>
-            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Smartphone size={15} color="#2563eb" />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'Cinzel, serif' }}>
-              {(stats.totalTelebirr + stats.totalCbe + stats.totalOther).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-              <span style={{ fontSize: '12px', fontWeight: '600', color: '#2563eb' }}>ETB</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ color: '#0284c7' }}>📱 Telebirr: <b>{stats.totalTelebirr.toFixed(0)}</b> ({stats.telebirrCount})</span>
-              <span>·</span>
-              <span style={{ color: '#7c3aed' }}>🏦 CBE: <b>{stats.totalCbe.toFixed(0)}</b> ({stats.cbeCount})</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Open Pending Orders */}
-        <div
-          onClick={() => setFilter('OPEN')}
-          style={{
-            cursor: 'pointer',
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.09) 0%, rgba(217, 119, 6, 0.02) 100%)',
-            border: filter === 'OPEN' ? '2px solid var(--warning)' : '1px solid rgba(217, 119, 6, 0.35)',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--warning)' }}>
-              Open / Unpaid
-            </span>
-            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Clock size={15} color="var(--warning)" />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'Cinzel, serif' }}>
-              {stats.openTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--warning)' }}>ETB</span>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              <b>{stats.openCount}</b> open orders waiting for payment
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* ── FILTER TABS & SEARCH ROW ───────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px', flexWrap: 'wrap' }}>
         {/* Status Tab Buttons */}
@@ -637,29 +593,29 @@ export default function OrdersPage() {
             className={`btn btn-sm ${filter === 'OPEN' ? 'btn-gold' : 'btn-outline'}`}
             onClick={() => setFilter('OPEN')}
           >
-            OPEN ({stats.openCount})
+            OPEN ({tabCounts.open})
           </button>
           <button
             className={`btn btn-sm ${filter === 'PAID' ? 'btn-gold' : 'btn-outline'}`}
             onClick={() => setFilter('PAID')}
           >
-            PAID ({stats.paidCount})
+            PAID ({tabCounts.paid})
           </button>
           <button
             className={`btn btn-sm ${filter === 'CANCELLED' ? 'btn-gold' : 'btn-outline'}`}
             onClick={() => setFilter('CANCELLED')}
           >
-            CANCELLED ({stats.cancelledCount})
+            CANCELLED ({tabCounts.cancelled})
           </button>
           <button
             className={`btn btn-sm ${filter === '' ? 'btn-gold' : 'btn-outline'}`}
             onClick={() => setFilter('')}
           >
-            All ({stats.totalOrders})
+            All ({tabCounts.total})
           </button>
         </div>
 
-        {/* Search input for cashiers */}
+        {/* Search input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', maxWidth: '360px', minWidth: '220px' }}>
           <div style={{ position: 'relative', width: '100%' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -688,7 +644,7 @@ export default function OrdersPage() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px', color: 'var(--gold)' }} />
-          <div>Loading orders &amp; sales data...</div>
+          <div>Loading orders...</div>
         </div>
       ) : displayedOrders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)', background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '12px' }}>
@@ -784,7 +740,7 @@ export default function OrdersPage() {
                   </div>
 
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    Waiter: {order.waiter.fullName} · {new Date(order.createdAt).toLocaleString('en-US', {
+                    Waiter: {order.waiter?.fullName} · {new Date(order.createdAt).toLocaleString('en-US', {
                       weekday: 'short',
                       month: 'short',
                       day: 'numeric',
@@ -819,7 +775,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* ── CASHIER SHIFT REPORT MODAL (PORTAL) ─────────────────────────────────── */}
+      {/* ── SHIFT & SALES REPORT MODAL (PORTAL) ──────────────────────────────────── */}
       {showReportModal && (
         <Portal>
           <div className="modal-overlay" onClick={() => setShowReportModal(false)}>
@@ -832,7 +788,9 @@ export default function OrdersPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--black-border)', paddingBottom: '14px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Receipt size={20} color="var(--gold)" />
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>Cashier Shift &amp; Sales Summary</h3>
+                  <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
+                    {isCashier ? 'Cashier Shift Sales Summary' : 'Shift & Sales Summary'}
+                  </h3>
                 </div>
                 <button
                   type="button"
@@ -844,16 +802,64 @@ export default function OrdersPage() {
                 </button>
               </div>
 
-              {/* Sub-header meta */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--black-border)', borderRadius: '8px', padding: '10px 14px', marginBottom: '18px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              {/* Sub-header meta with Role-restricted Staff / Cashier Selector */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--black-border)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '18px',
+                fontSize: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Period: </span>
                   <b>{dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`}</b>
                 </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Cashier: </span>
-                  <b>{currentUser?.fullName || 'Active Cashier'}</b>
+
+                {/* Clickable Cashier/Staff Selector: Cashiers only see cashiers; Admins see everyone */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{isCashier ? 'Cashier:' : 'Staff:'} </span>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <select
+                      value={selectedStaffId}
+                      onChange={e => setSelectedStaffId(e.target.value)}
+                      className="input"
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        padding: '4px 28px 4px 10px',
+                        height: '30px',
+                        borderRadius: '8px',
+                        background: 'var(--black-card)',
+                        color: 'var(--gold)',
+                        border: '1px solid var(--gold)',
+                        cursor: 'pointer',
+                        appearance: 'none',
+                        WebkitAppearance: 'none',
+                      }}
+                    >
+                      <option value="ALL">
+                        {isCashier ? 'All Cashiers (Combined)' : 'All Staff & Cashiers (Combined)'}
+                      </option>
+                      {availableStaff.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.fullName} {c.role ? `(${c.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={14}
+                      color="var(--gold)"
+                      style={{ position: 'absolute', right: '8px', pointerEvents: 'none' }}
+                    />
+                  </div>
                 </div>
+
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Generated: </span>
                   <b>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })}</b>
@@ -864,30 +870,30 @@ export default function OrdersPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ background: 'rgba(180, 138, 30, 0.08)', border: '1px solid rgba(180, 138, 30, 0.3)', borderRadius: '8px', padding: '10px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: '700' }}>TOTAL PAID SALES</div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{stats.totalPaidRevenue.toFixed(2)}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{stats.paidCount} orders</div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{reportStats.totalPaidRevenue.toFixed(2)}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{reportStats.paidCount} orders</div>
                 </div>
                 <div style={{ background: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.3)', borderRadius: '8px', padding: '10px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--success-light)', fontWeight: '700' }}>CASH COLLECTED</div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{stats.totalCash.toFixed(2)}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{stats.cashCount} orders</div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{reportStats.totalCash.toFixed(2)}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{reportStats.cashCount} orders</div>
                 </div>
                 <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '10px' }}>
                   <div style={{ fontSize: '11px', color: '#2563eb', fontWeight: '700' }}>DIGITAL / BANK</div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{(stats.totalTelebirr + stats.totalCbe + stats.totalOther).toFixed(2)}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{stats.telebirrCount + stats.cbeCount + stats.otherCount} orders</div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{(reportStats.totalTelebirr + reportStats.totalCbe + reportStats.totalOther).toFixed(2)}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{reportStats.telebirrCount + reportStats.cbeCount + reportStats.otherCount} orders</div>
                 </div>
                 <div style={{ background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.3)', borderRadius: '8px', padding: '10px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--warning)', fontWeight: '700' }}>OPEN (UNPAID)</div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{stats.openTotalValue.toFixed(2)}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{stats.openCount} pending</div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', marginTop: '2px' }}>{reportStats.openTotalValue.toFixed(2)}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{reportStats.openCount} pending</div>
                 </div>
               </div>
 
               {/* Payment Methods Breakdown Table */}
               <div style={{ marginBottom: '20px' }}>
                 <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Payment Methods Breakdown
+                  Payment Methods Breakdown {selectedStaffId !== 'ALL' && `(${selectedStaffName})`}
                 </h4>
                 <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', overflow: 'hidden' }}>
                   <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
@@ -902,42 +908,42 @@ export default function OrdersPage() {
                     <tbody>
                       <tr style={{ borderBottom: '1px solid var(--black-border)' }}>
                         <td style={{ padding: '8px 12px', fontWeight: '600' }}>💵 Cash In Drawer</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{stats.cashCount}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{stats.totalCash.toFixed(2)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{reportStats.cashCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{reportStats.totalCash.toFixed(2)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                          {stats.totalPaidRevenue > 0 ? `${Math.round((stats.totalCash / stats.totalPaidRevenue) * 100)}%` : '0%'}
+                          {reportStats.totalPaidRevenue > 0 ? `${Math.round((reportStats.totalCash / reportStats.totalPaidRevenue) * 100)}%` : '0%'}
                         </td>
                       </tr>
                       <tr style={{ borderBottom: '1px solid var(--black-border)' }}>
                         <td style={{ padding: '8px 12px', fontWeight: '600', color: '#0284c7' }}>📱 Telebirr</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{stats.telebirrCount}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{stats.totalTelebirr.toFixed(2)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{reportStats.telebirrCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{reportStats.totalTelebirr.toFixed(2)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                          {stats.totalPaidRevenue > 0 ? `${Math.round((stats.totalTelebirr / stats.totalPaidRevenue) * 100)}%` : '0%'}
+                          {reportStats.totalPaidRevenue > 0 ? `${Math.round((reportStats.totalTelebirr / reportStats.totalPaidRevenue) * 100)}%` : '0%'}
                         </td>
                       </tr>
                       <tr style={{ borderBottom: '1px solid var(--black-border)' }}>
                         <td style={{ padding: '8px 12px', fontWeight: '600', color: '#7c3aed' }}>🏦 CBE / Commercial Bank</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{stats.cbeCount}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{stats.totalCbe.toFixed(2)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{reportStats.cbeCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{reportStats.totalCbe.toFixed(2)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                          {stats.totalPaidRevenue > 0 ? `${Math.round((stats.totalCbe / stats.totalPaidRevenue) * 100)}%` : '0%'}
+                          {reportStats.totalPaidRevenue > 0 ? `${Math.round((reportStats.totalCbe / reportStats.totalPaidRevenue) * 100)}%` : '0%'}
                         </td>
                       </tr>
-                      {stats.totalOther > 0 && (
+                      {reportStats.totalOther > 0 && (
                         <tr style={{ borderBottom: '1px solid var(--black-border)' }}>
                           <td style={{ padding: '8px 12px', fontWeight: '600' }}>💳 Other Digital</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{stats.otherCount}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{stats.totalOther.toFixed(2)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{reportStats.otherCount}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700' }}>{reportStats.totalOther.toFixed(2)}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                            {stats.totalPaidRevenue > 0 ? `${Math.round((stats.totalOther / stats.totalPaidRevenue) * 100)}%` : '0%'}
+                            {reportStats.totalPaidRevenue > 0 ? `${Math.round((reportStats.totalOther / reportStats.totalPaidRevenue) * 100)}%` : '0%'}
                           </td>
                         </tr>
                       )}
                       <tr style={{ background: 'rgba(180, 138, 30, 0.05)', fontWeight: '700' }}>
                         <td style={{ padding: '8px 12px' }}>Total Paid Sales</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{stats.paidCount}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--gold)' }}>{stats.totalPaidRevenue.toFixed(2)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{reportStats.paidCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--gold)' }}>{reportStats.totalPaidRevenue.toFixed(2)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right' }}>100%</td>
                       </tr>
                     </tbody>
@@ -945,44 +951,17 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Order Fulfillment Types */}
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Fulfillment Channels
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                  <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', marginBottom: '2px' }}>🍽️</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Dine-In Tables</div>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{stats.dineInRevenue.toFixed(2)} ETB</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{stats.dineInCount} orders</div>
-                  </div>
-                  <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', marginBottom: '2px' }}>🥡</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Takeaway</div>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{stats.takeawayRevenue.toFixed(2)} ETB</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{stats.takeawayCount} orders</div>
-                  </div>
-                  <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', marginBottom: '2px' }}>🛵</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Delivery</div>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{stats.deliveryRevenue.toFixed(2)} ETB</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{stats.deliveryCount} orders</div>
-                  </div>
-                </div>
-              </div>
-
               {/* Top Selling Items */}
-              {stats.topItems.length > 0 && (
+              {reportStats.topItems.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Top Selling Items
+                    Top Selling Items {selectedStaffId !== 'ALL' && `(${selectedStaffName})`}
                   </h4>
                   <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', overflow: 'hidden' }}>
                     <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                       <tbody>
-                        {stats.topItems.map((item, idx) => (
-                          <tr key={item.name} style={{ borderBottom: idx < stats.topItems.length - 1 ? '1px solid var(--black-border)' : 'none' }}>
+                        {reportStats.topItems.map((item, idx) => (
+                          <tr key={item.name} style={{ borderBottom: idx < reportStats.topItems.length - 1 ? '1px solid var(--black-border)' : 'none' }}>
                             <td style={{ padding: '6px 12px', fontWeight: '600' }}>#{idx + 1} {item.name}</td>
                             <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{item.quantity} sold</td>
                             <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>{item.revenue.toFixed(2)} ETB</td>
