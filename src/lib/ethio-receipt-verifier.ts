@@ -150,8 +150,72 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
 }
 
 /**
+ * Verify modern CBE mobile banking receipt via official CBE API
+ * Official endpoint: https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/{id}
+ */
+export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedReceipt> {
+  const cleanToken = cleanReference(tokenId).replace(/^https?:\/\/mbreciept\.cbe\.com\.et\//i, '')
+  const fetchUrl = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${cleanToken}`
+
+  try {
+    const res = await fetch(fetchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-App-ID': 'd1292e42-7400-49de-a2d3-9731caa4c819',
+        'X-App-Version': '0a01980b-9859-1369-8198-59f403820000',
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (!res.ok) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: cleanToken,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: `CBE returned HTTP ${res.status}. Receipt may be expired or invalid.`,
+      }
+    }
+
+    const data = await res.json()
+    const amountVal = parseFloat(data.amountCredited || data.debitAmount || '0')
+    const isSuccess = data.status === 'COMPLETED' || data.status === 'SUCCESS' || /complete|success/i.test(data.status || '')
+
+    return {
+      success: isSuccess,
+      provider: 'CBE',
+      reference: data.id || cleanToken,
+      payerName: data.debitAccountHolder || undefined,
+      payerAccountOrPhone: data.debitAccountNo || undefined,
+      receiverName: data.creditAccountHolder || undefined,
+      receiverAccount: data.creditAccountNo || undefined,
+      isReceiverMatched: true,
+      amount: isNaN(amountVal) ? undefined : amountVal,
+      currency: data.creditCurrency || data.debitCurrency || 'ETB',
+      dateTime: data.dateTimes?.[0] || undefined,
+      status: isSuccess ? 'COMPLETED' : 'FAILED',
+      rawText: `${data.debitAccountHolder || ''} -> ${data.creditAccountHolder || ''} (${amountVal} ETB, Ref: ${data.id || cleanToken})`,
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      provider: 'CBE',
+      reference: cleanToken,
+      currency: 'ETB',
+      status: 'FAILED',
+      errorMessage: err.name === 'TimeoutError' || err.message?.includes('timeout')
+        ? 'CBE server timed out. Please check your internet connection.'
+        : `CBE verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
  * Verify Commercial Bank of Ethiopia (CBE) receipt
- * Official endpoint: https://apps.cbe.com.et:100/?id={ft}{last8}
+ * Supports both modern mbreciept.cbe.com.et QR links and legacy apps.cbe.com.et:100 FT references
  */
 export async function verifyCbeReceipt(
   ftNumberOrUrl: string,
@@ -167,6 +231,13 @@ export async function verifyCbeReceipt(
       status: 'FAILED',
       errorMessage: 'CBE FT reference or slip URL is required',
     }
+  }
+
+  // 1. Check for modern CBE mobile banking receipt link or token (mbreciept.cbe.com.et/{token} or v2-{token})
+  const modernMatch = clean.match(/(?:mbreciept\.cbe\.com\.et\/|^)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i)
+  if (modernMatch) {
+    const tokenId = modernMatch[1]
+    return verifyModernCbeReceipt(tokenId)
   }
 
   let fetchUrl = clean
@@ -315,7 +386,9 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
   const isCbe =
     provider === 'CBE' ||
     clean.toUpperCase().startsWith('FT') ||
-    clean.includes('cbe.com.et')
+    clean.includes('cbe.com.et') ||
+    clean.startsWith('v2-') ||
+    clean.includes('mbreciept')
 
   const isTelebirr =
     provider === 'TELEBIRR' ||
