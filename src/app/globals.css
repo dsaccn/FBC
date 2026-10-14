@@ -906,6 +906,7 @@ html, body {
   justify-content: center !important;
   position: relative !important;
   overflow: hidden !important;
+  pointer-events: none !important;
 }
 
 #kogna-qr-reader video {
@@ -914,6 +915,7 @@ html, body {
   object-fit: cover !important;
   border-radius: 18px !important;
   display: block !important;
+  pointer-events: none !important;
 }
 
 #kogna-qr-reader canvas {

@@ -85,6 +85,9 @@ export default function QRScannerPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileScanning, setFileScanning] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
+  const isStartingRef = useRef(false)
+  const isStoppingRef = useRef(false)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     expectedAmountRef.current = expectedAmount
@@ -234,20 +237,28 @@ export default function QRScannerPage() {
     }
   }, [playChime, triggerHaptic])
 
-  // Stop camera stream safely
+  // Stop camera stream safely with concurrency lock
   const stopScanner = useCallback(async () => {
-    if (html5QrCodeRef.current) {
-      try {
-        if (html5QrCodeRef.current.isScanning) {
-          await html5QrCodeRef.current.stop()
+    if (isStoppingRef.current) return
+    isStoppingRef.current = true
+    try {
+      if (html5QrCodeRef.current) {
+        try {
+          if (html5QrCodeRef.current.isScanning) {
+            await html5QrCodeRef.current.stop()
+          }
+          await html5QrCodeRef.current.clear()
+        } catch (err) {
+          console.warn('[Scanner] Stop warning:', err)
         }
-        await html5QrCodeRef.current.clear()
-      } catch (err) {
-        console.warn('[Scanner] Stop warning:', err)
+        html5QrCodeRef.current = null
       }
-      html5QrCodeRef.current = null
+      if (mountedRef.current) {
+        setCameraActive(false)
+      }
+    } finally {
+      isStoppingRef.current = false
     }
-    setCameraActive(false)
   }, [])
 
   // Handle scanning an image file / native camera snapshot
@@ -278,39 +289,53 @@ export default function QRScannerPage() {
 
   // Start camera stream using html5-qrcode
   const startScanner = useCallback(async (facing: 'environment' | 'user') => {
+    if (isStartingRef.current || isStoppingRef.current) return
+    isStartingRef.current = true
     setCameraError(null)
     setFileError(null)
 
     // Check secure context requirement (Chrome blocks getUserMedia on plain HTTP)
     if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      setCameraError('Live camera requires HTTPS or localhost. Please access via https://kogna.coffee/scanner or use "Snap / Upload Photo" below.')
-      setCameraActive(false)
+      if (mountedRef.current) {
+        setCameraError('Live camera requires HTTPS or localhost. Please access via https://kogna.coffee/scanner or use "Snap / Upload Photo" below.')
+        setCameraActive(false)
+      }
+      isStartingRef.current = false
       return
     }
 
-    // Dynamic import to prevent SSR issues
-    const { Html5Qrcode } = await import('html5-qrcode')
-
-    await stopScanner()
-
     try {
+      // Dynamic import to prevent SSR issues
+      const { Html5Qrcode } = await import('html5-qrcode')
+
+      // Stop any existing instance safely first
+      if (html5QrCodeRef.current) {
+        try {
+          if (html5QrCodeRef.current.isScanning) {
+            await html5QrCodeRef.current.stop()
+          }
+          await html5QrCodeRef.current.clear()
+        } catch {}
+        html5QrCodeRef.current = null
+      }
+
+      if (!mountedRef.current) {
+        isStartingRef.current = false
+        return
+      }
+
       const html5QrCode = new Html5Qrcode(scannerContainerId)
       html5QrCodeRef.current = html5QrCode
 
+      // Safe, fluid 12 FPS configuration without heavy experimental threads
       const config = {
-        fps: 20,
+        fps: 12,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-          const edge = Math.max(180, Math.floor(minEdge * 0.78))
+          const edge = Math.max(180, Math.floor(minEdge * 0.75))
           return { width: edge, height: edge }
         },
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
-        },
       }
-
-      // Primary constraint: modern browser native facingMode ('environment' triggers standard autofocus rear camera)
-      const cameraConstraint: any = { facingMode: facing }
 
       const onScanSuccess = async (decodedText: string) => {
         await stopScanner()
@@ -318,12 +343,15 @@ export default function QRScannerPage() {
         verifyReference(decodedText, 'AUTO', undefined, expAmt)
       }
 
+      // Primary constraint: modern browser native facingMode
+      const cameraConstraint: any = { facingMode: facing }
+
       try {
         await html5QrCode.start(cameraConstraint, config, onScanSuccess, () => {})
       } catch (firstTryErr) {
         console.warn('[Scanner] Direct facingMode failed, attempting camera enumeration fallback:', firstTryErr)
         try {
-          const cameras = await Html5Qrcode.getCameras()
+          const cameras = await Html5Qrcode.getCameras().catch(() => [])
           if (cameras && cameras.length > 0) {
             const backCam = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1]
             await html5QrCode.start(backCam.id, config, onScanSuccess, () => {})
@@ -335,18 +363,24 @@ export default function QRScannerPage() {
         }
       }
 
-      setCameraActive(true)
+      if (mountedRef.current) {
+        setCameraActive(true)
+      }
     } catch (err: any) {
       console.error('[Scanner] Start failed:', err)
       const msg = err?.message || ''
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-        setCameraError('Camera permission is blocked. Please tap the lock / settings icon 🔒 in your browser URL bar, allow Camera access, and tap "Retry Camera".')
-      } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError')) {
-        setCameraError('No camera detected on this device. You can snap a photo with your native camera or enter the reference code manually.')
-      } else {
-        setCameraError(msg || 'Camera permission denied or camera not found.')
+      if (mountedRef.current) {
+        if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+          setCameraError('Camera permission is blocked. Please tap the lock / settings icon 🔒 in your browser URL bar, allow Camera access, and tap "Retry Camera".')
+        } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError')) {
+          setCameraError('No camera detected on this device. You can snap a photo with your native camera or enter the reference code manually.')
+        } else {
+          setCameraError(msg || 'Camera permission denied or camera not found.')
+        }
+        setCameraActive(false)
       }
-      setCameraActive(false)
+    } finally {
+      isStartingRef.current = false
     }
   }, [stopScanner, verifyReference])
 
@@ -361,6 +395,7 @@ export default function QRScannerPage() {
 
   // Handle mode switches
   useEffect(() => {
+    mountedRef.current = true
     if (mode === 'camera' && !verifiedResult && !verifying) {
       startScanner(facingMode)
     } else {
@@ -368,9 +403,10 @@ export default function QRScannerPage() {
     }
 
     return () => {
+      mountedRef.current = false
       stopScanner()
     }
-  }, [mode, facingMode, verifiedResult, verifying, startScanner, stopScanner])
+  }, [mode, facingMode, verifiedResult, verifying])
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -442,7 +478,8 @@ export default function QRScannerPage() {
               borderRadius: '8px',
               background: 'rgba(255,255,255,0.06)',
               color: '#FFFFFF',
-              textDecoration: 'none'
+              textDecoration: 'none',
+              touchAction: 'manipulation'
             }}
             title="Back to POS Payment"
           >
@@ -477,7 +514,8 @@ export default function QRScannerPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              touchAction: 'manipulation'
             }}
             title={soundEnabled ? 'Mute sound chime' : 'Enable sound chime'}
           >
@@ -487,7 +525,7 @@ export default function QRScannerPage() {
       </header>
 
       {/* 2. Mode Selector Pill Bar */}
-      <div style={{ padding: '12px 16px', background: 'rgba(15,23,42,0.5)' }}>
+      <div style={{ padding: '12px 16px', background: 'rgba(15,23,42,0.5)', position: 'relative', zIndex: 30 }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
@@ -500,7 +538,7 @@ export default function QRScannerPage() {
             type="button"
             onClick={() => { setMode('camera'); setVerifiedResult(null); }}
             style={{
-              padding: '9px 12px',
+              padding: '11px 12px',
               fontSize: '13px',
               fontWeight: mode === 'camera' ? '700' : '500',
               borderRadius: '8px',
@@ -512,7 +550,9 @@ export default function QRScannerPage() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              transition: 'all 0.15s ease'
+              transition: 'all 0.15s ease',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent'
             }}
           >
             <Camera size={15} />
@@ -523,7 +563,7 @@ export default function QRScannerPage() {
             type="button"
             onClick={() => { setMode('manual'); stopScanner(); }}
             style={{
-              padding: '9px 12px',
+              padding: '11px 12px',
               fontSize: '13px',
               fontWeight: mode === 'manual' ? '700' : '500',
               borderRadius: '8px',
@@ -535,7 +575,9 @@ export default function QRScannerPage() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              transition: 'all 0.15s ease'
+              transition: 'all 0.15s ease',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent'
             }}
           >
             <Keyboard size={15} />
@@ -815,7 +857,7 @@ export default function QRScannerPage() {
               {/* html5-qrcode video element mounts here */}
               <div id={scannerContainerId} style={{ width: '100%', height: '100%' }} />
 
-              {/* Viewfinder Overlay Targeting Reticle with Apple-style cutout */}
+              {/* Viewfinder Overlay Targeting Reticle */}
               <div style={{
                 position: 'absolute',
                 top: '50%',
@@ -823,15 +865,21 @@ export default function QRScannerPage() {
                 transform: 'translate(-50%, -50%)',
                 width: 'min(76%, 260px)',
                 height: 'min(76%, 260px)',
-                border: '2px dashed rgba(212,175,55,0.75)',
-                borderRadius: '18px',
+                border: '1.5px solid rgba(212,175,55,0.6)',
+                borderRadius: '20px',
                 pointerEvents: 'none',
-                boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
+                boxShadow: '0 0 24px rgba(212,175,55,0.25)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                zIndex: 10
               }}>
                 <div className="kogna-laser-line" />
+                {/* 4 Corner Targeting Accents */}
+                <div style={{ position: 'absolute', top: -2, left: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderTopLeftRadius: 18 }} />
+                <div style={{ position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderTopRightRadius: 18 }} />
+                <div style={{ position: 'absolute', bottom: -2, left: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderBottomLeftRadius: 18 }} />
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderBottomRightRadius: 18 }} />
               </div>
 
               {cameraError && (
