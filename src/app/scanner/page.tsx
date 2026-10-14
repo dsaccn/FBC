@@ -42,6 +42,7 @@ interface VerifiedReceipt {
   currency: string
   dateTime?: string
   status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN'
+  isTimeout?: boolean
   errorMessage?: string
 }
 
@@ -302,21 +303,8 @@ export default function QRScannerPage() {
         aspectRatio: 1.0,
       }
 
-      // Try camera enumeration to pick back or front camera directly
-      let cameraConstraint: any = { facingMode: facing }
-      try {
-        const cameras = await Html5Qrcode.getCameras()
-        if (cameras && cameras.length > 0) {
-          if (facing === 'environment') {
-            const backCam = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1]
-            if (backCam) cameraConstraint = backCam.id
-          } else {
-            cameraConstraint = cameras[0].id
-          }
-        }
-      } catch (enumErr) {
-        console.warn('[Scanner] Camera enumeration error:', enumErr)
-      }
+      // Primary constraint: modern browser native facingMode ('environment' triggers standard autofocus rear camera)
+      const cameraConstraint: any = { facingMode: facing }
 
       const onScanSuccess = async (decodedText: string) => {
         await stopScanner()
@@ -327,9 +315,18 @@ export default function QRScannerPage() {
       try {
         await html5QrCode.start(cameraConstraint, config, onScanSuccess, () => {})
       } catch (firstTryErr) {
-        console.warn('[Scanner] First start attempt failed, trying fallback facingMode:', firstTryErr)
-        // Fallback to simple facingMode string constraint
-        await html5QrCode.start({ facingMode: facing }, config, onScanSuccess, () => {})
+        console.warn('[Scanner] Direct facingMode failed, attempting camera enumeration fallback:', firstTryErr)
+        try {
+          const cameras = await Html5Qrcode.getCameras()
+          if (cameras && cameras.length > 0) {
+            const backCam = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1]
+            await html5QrCode.start(backCam.id, config, onScanSuccess, () => {})
+          } else {
+            throw firstTryErr
+          }
+        } catch {
+          throw firstTryErr
+        }
       }
 
       setCameraActive(true)
@@ -583,10 +580,14 @@ export default function QRScannerPage() {
           }}>
             <div style={{
               background: '#131B2E',
-              border: `2px solid ${verifiedResult.success ? '#059669' : '#DC2626'}`,
+              border: `2px solid ${verifiedResult.success ? '#059669' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#F59E0B' : '#DC2626'}`,
               borderRadius: '16px',
               padding: '24px 20px',
-              boxShadow: verifiedResult.success ? '0 10px 30px rgba(5,150,105,0.15)' : '0 10px 30px rgba(220,38,38,0.15)',
+              boxShadow: verifiedResult.success
+                ? '0 10px 30px rgba(5,150,105,0.15)'
+                : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                  ? '0 10px 30px rgba(245,158,11,0.15)'
+                  : '0 10px 30px rgba(220,38,38,0.15)',
               position: 'relative'
             }}>
               {/* Result Status Banner */}
@@ -595,7 +596,11 @@ export default function QRScannerPage() {
                   width: '44px',
                   height: '44px',
                   borderRadius: '50%',
-                  background: verifiedResult.success ? 'rgba(5,150,105,0.15)' : 'rgba(220,38,38,0.15)',
+                  background: verifiedResult.success
+                    ? 'rgba(5,150,105,0.15)'
+                    : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                      ? 'rgba(245,158,11,0.15)'
+                      : 'rgba(220,38,38,0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -603,6 +608,8 @@ export default function QRScannerPage() {
                 }}>
                   {verifiedResult.success ? (
                     <CheckCircle2 size={26} color="#059669" />
+                  ) : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? (
+                    <AlertTriangle size={26} color="#F59E0B" />
                   ) : (
                     <XCircle size={26} color="#DC2626" />
                   )}
@@ -613,12 +620,12 @@ export default function QRScannerPage() {
                     fontWeight: '800',
                     textTransform: 'uppercase',
                     letterSpacing: '0.08em',
-                    color: verifiedResult.success ? '#10B981' : '#EF4444'
+                    color: verifiedResult.success ? '#10B981' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#F59E0B' : '#EF4444'
                   }}>
-                    {verifiedResult.success ? 'Official Bank Verified' : 'Verification Unsuccessful'}
+                    {verifiedResult.success ? 'Official Bank Verified' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Gateway Delay / Check Direct Slip' : 'Verification Unsuccessful'}
                   </div>
                   <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#FFFFFF', margin: '2px 0 0 0' }}>
-                    {verifiedResult.success ? 'Legitimate Payment' : 'Unconfirmed / Invalid'}
+                    {verifiedResult.success ? 'Legitimate Payment' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Ref Decoded — Tap Official Slip' : 'Unconfirmed / Invalid'}
                   </h2>
                 </div>
               </div>
@@ -694,8 +701,16 @@ export default function QRScannerPage() {
                 </div>
 
                 {verifiedResult.errorMessage && (
-                  <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)', borderRadius: '8px', padding: '10px 12px', color: '#FCA5A5', fontSize: '12px', lineHeight: 1.4 }}>
-                    <b>Server Error:</b> {verifiedResult.errorMessage}
+                  <div style={{
+                    background: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'rgba(245,158,11,0.12)' : 'rgba(220,38,38,0.1)',
+                    border: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(220,38,38,0.25)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#FDE68A' : '#FCA5A5',
+                    fontSize: '12px',
+                    lineHeight: 1.4
+                  }}>
+                    <b>{(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Notice:' : 'Server Error:'}</b> {verifiedResult.errorMessage}
                   </div>
                 )}
 
@@ -715,20 +730,27 @@ export default function QRScannerPage() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '6px',
-                      padding: '10px 12px',
+                      gap: '8px',
+                      padding: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '12px 14px' : '10px 12px',
                       borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      color: verifiedResult.provider === 'TELEBIRR' ? '#67E8F9' : '#E9D5FF',
+                      background: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                        ? 'linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.3) 100%)'
+                        : 'rgba(255,255,255,0.06)',
+                      border: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                        ? '1px solid rgba(245,158,11,0.45)'
+                        : '1px solid rgba(255,255,255,0.12)',
+                      color: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                        ? '#FDE68A'
+                        : verifiedResult.provider === 'TELEBIRR' ? '#67E8F9' : '#E9D5FF',
                       textDecoration: 'none',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      marginTop: '4px'
+                      fontSize: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '13px' : '12px',
+                      fontWeight: '700',
+                      marginTop: '6px',
+                      boxShadow: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '0 4px 14px rgba(245,158,11,0.2)' : 'none'
                     }}
                   >
-                    <ExternalLink size={13} />
-                    View Official {verifiedResult.provider} Slip in Browser
+                    <ExternalLink size={14} />
+                    Open Official {verifiedResult.provider} Slip in Browser ({verifiedResult.reference})
                   </a>
                 )}
               </div>

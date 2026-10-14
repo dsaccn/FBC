@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { verifyEthioReceipt } from '@/lib/ethio-receipt-verifier'
 
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()

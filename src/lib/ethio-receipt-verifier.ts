@@ -19,6 +19,7 @@ export interface VerifiedReceipt {
   currency: string
   dateTime?: string
   status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN'
+  isTimeout?: boolean
   rawText?: string
   errorMessage?: string
 }
@@ -104,7 +105,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(8000),
     })
 
     if (!res.ok) {
@@ -169,14 +170,16 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
       rawText: `${payerName || ''} -> ${receiverName || ''} (${parsedAmount || 0} ETB)`,
     }
   } catch (err: any) {
+    const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
     return {
       success: false,
       provider: 'TELEBIRR',
       reference: transactionId,
       currency: 'ETB',
-      status: 'FAILED',
-      errorMessage: err.name === 'TimeoutError' || err.message?.includes('timeout')
-        ? 'Telebirr network request timed out. Please check your internet connection.'
+      status: isTimeout ? 'PENDING' : 'FAILED',
+      isTimeout,
+      errorMessage: isTimeout
+        ? 'Ethio Telecom receipt gateway timed out. Tap "View Official Slip in Browser" below to open the official receipt directly on your device network.'
         : `Verification error: ${err.message || String(err)}`,
     }
   }
