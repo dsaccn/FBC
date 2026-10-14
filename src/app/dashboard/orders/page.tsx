@@ -363,50 +363,6 @@ export default function OrdersPage() {
     let openCount = 0
     let cancelledCount = 0
 
-    const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
-
-    for (const o of targetOrders) {
-      if (o.status === 'OPEN') {
-        openCount++
-        openTotalValue += getOrderTotal(o)
-      } else if (o.status === 'CANCELLED') {
-        cancelledCount++
-      } else if (o.status === 'PAID') {
-        const total = getOrderTotal(o)
-        paidCount++
-        totalPaidRevenue += total
-        totalDiscounts += o.payment?.discount || 0
-
-        const methodStr = (o.payment?.method || 'Cash').toLowerCase()
-        if (methodStr.includes('cash')) {
-          totalCash += total
-          cashCount++
-        } else if (methodStr.includes('telebirr')) {
-          totalTelebirr += total
-          telebirrCount++
-        } else if (methodStr.includes('cbe') || methodStr.includes('bank')) {
-          totalCbe += total
-          cbeCount++
-        } else {
-          totalOther += total
-          otherCount++
-        }
-
-        for (const it of o.orderItems) {
-          if (it.status !== 'CANCELLED' && it.menuItem) {
-            const iName = it.menuItem.name
-            if (!itemMap[iName]) itemMap[iName] = { name: iName, quantity: 0, revenue: 0 }
-            itemMap[iName].quantity += it.quantity
-            itemMap[iName].revenue += it.quantity * it.menuItem.price
-          }
-        }
-      }
-    }
-
-    const topItems = Object.values(itemMap)
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 5)
-
     return {
       totalPaidRevenue,
       paidCount,
@@ -422,7 +378,6 @@ export default function OrdersPage() {
       openTotalValue,
       openCount,
       cancelledCount,
-      topItems,
     }
   }, [orders, selectedStaffId, selectedStaffObj, isCashier])
 
@@ -492,11 +447,6 @@ export default function OrdersPage() {
         ` : ''}
         ${reportStats.cancelledCount > 0 ? `
           <div class="row"><span>CANCELLED:</span><span>${reportStats.cancelledCount} orders</span></div>
-          <hr/>
-        ` : ''}
-        ${reportStats.topItems.length > 0 ? `
-          <div style="font-size: 12px; margin-bottom: 4px;"><b>TOP ITEMS SOLD:</b></div>
-          ${reportStats.topItems.map(it => `<div class="row"><span>  ${it.name} (x${it.quantity})</span><span>${it.revenue.toFixed(2)} ETB</span></div>`).join('')}
           <hr/>
         ` : ''}
         <div class="title" style="font-size: 10px; color: #555; letter-spacing: 1px; margin-top: 10px;">
@@ -951,27 +901,7 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Top Selling Items */}
-              {reportStats.topItems.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Top Selling Items {selectedStaffId !== 'ALL' && `(${selectedStaffName})`}
-                  </h4>
-                  <div style={{ border: '1px solid var(--black-border)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                      <tbody>
-                        {reportStats.topItems.map((item, idx) => (
-                          <tr key={item.name} style={{ borderBottom: idx < reportStats.topItems.length - 1 ? '1px solid var(--black-border)' : 'none' }}>
-                            <td style={{ padding: '6px 12px', fontWeight: '600' }}>#{idx + 1} {item.name}</td>
-                            <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{item.quantity} sold</td>
-                            <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>{item.revenue.toFixed(2)} ETB</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+
 
               {/* Modal Actions */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--black-border)' }}>
