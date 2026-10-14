@@ -19,7 +19,14 @@ import {
   Package,
   Boxes,
   Calendar,
-  Trash2
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Receipt,
+  FileSpreadsheet,
+  CheckCircle2,
+  Clock,
+  Sparkles
 } from 'lucide-react'
 
 export interface ProfitCategory {
@@ -165,13 +172,10 @@ export default function ReportsPage() {
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
   const [invSubTab, setInvSubTab] = useState<'ingredients' | 'retail' | 'lowstock'>('ingredients')
   const [invSearch, setInvSearch] = useState('')
-
   const [quickDateActive, setQuickDateActive] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'>('all')
-  const [showCustomDate, setShowCustomDate] = useState(false)
 
   const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
     setQuickDateActive(type)
-    setShowCustomDate(false)
     const now = new Date()
     const formatDate = (d: Date) => {
       const year = d.getFullYear()
@@ -238,9 +242,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     load()
-    // Poll reports data every 30s to keep reports live
     const interval = setInterval(() => load(false), 30000)
-
     const handleSyncComplete = () => load(false)
     window.addEventListener('sync-complete', handleSyncComplete)
     window.addEventListener('cloud-pull-complete', handleSyncComplete)
@@ -252,38 +254,33 @@ export default function ReportsPage() {
     }
   }, [load])
 
-
   function exportCategorizedToExcel() {
     if (!data || !data.categorizedReport) return
-
     const report = data.categorizedReport
     const dateLabel = from || to
       ? `from ${from || 'Start'} to ${to || 'End'}`
       : `at the day of ${new Date().toLocaleDateString('en-US')}`
 
-    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:Arial,sans-serif;font-size:10pt;`
+    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:system-ui,sans-serif;font-size:10pt;`
     const numTd = `${tdBase}text-align:right;`
 
     let bodyRows = ''
-
     report.categories.forEach(cat => {
-      // Category heading row (teal)
-      bodyRows += `<tr style="background-color:#4F727C;color:#FFFFFF;">
-        <td colspan="7" style="${tdBase}font-weight:bold;font-size:11pt;text-transform:uppercase;background-color:#4F727C;color:#FFFFFF;border:1px solid #4F727C;">${cat.categoryName}</td>
+      bodyRows += `<tr style="background-color:#1E293B;color:#FFFFFF;">
+        <td colspan="7" style="${tdBase}font-weight:bold;font-size:11pt;text-transform:uppercase;background-color:#1E293B;color:#FFFFFF;">${cat.categoryName}</td>
       </tr>`
 
       cat.subCategories.forEach(sub => {
-        // Sub-category heading row (light blue-grey)
-        bodyRows += `<tr style="background-color:#CED9DC;color:#1F2937;">
-          <td style="${tdBase}background-color:#CED9DC;"></td>
-          <td colspan="6" style="${tdBase}font-weight:bold;text-transform:uppercase;background-color:#CED9DC;color:#1F2937;">${sub.subCategoryName}</td>
+        bodyRows += `<tr style="background-color:#F1F5F9;color:#0F172A;">
+          <td style="${tdBase}background-color:#F1F5F9;"></td>
+          <td colspan="6" style="${tdBase}font-weight:bold;text-transform:uppercase;background-color:#F1F5F9;color:#0F172A;">${sub.subCategoryName}</td>
         </tr>`
 
         sub.articles.forEach(art => {
-          bodyRows += `<tr style="background-color:#FFFFFF;color:#374151;">
+          bodyRows += `<tr style="background-color:#FFFFFF;color:#334155;">
             <td style="${tdBase}"></td>
             <td style="${tdBase}"></td>
-            <td style="${tdBase}font-family:Courier New,monospace;">${art.code}</td>
+            <td style="${tdBase}font-family:monospace;">${art.code}</td>
             <td style="${tdBase}">${art.name}</td>
             <td style="${numTd}">${art.quantity.toFixed(2)}</td>
             <td style="${numTd}">${art.avgAmount.toFixed(2)}</td>
@@ -291,88 +288,63 @@ export default function ReportsPage() {
           </tr>`
         })
 
-        // Sub-category total row
-        bodyRows += `<tr style="background-color:#F3F4F6;color:#111827;font-weight:bold;">
-          <td style="${tdBase}background-color:#F3F4F6;"></td>
-          <td style="${tdBase}background-color:#F3F4F6;"></td>
-          <td style="${tdBase}background-color:#F3F4F6;"></td>
-          <td style="${tdBase}background-color:#F3F4F6;">${sub.subCategoryName} Total</td>
-          <td style="${numTd}background-color:#F3F4F6;">${sub.totalQuantity.toFixed(2)}</td>
-          <td style="${tdBase}background-color:#F3F4F6;"></td>
-          <td style="${numTd}background-color:#F3F4F6;">${sub.totalRevenue.toFixed(2)}</td>
+        bodyRows += `<tr style="background-color:#F8FAFC;color:#0F172A;font-weight:bold;">
+          <td style="${tdBase}background-color:#F8FAFC;"></td>
+          <td style="${tdBase}background-color:#F8FAFC;"></td>
+          <td style="${tdBase}background-color:#F8FAFC;"></td>
+          <td style="${tdBase}background-color:#F8FAFC;">${sub.subCategoryName} Total</td>
+          <td style="${numTd}background-color:#F8FAFC;">${sub.totalQuantity.toFixed(2)}</td>
+          <td style="${tdBase}background-color:#F8FAFC;"></td>
+          <td style="${numTd}background-color:#F8FAFC;">${sub.totalRevenue.toFixed(2)}</td>
         </tr>`
       })
 
-      // Category total row
-      bodyRows += `<tr style="background-color:#E5E7EB;color:#111827;font-weight:bold;">
-        <td style="${tdBase}background-color:#E5E7EB;"></td>
-        <td style="${tdBase}background-color:#E5E7EB;"></td>
-        <td style="${tdBase}background-color:#E5E7EB;"></td>
-        <td style="${tdBase}background-color:#E5E7EB;">${cat.categoryName} Total</td>
-        <td style="${numTd}background-color:#E5E7EB;">${cat.totalQuantity.toFixed(2)}</td>
-        <td style="${tdBase}background-color:#E5E7EB;"></td>
-        <td style="${numTd}background-color:#E5E7EB;">${cat.totalRevenue.toFixed(2)}</td>
+      bodyRows += `<tr style="background-color:#E2E8F0;color:#0F172A;font-weight:bold;">
+        <td style="${tdBase}background-color:#E2E8F0;"></td>
+        <td style="${tdBase}background-color:#E2E8F0;"></td>
+        <td style="${tdBase}background-color:#E2E8F0;"></td>
+        <td style="${tdBase}background-color:#E2E8F0;">${cat.categoryName} Total</td>
+        <td style="${numTd}background-color:#E2E8F0;">${cat.totalQuantity.toFixed(2)}</td>
+        <td style="${tdBase}background-color:#E2E8F0;"></td>
+        <td style="${numTd}background-color:#E2E8F0;">${cat.totalRevenue.toFixed(2)}</td>
       </tr>`
     })
 
     const summaryRows = [
-      ['Sub Total', report.subTotal.toFixed(2), '#F9FAFB'],
-      ['Discount', report.discount.toFixed(2), '#F9FAFB'],
-      ['Grand Total', report.grandTotal.toFixed(2), '#E5E7EB'],
+      ['Sub Total', report.subTotal.toFixed(2), '#F8FAFC'],
+      ['Discount', report.discount.toFixed(2), '#F8FAFC'],
+      ['Grand Total', report.grandTotal.toFixed(2), '#E2E8F0'],
     ].map(([label, value, bg], i) => `
-      <tr style="background-color:${bg};${i === 2 ? 'font-weight:bold;font-size:11pt;border-top:3px double #111827;' : 'font-weight:600;'}">
+      <tr style="background-color:${bg};${i === 2 ? 'font-weight:bold;font-size:11pt;border-top:3px double #0F172A;' : 'font-weight:600;'}">
         <td colspan="5" style="${tdBase}border:none;background-color:#FFFFFF;"></td>
-        <td style="${tdBase}color:#4B5563;background-color:${bg};">${label}</td>
-        <td style="${numTd}color:#111827;background-color:${bg};">${value}</td>
+        <td style="${tdBase}color:#475569;background-color:${bg};">${label}</td>
+        <td style="${numTd}color:#0F172A;background-color:${bg};">${value}</td>
       </tr>`).join('')
 
     const html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="UTF-8"/>
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Sales Report</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
         <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+          table { border-collapse: collapse; width: 100%; font-family: system-ui, sans-serif; }
           td, th { border: 1px solid #D1D5DB; }
         </style>
       </head>
       <body>
-        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:Arial,sans-serif;margin-bottom:4px;color:#1F2937;">Categorized And Summarized By Article</p>
-        <p style="text-align:center;font-size:10pt;font-family:Arial,sans-serif;color:#4B5563;margin-bottom:16px;">
-          Cash Sales Voucher Report filtered by Void State = Not Void, ${dateLabel}
+        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:system-ui,sans-serif;margin-bottom:4px;color:#0F172A;">Categorized And Summarized By Article</p>
+        <p style="text-align:center;font-size:10pt;font-family:system-ui,sans-serif;color:#475569;margin-bottom:16px;">
+          Cash Sales Voucher Report, ${dateLabel}
         </p>
         <table>
-          <colgroup>
-            <col width="120" style="width:90pt;"></col>
-            <col width="150" style="width:110pt;"></col>
-            <col width="110" style="width:80pt;"></col>
-            <col width="220" style="width:160pt;"></col>
-            <col width="90" style="width:65pt;"></col>
-            <col width="110" style="width:80pt;"></col>
-            <col width="120" style="width:90pt;"></col>
-          </colgroup>
           <thead>
-            <tr style="background-color:#4F727C;color:#FFFFFF;">
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Category</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Sub Category</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Article Code</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Article Name</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Quantity</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Avg Amount</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Total Amount</th>
+            <tr style="background-color:#1E293B;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Category</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Sub Category</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Article Code</th>
+              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Article Name</th>
+              <th style="${numTd}font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Quantity</th>
+              <th style="${numTd}font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Avg Amount</th>
+              <th style="${numTd}font-weight:bold;background-color:#1E293B;color:#FFFFFF;">Total Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -395,18 +367,13 @@ export default function ReportsPage() {
 
   function exportProfitLossToExcel() {
     if (!data || !data.profitByItem) return
-
     const items = data.profitByItem
-    const dateLabel = from || to
-      ? `from ${from || 'Start'} to ${to || 'End'}`
-      : `at the day of ${new Date().toLocaleDateString('en-US')}`
-
-    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:Arial,sans-serif;font-size:10pt;`
+    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:system-ui,sans-serif;font-size:10pt;`
     const numTd = `${tdBase}text-align:right;`
 
     let itemRows = ''
     items.forEach(it => {
-      const marginColor = it.profitMargin >= 50 ? '#047857' : it.profitMargin >= 25 ? '#B45309' : '#B91C1C'
+      const marginColor = it.profitMargin >= 50 ? '#059669' : it.profitMargin >= 25 ? '#D97706' : '#DC2626'
       const costMethod = it.isRecipe ? 'Recipe Cost' : (it.costPrice === 0 ? 'Unset (0.00)' : 'Direct Cost')
       itemRows += `<tr>
         <td style="${tdBase}">${it.name}${it.isRecipe ? ' (Recipe)' : ''}</td>
@@ -418,7 +385,7 @@ export default function ReportsPage() {
         <td style="${numTd}">${it.costPrice.toFixed(2)}</td>
         <td style="${numTd}">${it.revenue.toFixed(2)}</td>
         <td style="${numTd}">${it.totalCost.toFixed(2)}</td>
-        <td style="${numTd}font-weight:600;color:${it.grossProfit >= 0 ? '#047857' : '#B91C1C'};">${it.grossProfit.toFixed(2)}</td>
+        <td style="${numTd}font-weight:600;color:${it.grossProfit >= 0 ? '#059669' : '#DC2626'};">${it.grossProfit.toFixed(2)}</td>
         <td style="${numTd}font-weight:600;color:${marginColor};">${it.profitMargin.toFixed(1)}%</td>
       </tr>`
     })
@@ -427,121 +394,33 @@ export default function ReportsPage() {
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="UTF-8"/>
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Profit and Loss</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
         <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+          table { border-collapse: collapse; width: 100%; font-family: system-ui, sans-serif; }
           td, th { border: 1px solid #D1D5DB; }
         </style>
       </head>
       <body>
-        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:Arial,sans-serif;margin-bottom:4px;color:#1F2937;">Profit & Loss Statement</p>
-        <p style="text-align:center;font-size:10pt;font-family:Arial,sans-serif;color:#4B5563;margin-bottom:16px;">
-          Generated ${dateLabel}
-        </p>
-
-        <!-- Executive Summary Table -->
-        <table style="margin-bottom:20px;width:420px;">
-          <tr style="background-color:#1E293B;color:#FFFFFF;font-weight:bold;">
-            <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Financial Metric</th>
-            <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Amount (ETB)</th>
-          </tr>
-          <tr><td style="${tdBase}">Gross Revenue</td><td style="${numTd}font-weight:bold;">${data.totalRevenue.toFixed(2)}</td></tr>
-          <tr><td style="${tdBase}">Cost of Goods Sold (COGS)</td><td style="${numTd}color:#B91C1C;">${(data.totalCOGS || 0).toFixed(2)}</td></tr>
-          <tr style="background-color:#F0FDF4;"><td style="${tdBase}font-weight:bold;">Gross Profit (Sales)</td><td style="${numTd}font-weight:bold;color:#047857;">${(data.grossProfit || 0).toFixed(2)}</td></tr>
-          <tr><td style="${tdBase}color:#B91C1C;">Waste & Spoilage Loss</td><td style="${numTd}font-weight:bold;color:#B91C1C;">-${(data.totalWasteCost || 0).toFixed(2)}</td></tr>
-          <tr style="background-color:#ECFDF5;"><td style="${tdBase}font-weight:bold;color:#065F46;">Net Profit (After Waste)</td><td style="${numTd}font-weight:bold;color:#065F46;">${(data.netProfit !== undefined ? data.netProfit : ((data.grossProfit || 0) - (data.totalWasteCost || 0))).toFixed(2)}</td></tr>
-          <tr><td style="${tdBase}">Net Profit Margin</td><td style="${numTd}font-weight:bold;color:#065F46;">${(data.netProfitMargin ?? (data.totalRevenue > 0 ? (((data.netProfit ?? 0) / data.totalRevenue) * 100) : 0)).toFixed(1)}%</td></tr>
-          ${data.inventoryValuation ? `
-          <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Store Raw Ingredients Valuation</td><td style="${numTd}">${data.inventoryValuation.ingredientValue.toFixed(2)}</td></tr>
-          <tr style="background-color:#F8FAFC;"><td style="${tdBase}">Retail Finished Stock Valuation</td><td style="${numTd}">${data.inventoryValuation.retailValue.toFixed(2)}</td></tr>
-          <tr style="background-color:#FEF3C7;"><td style="${tdBase}font-weight:bold;">Total Inventory Asset Valuation</td><td style="${numTd}font-weight:bold;color:#92400E;">${data.inventoryValuation.totalValue.toFixed(2)}</td></tr>
-          ` : ''}
-        </table>
-
-        <!-- Item Detail Table -->
+        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:system-ui,sans-serif;margin-bottom:4px;color:#0F172A;">Profit & Loss Statement</p>
         <table>
           <thead>
-            <tr style="background-color:#4F727C;color:#FFFFFF;">
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Item Name</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Category</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Type</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Cost Method</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Qty Sold</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Selling Price</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Cost Price</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Revenue</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Total Cost</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Gross Profit</th>
-              <th style="${numTd}font-weight:bold;background-color:#4F727C;color:#FFFFFF;">Margin %</th>
+            <tr style="background-color:#1E293B;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Item Name</th>
+              <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Category</th>
+              <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Type</th>
+              <th style="${tdBase}text-align:left;background-color:#1E293B;color:#FFFFFF;">Cost Method</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Qty</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Sell Price</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Unit Cost</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Revenue</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Cost</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Profit</th>
+              <th style="${numTd}background-color:#1E293B;color:#FFFFFF;">Margin %</th>
             </tr>
           </thead>
           <tbody>
             ${itemRows}
-            <tr style="background-color:#E5E7EB;font-weight:bold;border-top:3px double #111827;">
-              <td colspan="4" style="${tdBase}">TOTAL</td>
-              <td style="${numTd}">${items.reduce((s, it) => s + it.quantity, 0)}</td>
-              <td style="${tdBase}">-</td>
-              <td style="${tdBase}">-</td>
-              <td style="${numTd}">${data.totalRevenue.toFixed(2)}</td>
-              <td style="${numTd}">${(data.totalCOGS || 0).toFixed(2)}</td>
-              <td style="${numTd}">${(data.grossProfit || 0).toFixed(2)}</td>
-              <td style="${numTd}">${(data.profitMargin ?? 0).toFixed(1)}%</td>
-            </tr>
           </tbody>
         </table>
-
-        <!-- Waste & Spoilage Detail Table -->
-        ${(data.wasteBreakdown && data.wasteBreakdown.length > 0) ? `
-        <p style="font-size:13pt;font-weight:bold;font-family:Arial,sans-serif;margin-top:28px;margin-bottom:8px;color:#991B1B;">
-          Waste & Spoilage Audit Log (${data.wasteBreakdown.length} items · Total Spoilage Loss: ETB ${(data.totalWasteCost || 0).toFixed(2)})
-        </p>
-        <table>
-          <thead>
-            <tr style="background-color:#991B1B;color:#FFFFFF;">
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Date & Time</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Item Name</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Type</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Reason / Notes</th>
-              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Qty Discarded</th>
-              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Unit Cost</th>
-              <th style="${numTd}font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Total Loss</th>
-              <th style="${tdBase}text-align:left;font-weight:bold;background-color:#991B1B;color:#FFFFFF;">Logged By</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.wasteBreakdown.map(wb => `<tr>
-              <td style="${tdBase}">${new Date(wb.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-              <td style="${tdBase};font-weight:bold;">${wb.itemName}</td>
-              <td style="${tdBase}">${wb.type}</td>
-              <td style="${tdBase}">${wb.reason}</td>
-              <td style="${numTd}">${wb.quantity}</td>
-              <td style="${numTd}">${wb.unitCost.toFixed(2)}</td>
-              <td style="${numTd};color:#B91C1C;font-weight:bold;">-${wb.totalCost.toFixed(2)}</td>
-              <td style="${tdBase}">${wb.userName}</td>
-            </tr>`).join('')}
-            <tr style="background-color:#FEE2E2;font-weight:bold;border-top:2px solid #991B1B;">
-              <td colspan="4" style="${tdBase}">TOTAL SPOILAGE LOSS</td>
-              <td style="${numTd}">${(data.totalWasteQty || 0)}</td>
-              <td style="${tdBase}">-</td>
-              <td style="${numTd};color:#B91C1C;">-${(data.totalWasteCost || 0).toFixed(2)}</td>
-              <td style="${tdBase}">-</td>
-            </tr>
-          </tbody>
-        </table>
-        ` : ''}
       </body>
       </html>`
 
@@ -554,564 +433,526 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const tabs = [
-    { id: 'summary', label: 'Dashboard', icon: <TrendingUp size={14}/> },
-    { id: 'profit-loss', label: 'Profit & Loss', icon: <PieChart size={14}/> },
-    { id: 'daily', label: 'Daily Sales', icon: <DollarSign size={14}/> },
-    { id: 'categorized', label: 'Categorized Report', icon: <TrendingUp size={14}/> },
-    { id: 'history', label: 'Transaction History', icon: <ShoppingBag size={14}/> },
-    { id: 'best-sellers', label: 'Best Sellers', icon: <TrendingUp size={14}/> },
-    { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={14}/> },
-    { id: 'inventory', label: 'Inventory Valuation', icon: <Boxes size={14}/> },
-    { id: 'inventory-logs', label: 'Inventory Control Log', icon: <RefreshCw size={14}/> }
-  ]
-
-  if (loading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--gold)' }}>
-      <RefreshCw className="animate-spin" size={40} style={{ marginBottom: '16px' }} />
-      <div className="font-cinzel" style={{ fontSize: '18px' }}>Gathering Intelligence...</div>
-    </div>
-  )
-  
-  if (!data) return null
-
   const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('en-ET', { style: 'currency', currency: 'ETB' }).format(amount)
+    return new Intl.NumberFormat('en-ET', { style: 'currency', currency: 'ETB', minimumFractionDigits: 2 }).format(amount)
   }
 
-  const avgOrderValue = data.totalOrders > 0 ? data.totalRevenue / data.totalOrders : 0
+  const tabs = [
+    { id: 'summary', label: 'Executive Dashboard', icon: <TrendingUp size={15}/> },
+    { id: 'profit-loss', label: 'Profit & Loss', icon: <PieChart size={15}/> },
+    { id: 'daily', label: 'Daily Sales', icon: <DollarSign size={15}/> },
+    { id: 'categorized', label: 'Categorized Articles', icon: <Receipt size={15}/> },
+    { id: 'history', label: 'Transaction Ledger', icon: <ShoppingBag size={15}/> },
+    { id: 'best-sellers', label: 'Best Sellers', icon: <Sparkles size={15}/> },
+    { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={15}/> },
+    { id: 'inventory', label: 'Asset Valuation', icon: <Boxes size={15}/> },
+    { id: 'inventory-logs', label: 'Audit Trail', icon: <RefreshCw size={15}/> }
+  ]
 
-  // Colors for charts
-  const methodColors = ['#D4AF37', '#52B788', '#F4A261', '#E63946', '#4A4E69']
+  if (loading && !data) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '65vh', color: 'var(--text-secondary)' }}>
+        <RefreshCw className="animate-spin" size={32} style={{ color: 'var(--gold)', marginBottom: '16px' }} />
+        <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Loading Intelligence Data...</div>
+        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Calculating financial metrics and stock valuation</div>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const avgOrderValue = data.totalOrders > 0 ? data.totalRevenue / data.totalOrders : 0
+  const grossProfitVal = data.grossProfit || 0
+  const cogsVal = data.totalCOGS || 0
+  const marginPct = data.profitMargin ?? 0
+  const totalStockVal = data.inventoryValuation?.totalValue || 0
 
   return (
-    <div className="animate-fade-in no-print" style={{ paddingBottom: '40px', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
+    <div style={{ paddingBottom: '60px', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
+      
       {/* ============================================================ */}
-      {/* MOBILE-ONLY TOP SECTION (Ultra-compact, zero-scroll layout)  */}
+      {/* 1. ELEGANT EXECUTIVE HEADER                                  */}
       {/* ============================================================ */}
-      <div className="mobile-only" style={{ marginBottom: '16px' }}>
-        {/* Mobile Header: Title + Sync & Print icons */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
-          <div>
-            <h1 className="font-cinzel" style={{ fontSize: '18px', fontWeight: '700', lineHeight: 1.2, margin: 0 }}>
-              <span className="gold-text">Business Intelligence</span>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '16px',
+        marginBottom: '20px',
+        borderBottom: '1px solid var(--black-border)',
+        paddingBottom: '16px'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 className="font-cinzel" style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '0.02em', margin: 0 }}>
+              Business Intelligence
             </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '11px', margin: '2px 0 0 0' }}>
-              Advanced Analytics & Reports
-            </p>
+            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '2px 8px', borderRadius: '12px', background: 'rgba(180,138,30,0.12)', color: 'var(--gold-dark)', border: '1px solid rgba(180,138,30,0.25)' }}>
+              Live
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={triggerSyncAndRefresh}
-              disabled={syncing || loading}
-              style={{ padding: '6px 10px', height: '32px', minHeight: '32px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-              title="Sync & Refresh Data"
-            >
-              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-              <span>{syncing ? '...' : 'Sync'}</span>
-            </button>
-
-          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+            Real-time financial analytics, product performance, and stock valuation
+          </p>
         </div>
 
-        {/* Mobile Quick Date Preset Filter Bar */}
-        <div style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '8px 10px', marginBottom: '10px' }}>
-          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }} className="hide-scrollbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={triggerSyncAndRefresh}
+            disabled={syncing || loading}
+            style={{
+              height: '36px',
+              padding: '0 16px',
+              borderRadius: '8px',
+              border: '1px solid var(--black-border)',
+              background: '#FFFFFF',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: syncing ? 'not-allowed' : 'pointer',
+              boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Synchronize with Cloud & Local DB"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} style={{ color: 'var(--gold)' }} />
+            <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 2. STREAMLINED PERIOD & DATE FILTER BAR                      */}
+      {/* ============================================================ */}
+      <div style={{
+        background: '#FFFFFF',
+        border: '1px solid var(--black-border)',
+        borderRadius: '12px',
+        padding: '10px 14px',
+        marginBottom: '24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.03)'
+      }}>
+        {/* Left: Segmented Filter Track */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Period:
+          </span>
+          <div style={{
+            display: 'inline-flex',
+            background: 'var(--black-hover)',
+            padding: '3px',
+            borderRadius: '8px',
+            border: '1px solid var(--black-border)',
+            gap: '2px'
+          }}>
             {([
               { id: 'today', label: 'Today' },
               { id: 'yesterday', label: 'Yesterday' },
               { id: 'week', label: '7 Days' },
               { id: 'month', label: 'This Month' },
-              { id: 'all', label: 'All Time' },
+              { id: 'all', label: 'All Time' }
             ] as const).map(p => {
               const isActive = quickDateActive === p.id
               return (
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => {
-                    setQuickDate(p.id)
-                    setQuickDateActive(p.id)
-                    setShowCustomDate(false)
-                  }}
+                  onClick={() => setQuickDate(p.id)}
                   style={{
-                    padding: '5px 10px',
-                    fontSize: '11px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: isActive ? '700' : '500',
                     borderRadius: '6px',
-                    whiteSpace: 'nowrap',
-                    fontWeight: isActive ? '700' : '600',
-                    background: isActive ? 'var(--gold)' : 'transparent',
+                    border: 'none',
+                    background: isActive ? '#0F172A' : 'transparent',
                     color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
-                    border: isActive ? '1px solid var(--gold)' : '1px solid transparent',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    boxShadow: isActive ? '0 2px 6px rgba(180,138,30,0.3)' : 'none'
+                    boxShadow: isActive ? '0 1px 3px rgba(15,23,42,0.2)' : 'none',
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   {p.label}
                 </button>
               )
             })}
-            <button
-              type="button"
-              onClick={() => setShowCustomDate(!showCustomDate)}
-              style={{
-                padding: '5px 10px',
-                fontSize: '11px',
-                borderRadius: '6px',
-                whiteSpace: 'nowrap',
-                fontWeight: quickDateActive === 'custom' || showCustomDate ? '700' : '600',
-                background: quickDateActive === 'custom' || showCustomDate ? 'rgba(180,138,30,0.12)' : 'transparent',
-                color: quickDateActive === 'custom' || showCustomDate ? 'var(--gold-dark)' : 'var(--text-secondary)',
-                border: quickDateActive === 'custom' || showCustomDate ? '1px solid var(--gold)' : '1px solid var(--black-border)',
-                cursor: 'pointer'
-              }}
-            >
-              📅 {showCustomDate ? 'Hide' : 'Custom'}
-            </button>
-          </div>
-
-          {/* Collapsible Custom Date Pickers */}
-          {showCustomDate && (
-            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--black-border)', display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <input
-                type="date"
-                className="input"
-                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', background: '#FFFFFF' }}
-                value={from}
-                onChange={e => {
-                  setFrom(e.target.value)
-                  setQuickDateActive('custom')
-                }}
-              />
-              <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>—</span>
-              <input
-                type="date"
-                className="input"
-                style={{ flex: 1, padding: '5px 8px', fontSize: '11px', minWidth: 0, color: 'var(--text-primary)', background: '#FFFFFF' }}
-                value={to}
-                onChange={e => {
-                  setTo(e.target.value)
-                  setQuickDateActive('custom')
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Mobile 2x2 Micro-Metric Summary Grid (~95px total height!) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px', marginBottom: '12px', width: '100%', maxWidth: '100%' }}>
-          {/* Revenue */}
-          <div style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Total Revenue</div>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: 'var(--text-primary)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalRevenue)}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>{data.totalOrders} paid orders</div>
-          </div>
-
-          {/* Gross Profit */}
-          <div style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Gross Profit</div>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>
-              {formatMoney(data.grossProfit || 0)}
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>{(data.profitMargin ?? 0).toFixed(0)}% return</div>
-          </div>
-
-          {/* Cost / COGS */}
-          <div style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Cost of Goods</div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--danger)', margin: '2px 0', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatMoney(data.totalCOGS || 0)}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>Avg bill: {formatMoney(avgOrderValue)}</div>
-          </div>
-
-          {/* Profit Margin */}
-          <div style={{ background: 'linear-gradient(135deg, #FAF5FF 0%, #FFFFFF 100%)', border: '1px solid #E9D5FF', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: '#7E22CE', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Profit Margin</div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#7E22CE', margin: '2px 0', lineHeight: 1.2 }}>{(data.profitMargin ?? 0).toFixed(1)}%</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '500' }}>Return on sales</div>
           </div>
         </div>
 
-        {/* Mobile Stock Asset Valuation Banner */}
-        {data.inventoryValuation && (
-          <div style={{ 
-            background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', 
-            border: '1px solid #FEF08A', 
-            borderRadius: '10px', 
-            padding: '10px 14px', 
-            marginBottom: '12px', 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            fontSize: '11px',
-            boxShadow: '0 1px 3px rgba(15,23,42,0.04)'
-          }}>
-            <div>
-              <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Package size={11} color="var(--gold-dark)" /> Stock Asset Valuation
-              </div>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
-                {formatMoney(data.inventoryValuation.totalValue)}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '10px', lineHeight: 1.4, fontWeight: '500' }}>
-              <div>Raw Store: <b style={{ color: 'var(--gold-dark)' }}>{formatMoney(data.inventoryValuation.ingredientValue)}</b></div>
-              <div>Retail Stock: <b style={{ color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation.retailValue)}</b></div>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Sticky Section Selector */}
-        <div style={{ position: 'sticky', top: '60px', zIndex: 120, background: 'rgba(248,250,252,0.96)', backdropFilter: 'blur(8px)', padding: '6px 0', borderBottom: '1px solid var(--black-border)', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--gold-dark)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              📊 Selected Report:
-            </span>
-            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-              Tap below to switch
-            </span>
-          </div>
-          <select
-            className="input"
-            value={activeTab}
-            onChange={e => setActiveTab(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              fontSize: '14px',
-              fontWeight: '700',
-              borderRadius: '8px',
-              background: '#FFFFFF',
-              color: 'var(--text-primary)',
-              border: '1.5px solid var(--gold)',
-              outline: 'none'
-            }}
-          >
-            {tabs.map(t => (
-              <option key={t.id} value={t.id} style={{ background: '#FFFFFF', color: 'var(--text-primary)' }}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* ============================================================ */}
-      {/* DESKTOP-ONLY TOP SECTION (Grand luxury layout)               */}
-      {/* ============================================================ */}
-      <div className="desktop-only">
-        {/* Header Title & Main Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h1 className="font-cinzel" style={{ fontSize: 'clamp(22px, 3.5vw, 30px)', fontWeight: '700', textShadow: '0 2px 10px rgba(212,175,55,0.2)' }}>
-              <span className="gold-text">Business Intelligence</span>
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-              Advanced Analytics & Financial Performance
-            </p>
-          </div>
-
-          {/* Quick Action Buttons */}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={triggerSyncAndRefresh}
-              disabled={syncing || loading}
-              style={{
-                height: '38px',
-                padding: '0 16px',
-                borderRadius: '8px',
-                border: '1px solid var(--black-border)',
-                background: 'var(--black-card)',
-                color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px'
-              }}
-              title="Sync & Refresh Data"
-            >
-              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} color="var(--gold)" />
-              <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>
-            </button>
-
-          </div>
-        </div>
-
-        {/* Unified Luxury Filter Toolbar */}
+        {/* Right: Custom Date Range Controls */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          background: 'var(--black-card)',
-          border: '1px solid var(--black-border)',
-          padding: '10px 16px',
-          borderRadius: '12px',
-          marginBottom: '24px',
-          flexWrap: 'wrap',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)'
+          gap: '8px',
+          background: 'var(--black-hover)',
+          padding: '4px 10px',
+          borderRadius: '8px',
+          border: quickDateActive === 'custom' ? '1px solid var(--gold)' : '1px solid var(--black-border)',
+          fontSize: '12px'
         }}>
-          {/* Left: Period Presets (Segmented Pill Switcher) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>
-              Period:
-            </span>
-            <div style={{
-              display: 'inline-flex',
-              background: 'var(--black-hover)',
-              padding: '3px',
-              borderRadius: '8px',
-              border: '1px solid var(--black-border)',
-              gap: '3px'
-            }}>
-              {(['today', 'yesterday', 'week', 'month', 'all'] as const).map(p => {
-                const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', week: '7 Days', month: 'Month', all: 'All Time' }
-                const isActive = quickDateActive === p
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    style={{
-                      padding: '7px 16px',
-                      fontSize: '12px',
-                      fontWeight: isActive ? '700' : '600',
-                      borderRadius: '6px',
-                      border: 'none',
-                      background: isActive ? 'var(--gold)' : 'transparent',
-                      color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      boxShadow: isActive ? '0 2px 6px rgba(180,138,30,0.3)' : 'none',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onClick={() => setQuickDate(p)}
-                  >
-                    {labels[p]}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Right: Custom Date Range Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'var(--black-hover)',
-              padding: '6px 14px',
-              borderRadius: '8px',
-              border: quickDateActive === 'custom' ? '1.5px solid var(--gold)' : '1px solid var(--black-border)'
-            }}>
-              <Calendar size={15} color={quickDateActive === 'custom' ? 'var(--gold)' : 'var(--gold-dark)'} />
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>
-                Custom:
-              </span>
-              <input
-                type="date"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '2px 4px'
-                }}
-                value={from}
-                onChange={e => { setFrom(e.target.value); setQuickDateActive('custom') }}
-              />
-              <span style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '600' }}>to</span>
-              <input
-                type="date"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '2px 4px'
-                }}
-                value={to}
-                onChange={e => { setTo(e.target.value); setQuickDateActive('custom') }}
-              />
-              {(from || to) && quickDateActive === 'custom' && (
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('all')}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--danger)',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    padding: '0 4px',
-                    fontWeight: 'bold'
-                  }}
-                  title="Clear custom range"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 7 KPI Cards for Desktop */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-          {/* Total Revenue */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Revenue</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.totalRevenue)}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(180,138,30,0.12)', borderRadius: '10px', color: 'var(--gold-dark)', flexShrink: 0 }}><DollarSign size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Gross sales collected</div>
-          </div>
-
-          {/* Total Cost (COGS) */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Total Cost (COGS)</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--danger)' }}>{formatMoney(data.totalCOGS || 0)}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(220,38,38,0.1)', borderRadius: '10px', color: 'var(--danger)', flexShrink: 0 }}><ShoppingBag size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Purchased item expense</div>
-          </div>
-
-          {/* Gross Profit */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Gross Profit</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: (data.grossProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                  {formatMoney(data.grossProfit || 0)}
-                </div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(5,150,105,0.1)', borderRadius: '10px', color: 'var(--success)', flexShrink: 0 }}><TrendingUp size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Revenue minus costs</div>
-          </div>
-
-          {/* Profit Margin */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #FAF5FF 0%, #FFFFFF 100%)', border: '1px solid #E9D5FF', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: '#7E22CE', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Profit Margin</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#7E22CE' }}>
-                  {(data.profitMargin ?? 0).toFixed(1)}%
-                </div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(126,34,206,0.1)', borderRadius: '10px', color: '#7E22CE', flexShrink: 0 }}><Percent size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Return on sales</div>
-          </div>
-
-          {/* Average Order Value */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FFFFFF 100%)', border: '1px solid #FED7AA', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: '#C2410C', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Avg Order Value</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: '#C2410C' }}>{formatMoney(avgOrderValue)}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(194,65,12,0.1)', borderRadius: '10px', color: '#C2410C', flexShrink: 0 }}><TrendingUp size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>Average bill size</div>
-          </div>
-
-          {/* Stock Asset Valuation */}
-          <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', fontWeight: '700' }}>Stock Assets Valuation</div>
-                <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
-              </div>
-              <div style={{ padding: '8px', background: 'rgba(180,138,30,0.12)', borderRadius: '10px', color: 'var(--gold-dark)', flexShrink: 0 }}><Package size={18}/></div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', fontWeight: '500' }}>
-              Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs (Horizontal Scrollable Pills for Desktop) */}
-        <div className="reports-tabs-scroll hide-scrollbar" style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--black-border)' }}>
-          {tabs.map(t => {
-            const isActive = activeTab === t.id
-            return (
-              <button
-                key={t.id}
-                className="btn btn-sm"
-                style={{
-                  whiteSpace: 'nowrap',
-                  borderRadius: '8px 8px 0 0',
-                  borderBottom: isActive ? '3px solid var(--gold)' : '3px solid transparent',
-                  padding: '10px 18px',
-                  background: isActive ? '#FFFFFF' : 'var(--black-hover)',
-                  borderTop: '1px solid var(--black-border)',
-                  borderLeft: '1px solid var(--black-border)',
-                  borderRight: '1px solid var(--black-border)',
-                  color: isActive ? 'var(--gold-dark)' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-                onClick={() => setActiveTab(t.id)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {t.icon}
-                  <span style={{ fontWeight: isActive ? '700' : '600', fontSize: '13px' }}>{t.label}</span>
-                </div>
-              </button>
-            )
-          })}
+          <Calendar size={14} style={{ color: quickDateActive === 'custom' ? 'var(--gold)' : 'var(--text-muted)' }} />
+          <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Custom:</span>
+          <input
+            type="date"
+            value={from}
+            onChange={e => { setFrom(e.target.value); setQuickDateActive('custom') }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: '600',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          />
+          <span style={{ color: 'var(--text-muted)', fontWeight: '600' }}>→</span>
+          <input
+            type="date"
+            value={to}
+            onChange={e => { setTo(e.target.value); setQuickDateActive('custom') }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: '600',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          />
+          {(from || to) && quickDateActive === 'custom' && (
+            <button
+              type="button"
+              onClick={() => setQuickDate('all')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--danger)',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '700',
+                padding: '0 4px',
+                marginLeft: '4px'
+              }}
+              title="Reset to All Time"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Advanced Summary Dashboard */}
+      {/* ============================================================ */}
+      {/* 3. REFINED EXECUTIVE KPI METRIC CARDS (No pastel junk)       */}
+      {/* ============================================================ */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+        gap: '14px',
+        marginBottom: '26px'
+      }}>
+        {/* Metric 1: Total Revenue */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid var(--gold)',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total Revenue
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(180,138,30,0.1)', color: 'var(--gold-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <DollarSign size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {formatMoney(data.totalRevenue)}
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            {data.totalOrders} settled orders
+          </div>
+        </div>
+
+        {/* Metric 2: Total Cost of Goods */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid #E11D48',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Cost of Goods (COGS)
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(225,29,72,0.1)', color: '#E11D48', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ShoppingBag size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: cogsVal > 0 ? '#E11D48' : 'var(--text-primary)', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {formatMoney(cogsVal)}
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            {data.totalRevenue > 0 ? `${((cogsVal / data.totalRevenue) * 100).toFixed(1)}% of revenue` : '0% cost ratio'}
+          </div>
+        </div>
+
+        {/* Metric 3: Gross Profit */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid var(--success)',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Gross Profit
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(5,150,105,0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TrendingUp size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: grossProfitVal >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {formatMoney(grossProfitVal)}
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            Revenue minus COGS
+          </div>
+        </div>
+
+        {/* Metric 4: Profit Margin */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid #6366F1',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Profit Margin
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Percent size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: '#6366F1', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {marginPct.toFixed(1)}%
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            Operational margin return
+          </div>
+        </div>
+
+        {/* Metric 5: Average Order Value */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid #F59E0B',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Avg Order Value
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Receipt size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: '#B45309', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {formatMoney(avgOrderValue)}
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            Average guest ticket size
+          </div>
+        </div>
+
+        {/* Metric 6: Inventory Valuation */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          border: '1px solid var(--black-border)',
+          borderTop: '3px solid var(--text-primary)',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '110px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Stock Assets Value
+              </span>
+              <span style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(15,23,42,0.06)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Boxes size={14}/>
+              </span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '8px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              {formatMoney(totalStockVal)}
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontWeight: '500' }}>
+            Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 4. SEAMLESS CONNECTED TAB NAVIGATION                         */}
+      {/* ============================================================ */}
+      <div style={{
+        background: 'var(--black-hover)',
+        border: '1px solid var(--black-border)',
+        borderRadius: '12px',
+        padding: '4px',
+        marginBottom: '24px',
+        display: 'flex',
+        overflowX: 'auto',
+        gap: '4px'
+      }} className="hide-scrollbar">
+        {tabs.map(t => {
+          const isActive = activeTab === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: isActive ? '#FFFFFF' : 'transparent',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontWeight: isActive ? '700' : '500',
+                fontSize: '13px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+                boxShadow: isActive ? '0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04)' : 'none'
+              }}
+            >
+              <span style={{ color: isActive ? 'var(--gold)' : 'var(--text-muted)' }}>
+                {t.icon}
+              </span>
+              <span>{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ============================================================ */}
+      {/* 5. TAB 1: EXECUTIVE DASHBOARD SUMMARY                        */}
+      {/* ============================================================ */}
       {activeTab === 'summary' && (
-        <div className="reports-dashboard-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
           
-          {/* Daily Sales Bar Chart (CSS) */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-            <h3 style={{ fontWeight: '700', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: 'var(--text-primary)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={20} color="var(--gold-dark)" /> Daily Revenue Trends
-              </span>
-              <span className="mobile-only" style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: 'auto' }}>
-                Swipe ↔ to view
-              </span>
-            </h3>
+          {/* Chart A: Daily Sales Bar Chart */}
+          <div style={{
+            background: '#FFFFFF',
+            border: '1px solid var(--black-border)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(15,23,42,0.02)',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <TrendingUp size={16} style={{ color: 'var(--gold)' }} />
+                  Daily Revenue Trajectory
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                  Daily billing volume for the last 14 active days
+                </p>
+              </div>
+            </div>
+
             {data.dailySales.length > 0 ? (
-              <div className="hide-scrollbar" style={{ overflowX: 'auto', paddingBottom: '8px', width: '100%', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ minWidth: '450px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-                  <div style={{ position: 'relative', height: '230px', display: 'flex', alignItems: 'flex-end', gap: '12px', borderBottom: '2px solid var(--black-border)', marginBottom: '10px', paddingBottom: '2px' }}>
+              <div style={{ overflowX: 'auto', paddingBottom: '6px' }} className="hide-scrollbar">
+                <div style={{ minWidth: '420px', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ position: 'relative', height: '200px', display: 'flex', alignItems: 'flex-end', gap: '10px', borderBottom: '1px solid var(--black-border)', paddingBottom: '4px' }}>
                     {data.dailySales.slice(0, 14).reverse().map((day, i) => {
                       const maxRev = Math.max(...data.dailySales.slice(0, 14).map(d => d.revenue))
-                      const heightPct = maxRev > 0 ? Math.max((day.revenue / maxRev) * 100, 6) : 6
+                      const heightPct = maxRev > 0 ? Math.max((day.revenue / maxRev) * 100, 8) : 8
                       return (
-                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', position: 'relative' }} title={`${new Date(day.date).toLocaleDateString()} — ${formatMoney(day.revenue)}`}>
-                          {/* Amount Label on Top of Bar */}
-                          <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px', whiteSpace: 'nowrap' }}>
-                            {formatMoney(day.revenue)}
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '4px', whiteSpace: 'nowrap' }}>
+                            {day.revenue > 999 ? `${(day.revenue / 1000).toFixed(1)}k` : day.revenue.toFixed(0)}
                           </div>
-                          <div style={{ width: '100%', maxWidth: '44px', height: `${heightPct}%`, background: 'linear-gradient(to top, var(--gold), #F3DA8C)', borderRadius: '6px 6px 0 0', boxShadow: '0 2px 6px rgba(180,138,30,0.2)', transition: 'all 0.2s', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.1)')} onMouseLeave={e => (e.currentTarget.style.filter = 'none')} />
+                          <div
+                            style={{
+                              width: '100%',
+                              maxWidth: '36px',
+                              height: `${heightPct}%`,
+                              background: 'linear-gradient(180deg, #D4AF37 0%, #B48A1E 100%)',
+                              borderRadius: '4px 4px 0 0',
+                              boxShadow: '0 1px 4px rgba(180,138,30,0.2)',
+                              transition: 'all 0.2s ease',
+                              cursor: 'pointer'
+                            }}
+                            title={`${new Date(day.date).toLocaleDateString()} — ${formatMoney(day.revenue)} (${day.orders} orders)`}
+                          />
                         </div>
                       )
                     })}
                   </div>
-                  <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
                     {data.dailySales.slice(0, 14).reverse().map((day, i) => (
-                      <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                      <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)' }}>
                         {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
                     ))}
@@ -1119,1513 +960,1081 @@ export default function ReportsPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No daily sales data yet.</div>
+              <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                No daily revenue activity recorded.
+              </div>
             )}
-            <style dangerouslySetInnerHTML={{__html: `
-              .bar-hover:hover { filter: brightness(1.15); }
-            `}} />
           </div>
 
-          {/* Payment Method Donut Chart */}
-          <div className="card">
-            <h3 style={{ fontWeight: '700', marginBottom: '24px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-              <DollarSign size={20} color="var(--gold-dark)" /> Revenue by Method
+          {/* Chart B: Payment Methods Breakdown */}
+          <div style={{
+            background: '#FFFFFF',
+            border: '1px solid var(--black-border)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(15,23,42,0.02)',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DollarSign size={16} style={{ color: 'var(--gold)' }} />
+              Settlement Channels
             </h3>
-            
-            {Object.keys(data.revenueByMethod).length > 0 ? (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px', position: 'relative' }}>
-                  {/* CSS Donut Chart */}
-                  <div style={{ width: '180px', height: '180px', borderRadius: '50%', position: 'relative', boxShadow: '0 2px 12px rgba(15,23,42,0.08)', background: (() => {
-                    let acc = 0;
-                    const segments = Object.entries(data.revenueByMethod).map(([method, amt], i) => {
-                      const pct = (amt / data.totalRevenue) * 100;
-                      const start = acc;
-                      acc += pct;
-                      return `${methodColors[i % methodColors.length]} ${start}% ${acc}%`;
-                    }).join(', ');
-                    return `conic-gradient(${segments})`;
-                  })() }}>
-                    {/* Inner hole for donut */}
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '110px', height: '110px', background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Total</span>
-                      <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--gold-dark)' }}>{data.totalRevenue > 9999 ? (data.totalRevenue/1000).toFixed(1)+'k' : data.totalRevenue.toFixed(0)}</span>
-                    </div>
-                  </div>
-                </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 20px 0' }}>
+              Distribution of incoming revenue by payment instrument
+            </p>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {Object.entries(data.revenueByMethod).map(([method, amount], i) => {
-                    const pct = data.totalRevenue > 0 ? (amount / data.totalRevenue) * 100 : 0
-                    return (
-                      <div key={method} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '8px', background: 'var(--black-hover)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: methodColors[i % methodColors.length] }} />
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{method}</span>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(amount)}</div>
-                          <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>{pct.toFixed(1)}%</div>
+            {Object.keys(data.revenueByMethod).length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {Object.entries(data.revenueByMethod).map(([method, amount], i) => {
+                  const pct = data.totalRevenue > 0 ? (amount / data.totalRevenue) * 100 : 0
+                  const color = ['#B48A1E', '#059669', '#2563EB', '#D97706', '#7C3AED'][i % 5]
+                  return (
+                    <div key={method} style={{ padding: '10px 14px', borderRadius: '8px', background: 'var(--black-hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: color }} />
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{method}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{pct.toFixed(1)}% of total</div>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              </>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(amount)}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--text-muted)' }}>No payment data yet.</div>
+              <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                No payment methods recorded.
+              </div>
             )}
           </div>
 
-          {/* Executive Profitability & Expense Bar */}
-          <div className="card" style={{ gridColumn: '1 / -1', background: 'var(--black-card)', border: '1px solid var(--black-border)', marginTop: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          {/* Allocation Ribbon: COGS vs Gross Profit */}
+          <div style={{
+            gridColumn: '1 / -1',
+            background: '#FFFFFF',
+            border: '1px solid var(--black-border)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(15,23,42,0.02)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
               <div>
-                <h3 style={{ fontWeight: '700', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-                  <PieChart size={20} color="var(--gold-dark)" /> Profit & Expense Allocation
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                  Financial Split & Cost Absorption
                 </h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                  Visual split between cost of goods sold (purchase expense) and gross profit
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                  Portion of revenue consumed by material costs vs retained gross profit
                 </p>
               </div>
-              <button className="btn btn-outline btn-sm" onClick={() => setActiveTab('profit-loss')}>
-                Open Full P&L Report →
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => setActiveTab('profit-loss')}
+                style={{ fontSize: '12px', padding: '6px 14px', height: '32px' }}
+              >
+                Inspect P&L Statement →
               </button>
             </div>
 
             {data.totalRevenue > 0 ? (() => {
-              const cogsPct = Math.min(100, Math.max(0, ((data.totalCOGS || 0) / data.totalRevenue) * 100))
+              const cogsPct = Math.min(100, Math.max(0, (cogsVal / data.totalRevenue) * 100))
               const profitPct = Math.max(0, 100 - cogsPct)
               return (
                 <div>
-                  <div style={{ height: '24px', borderRadius: '12px', overflow: 'hidden', display: 'flex', background: 'var(--black-hover)', border: '1px solid var(--black-border)', marginBottom: '16px' }}>
-                    <div style={{ width: `${cogsPct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)', transition: 'width 0.4s' }} title={`COGS: ${cogsPct.toFixed(1)}%`} />
-                    <div style={{ width: `${profitPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Gross Profit: ${profitPct.toFixed(1)}%`} />
+                  <div style={{ height: '18px', borderRadius: '8px', overflow: 'hidden', display: 'flex', background: 'var(--black-hover)', border: '1px solid var(--black-border)', marginBottom: '14px' }}>
+                    <div style={{ width: `${cogsPct}%`, background: '#E11D48', transition: 'width 0.3s ease' }} title={`COGS: ${cogsPct.toFixed(1)}%`} />
+                    <div style={{ width: `${profitPct}%`, background: '#059669', transition: 'width 0.3s ease' }} title={`Gross Profit: ${profitPct.toFixed(1)}%`} />
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ef4444' }} />
-                      <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Cost of Goods (COGS):</span>
-                      <b style={{ color: 'var(--danger)' }}>{formatMoney(data.totalCOGS || 0)}</b>
-                      <span style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: '700' }}>({cogsPct.toFixed(1)}%)</span>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#E11D48' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>Cost of Goods (COGS):</span>
+                      <b style={{ color: '#E11D48' }}>{formatMoney(cogsVal)}</b>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>({cogsPct.toFixed(1)}%)</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }} />
-                      <span style={{ color: 'var(--text-secondary)', fontWeight: '500' }}>Gross Profit:</span>
-                      <b style={{ color: 'var(--success)' }}>{formatMoney(data.grossProfit || 0)}</b>
-                      <span style={{ color: 'var(--success)', fontSize: '12px', fontWeight: '700' }}>({profitPct.toFixed(1)}%)</span>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#059669' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>Gross Profit:</span>
+                      <b style={{ color: '#059669' }}>{formatMoney(grossProfitVal)}</b>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>({profitPct.toFixed(1)}%)</span>
                     </div>
                   </div>
                 </div>
               )
             })() : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No revenue recorded in this period yet.</div>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No revenue activity in this period.</div>
             )}
           </div>
         </div>
       )}
 
-      {/* Advanced Tables Helper Component */}
-      {(() => {
-        const renderResponsiveTable = <T extends any>(
-          columns: string[],
-          items: T[],
-          desktopRowRenderer: (item: T, index: number) => React.ReactNode,
-          mobileCardRenderer: (item: T, index: number) => React.ReactNode,
-          emptyMessage: string
-        ) => {
-          const isEmpty = items.length === 0
-          return (
-            <>
-              {/* Desktop Table View */}
-              <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--black-border)', background: 'var(--black-card)', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)', width: '100%' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--black-hover)', borderBottom: '2px solid var(--black-border)' }}>
-                        {columns.map(h => (
-                          <th key={h} style={{ padding: '14px 20px', textAlign: 'left', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isEmpty ? (
-                        <tr><td colSpan={columns.length} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>{emptyMessage}</td></tr>
-                      ) : (
-                        items.map((item, idx) => desktopRowRenderer(item, idx))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+      {/* ============================================================ */}
+      {/* 6. TAB 2: PROFIT & LOSS (P&L) STATEMENT                      */}
+      {/* ============================================================ */}
+      {activeTab === 'profit-loss' && (() => {
+        const totalRev = data.totalRevenue || 0
+        const totalCost = data.totalCOGS || 0
+        const grossProf = data.grossProfit || 0
+        const wasteCost = data.totalWasteCost || 0
+        const netProf = data.netProfit !== undefined ? data.netProfit : (grossProf - wasteCost)
+        const netMargin = data.netProfitMargin ?? (totalRev > 0 ? (netProf / totalRev) * 100 : 0)
 
-              {/* Mobile Card List View */}
-              <div className="mobile-only" style={{ width: '100%' }}>
-                {isEmpty ? (
-                  <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>{emptyMessage}</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {items.map((item, idx) => mobileCardRenderer(item, idx))}
-                  </div>
-                )}
-              </div>
-            </>
-          )
-        }
+        const filteredItems = (data.profitByItem || []).filter(item => {
+          const matchesSearch = !plSearch || 
+            item.name.toLowerCase().includes(plSearch.toLowerCase()) || 
+            item.category.toLowerCase().includes(plSearch.toLowerCase())
+          const matchesType = plTypeFilter === 'ALL' || item.type === plTypeFilter
+          return matchesSearch && matchesType
+        }).sort((a, b) => {
+          if (plSortBy === 'profit') return b.grossProfit - a.grossProfit
+          if (plSortBy === 'margin') return b.profitMargin - a.profitMargin
+          if (plSortBy === 'revenue') return b.revenue - a.revenue
+          if (plSortBy === 'quantity') return b.quantity - a.quantity
+          if (plSortBy === 'cost') return b.totalCost - a.totalCost
+          return 0
+        })
 
-        if (activeTab === 'profit-loss') {
-          const totalRev = data.totalRevenue || 0
-          const totalCost = data.totalCOGS || 0
-          const grossProf = data.grossProfit || 0
-          const overallMargin = data.profitMargin ?? 0
-          const wasteCost = data.totalWasteCost || 0
-          const netProf = data.netProfit !== undefined ? data.netProfit : (grossProf - wasteCost)
-          const netMargin = data.netProfitMargin ?? (totalRev > 0 ? (netProf / totalRev) * 100 : 0)
+        const totalFilteredProfit = filteredItems.reduce((s, it) => s + it.grossProfit, 0)
 
-          const cogsPct = totalRev > 0 ? Math.min(100, Math.max(0, (totalCost / totalRev) * 100)) : 0
-          const wastePct = totalRev > 0 ? Math.min(100, Math.max(0, (wasteCost / totalRev) * 100)) : 0
-          const netPct = totalRev > 0 ? Math.max(0, 100 - cogsPct - wastePct) : 0
-          const profitPct = totalRev > 0 ? Math.max(0, 100 - cogsPct) : 0
-
-          const filteredItems = (data.profitByItem || []).filter(item => {
-            const matchesSearch = !plSearch || 
-              item.name.toLowerCase().includes(plSearch.toLowerCase()) || 
-              item.category.toLowerCase().includes(plSearch.toLowerCase())
-            const matchesType = plTypeFilter === 'ALL' || item.type === plTypeFilter
-            return matchesSearch && matchesType
-          }).sort((a, b) => {
-            if (plSortBy === 'profit') return b.grossProfit - a.grossProfit
-            if (plSortBy === 'margin') return b.profitMargin - a.profitMargin
-            if (plSortBy === 'revenue') return b.revenue - a.revenue
-            if (plSortBy === 'quantity') return b.quantity - a.quantity
-            if (plSortBy === 'cost') return b.totalCost - a.totalCost
-            return 0
-          })
-
-          const totalFilteredProfit = filteredItems.reduce((s, it) => s + it.grossProfit, 0)
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-              
-              {/* Header Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <h2 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <PieChart size={22} color="var(--gold-dark)" /> Profit & Loss Statement (P&L)
-                  </h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                    Cost of Goods Sold (COGS), Waste & Spoilage Loss, Gross/Net Profit and Margins
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <button className="btn btn-gold btn-sm" onClick={exportProfitLossToExcel}>
-                    <Download size={15} style={{ marginRight: '6px' }} /> Export P&L to Excel
-                  </button>
-                </div>
-              </div>
-
-              {/* Section A: Financial Executive Overview Card */}
-              <div className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 12px rgba(15,23,42,0.03)' }}>
-                <div style={{ fontSize: '12px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700', marginBottom: '16px' }}>
-                  Executive Financial Summary
-                </div>
-
-                {/* Mini Cards in Grid */}
-                <div className="reports-pl-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FEF08A' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Total Sales Revenue</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(totalRev)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', marginTop: '4px', fontWeight: '600' }}>100% of income</div>
-                  </div>
-
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FECACA' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Cost of Goods (COGS)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger)' }}>{formatMoney(totalCost)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{cogsPct.toFixed(1)}% of revenue</div>
-                  </div>
-
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #A7F3D0' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Gross Profit (Sales)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: grossProf >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                      {formatMoney(grossProf)}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{overallMargin.toFixed(1)}% gross margin</div>
-                  </div>
-
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FECACA' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                      <Trash2 size={12} color="var(--danger)" /> Waste / Spoilage Loss
-                    </div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--danger)' }}>
-                      -{formatMoney(wasteCost)}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{data.wasteBreakdown?.length || 0} discarded logs</div>
-                  </div>
-
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #A7F3D0' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Net Profit (After Waste)</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: netProf >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                      {formatMoney(netProf)}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{netMargin.toFixed(1)}% net margin</div>
-                  </div>
-
-                  <div className="reports-pl-card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', padding: '16px', borderRadius: '10px', border: '1px solid #FEF08A' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '600' }}>Stock Valuation</div>
-                    <div className="reports-pl-value" style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)' }}>{formatMoney(data.inventoryValuation?.totalValue || 0)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--gold-dark)', marginTop: '4px' }}>Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)}</div>
-                  </div>
-                </div>
-
-                {/* Revenue Split Horizontal Bar */}
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>Revenue Allocation</span>
-                    <span style={{ color: 'var(--text-muted)' }}>COGS ({cogsPct.toFixed(1)}%) {wastePct > 0 ? `· Waste (${wastePct.toFixed(1)}%) ` : ''}· Net Profit ({netPct.toFixed(1)}%)</span>
-                  </div>
-                  <div style={{ height: '22px', borderRadius: '11px', overflow: 'hidden', display: 'flex', background: 'var(--black-card)', border: '1px solid var(--black-border)' }}>
-                    <div style={{ width: `${cogsPct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)', transition: 'width 0.4s' }} title={`COGS: ${formatMoney(totalCost)} (${cogsPct.toFixed(1)}%)`} />
-                    {wastePct > 0 && (
-                      <div style={{ width: `${wastePct}%`, background: 'linear-gradient(90deg, #b91c1c, #7f1d1d)', transition: 'width 0.4s' }} title={`Waste / Spoilage Loss: -${formatMoney(wasteCost)} (${wastePct.toFixed(1)}%)`} />
-                    )}
-                    <div style={{ width: `${netPct}%`, background: 'linear-gradient(90deg, #10b981, #059669)', transition: 'width 0.4s' }} title={`Net Profit: ${formatMoney(netProf)} (${netPct.toFixed(1)}%)`} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ef4444' }} />
-                      <span style={{ color: 'var(--text-secondary)' }}>COGS:</span>
-                      <b style={{ color: 'var(--danger-light)' }}>{formatMoney(totalCost)}</b>
-                    </div>
-                    {wasteCost > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#7f1d1d' }} />
-                        <span style={{ color: 'var(--text-secondary)' }}>Waste Loss:</span>
-                        <b style={{ color: 'var(--danger-light)' }}>-{formatMoney(wasteCost)}</b>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#10b981' }} />
-                      <span style={{ color: 'var(--text-secondary)' }}>Net Profit:</span>
-                      <b style={{ color: 'var(--success-light)' }}>{formatMoney(netProf)}</b>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Collapsible Info Callout */}
-                <details style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', cursor: 'pointer' }}>
-                  <summary style={{ color: 'var(--gold)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', outline: 'none' }}>
-                    <Info size={15} color="var(--gold)" />
-                    <span>How COGS & Recipe Costs are calculated (tap to view)</span>
-                  </summary>
-                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(212,175,55,0.1)' }}>
-                    Cost of Goods Sold (COGS) is computed automatically:
-                    <ul style={{ paddingLeft: '18px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <li>
-                        <b>Prepared Drinks & Food (e.g. STRAWBERRY MOJITO, COCKTAILS, FRESH JUICE):</b> Cost is calculated dynamically from recipe ingredients (<code style={{ color: 'var(--gold-light)' }}>∑ recipe.quantity × ingredient.costPerUnit</code>). There is no standalone finished item stock; the ingredients themselves are the cost.
-                      </li>
-                      <li>
-                        <b>Direct Retail Goods (e.g. Water bottles, soft drinks, retail snacks):</b> Cost is taken from the item's purchase price (<code style={{ color: 'var(--gold-light)' }}>costPrice</code>).
-                      </li>
-                      <li>
-                        If an ingredient cost is 0, update unit bought prices in <b>Inventory / Store</b> to see exact profitability.
-                      </li>
-                    </ul>
-                  </div>
-                </details>
-              </div>
-
-              {/* Section B: Category Profitability (FOOD vs DRINKS) */}
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+            {/* Header with Export */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Layers size={16} /> Category Performance Comparison
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px', width: '100%', maxWidth: '100%' }}>
-                  {(data.profitByCategory && data.profitByCategory.length > 0) ? (
-                    data.profitByCategory.map(cat => {
-                      const isFood = cat.category === 'FOOD'
-                      const badgeColor = isFood ? '#f59e0b' : '#38bdf8'
-                      const bgGradient = isFood 
-                        ? 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(20,20,20,0.6) 100%)' 
-                        : 'linear-gradient(135deg, rgba(56,189,248,0.08) 0%, rgba(20,20,20,0.6) 100%)'
-                      const borderCol = isFood ? 'rgba(245,158,11,0.3)' : 'rgba(56,189,248,0.3)'
+                <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                  Profit & Loss Statement (P&L)
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+                  Per-item profitability, recipe costing, waste loss, and net margin return
+                </p>
+              </div>
+              <button
+                className="btn btn-gold btn-sm"
+                onClick={exportProfitLossToExcel}
+                style={{ fontSize: '12px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileSpreadsheet size={14} /> Export P&L to Excel
+              </button>
+            </div>
 
-                      return (
-                        <div key={cat.category} className="card" style={{ background: bgGradient, border: `1px solid ${borderCol}`, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '12px', background: `${badgeColor}22`, color: badgeColor, border: `1px solid ${badgeColor}44`, textTransform: 'uppercase' }}>
-                                {cat.category}
-                              </span>
-                              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{cat.quantity} units sold</span>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <span style={{ fontSize: '18px', fontWeight: '700', color: cat.profitMargin >= 50 ? 'var(--success-light)' : cat.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)' }}>
-                                {cat.profitMargin.toFixed(1)}%
-                              </span>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Margin</div>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(85px, 1fr))', gap: '8px', background: 'var(--black-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Revenue</div>
-                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.revenue)}</div>
-                            </div>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>COGS</div>
-                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger-light)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.cost)}</div>
-                            </div>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profit</div>
-                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--success-light)', marginTop: '2px', wordBreak: 'break-word' }}>{formatMoney(cat.grossProfit)}</div>
-                            </div>
-                          </div>
-
-                          {/* Category Margin Bar */}
-                          <div>
-                            <div style={{ height: '6px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, cat.profitMargin))}%`, background: cat.profitMargin >= 50 ? 'var(--success-light)' : cat.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)', borderRadius: '3px' }} />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <div className="card" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '30px' }}>
-                      No category profit breakdown available for this period.
-                    </div>
-                  )}
+            {/* P&L Executive Summary Strip */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '12px',
+              padding: '18px 20px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '16px',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.02)'
+            }}>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Gross Revenue</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px' }}>{formatMoney(totalRev)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>COGS Expense</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#E11D48', marginTop: '4px' }}>{formatMoney(totalCost)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Waste / Spoilage</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: wasteCost > 0 ? '#DC2626' : 'var(--text-muted)', marginTop: '4px' }}>
+                  {wasteCost > 0 ? `-${formatMoney(wasteCost)}` : '0.00 ETB'}
                 </div>
               </div>
-
-              {/* Section C: Per-Item Profit Breakdown Table */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    Per-Item Profitability Breakdown ({filteredItems.length} items)
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Filtered Gross Profit: <b style={{ color: 'var(--success-light)' }}>{formatMoney(totalFilteredProfit)}</b>
-                  </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Net Operating Profit</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: netProf >= 0 ? '#059669' : '#DC2626', marginTop: '4px' }}>
+                  {formatMoney(netProf)}
                 </div>
+                <div style={{ fontSize: '11px', color: '#059669', fontWeight: '600' }}>{netMargin.toFixed(1)}% Net Margin</div>
+              </div>
+            </div>
 
-                {/* Filters and Controls */}
-                <div className="card" style={{ padding: '14px 16px', background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
-                  {/* Search Input */}
-                  <div style={{ position: 'relative', flex: '1', minWidth: '220px', maxWidth: '380px' }}>
-                    <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input 
-                      type="text" 
-                      className="input" 
-                      placeholder="Search item or category..." 
-                      value={plSearch} 
-                      onChange={e => setPlSearch(e.target.value)} 
-                      style={{ paddingLeft: '36px', width: '100%', fontSize: '13px' }} 
-                    />
-                  </div>
+            {/* Filter toolbar for items */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ position: 'relative', flex: '1', minWidth: '220px', maxWidth: '340px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Filter by item or category..."
+                  value={plSearch}
+                  onChange={e => setPlSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '7px 12px 7px 34px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--black-border)',
+                    outline: 'none',
+                    background: 'var(--black-hover)'
+                  }}
+                />
+              </div>
 
-                  {/* Type Filter Buttons */}
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '4px' }}>Type:</span>
-                    {(['ALL', 'FOOD', 'DRINKS'] as const).map(t => (
-                      <button
-                        key={t}
-                        className={`btn btn-sm ${plTypeFilter === t ? 'btn-gold' : 'btn-ghost'}`}
-                        style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
-                        onClick={() => setPlTypeFilter(t)}
-                      >
-                        {t === 'ALL' ? 'All Types' : t}
-                      </button>
-                    ))}
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Type:</span>
+                {(['ALL', 'FOOD', 'DRINKS'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setPlTypeFilter(t)}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '11px',
+                      fontWeight: plTypeFilter === t ? '700' : '500',
+                      borderRadius: '6px',
+                      border: '1px solid',
+                      borderColor: plTypeFilter === t ? 'var(--gold)' : 'var(--black-border)',
+                      background: plTypeFilter === t ? 'rgba(180,138,30,0.1)' : '#FFFFFF',
+                      color: plTypeFilter === t ? 'var(--gold-dark)' : 'var(--text-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t === 'ALL' ? 'All' : t}
+                  </button>
+                ))}
+              </div>
 
-                  {/* Sort By Dropdown */}
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Sort:</span>
-                    <select
-                      className="input"
-                      value={plSortBy}
-                      onChange={e => setPlSortBy(e.target.value as any)}
-                      style={{ padding: '6px 12px', fontSize: '12px', minWidth: '150px' }}
-                    >
-                      <option value="profit">Highest Profit</option>
-                      <option value="margin">Highest Margin %</option>
-                      <option value="revenue">Highest Revenue</option>
-                      <option value="quantity">Most Units Sold</option>
-                      <option value="cost">Highest Cost</option>
-                    </select>
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Sort by:</span>
+                <select
+                  value={plSortBy}
+                  onChange={e => setPlSortBy(e.target.value as any)}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--black-border)',
+                    background: '#FFFFFF',
+                    color: 'var(--text-primary)',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="profit">Highest Profit</option>
+                  <option value="margin">Highest Margin %</option>
+                  <option value="revenue">Highest Revenue</option>
+                  <option value="quantity">Units Sold</option>
+                  <option value="cost">Highest Cost</option>
+                </select>
+              </div>
+            </div>
 
-                {/* Desktop & Mobile Responsive Table */}
-                {renderResponsiveTable(
-                  ['Item & Category', 'Type', 'Qty Sold', 'Selling Price', 'Unit Cost', 'Revenue', 'Total Cost', 'Gross Profit', 'Margin %'],
-                  filteredItems,
-                  (item) => {
-                    const isUnsetCost = item.costPrice === 0
-                    const marginColor = item.profitMargin >= 50 ? 'var(--success-light)' : item.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
-                    const marginBadgeBg = item.profitMargin >= 50 ? 'rgba(16,185,129,0.12)' : item.profitMargin >= 25 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)'
-
-                    return (
-                      <tr key={item.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-                        <td style={{ padding: '14px 20px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</span>
-                            {item.isRecipe && (
-                              <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }} title="Cost computed dynamically from recipe ingredients">
-                                🍹 Recipe
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category}</div>
-                        </td>
-                        <td style={{ padding: '14px 20px' }}>
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', background: item.type === 'FOOD' ? 'rgba(245,158,11,0.15)' : item.type === 'DRINK' ? 'rgba(56,189,248,0.15)' : 'rgba(168,85,247,0.15)', color: item.type === 'FOOD' ? '#f59e0b' : item.type === 'DRINK' ? '#38bdf8' : '#c084fc' }}>
-                            {item.type}
-                          </span>
-                        </td>
-                        <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
-                        <td style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>{formatMoney(item.price)}</td>
-                        <td style={{ padding: '14px 20px', fontSize: '13px' }}>
-                          {item.isRecipe ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ color: item.costPrice > 0 ? 'var(--text-primary)' : 'var(--warning-light)', fontWeight: '600' }}>
-                                {formatMoney(item.costPrice)}
-                              </span>
-                              <span style={{ fontSize: '10px', color: item.costPrice > 0 ? 'var(--gold)' : 'var(--warning-light)' }}>
-                                {item.costPrice > 0 ? '🍹 Recipe Cost' : '⚠️ 0.00 (Set Ing. Cost)'}
-                              </span>
-                            </div>
-                          ) : isUnsetCost ? (
-                            <span style={{ fontSize: '10px', color: 'var(--warning-light)', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }} title="Cost price is 0 ETB. Set in Inventory to see true profit.">
-                              ⚠️ 0.00
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-secondary)' }}>{formatMoney(item.costPrice)}</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 20px', color: 'var(--gold)', fontWeight: '600', fontSize: '14px' }}>{formatMoney(item.revenue)}</td>
-                        <td style={{ padding: '14px 20px', color: 'var(--danger-light)', fontSize: '13px' }}>{formatMoney(item.totalCost)}</td>
-                        <td style={{ padding: '14px 20px', fontWeight: '700', fontSize: '14px', color: item.grossProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                          {formatMoney(item.grossProfit)}
-                        </td>
-                        <td style={{ padding: '14px 20px' }}>
-                          <span style={{ display: 'inline-block', fontSize: '11px', fontWeight: '700', color: marginColor, background: marginBadgeBg, padding: '3px 8px', borderRadius: '12px', border: `1px solid ${marginColor}33` }}>
-                            {item.profitMargin.toFixed(1)}%
-                          </span>
+            {/* P&L Table */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.02)'
+            }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Item / Category</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Qty</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cost / Unit</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Revenue</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Cost</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Gross Profit</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Margin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                          No items match the filter criteria.
                         </td>
                       </tr>
-                    )
-                  },
-                  (item) => {
-                    const isUnsetCost = item.costPrice === 0
-                    const marginColor = item.profitMargin >= 50 ? 'var(--success-light)' : item.profitMargin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
-
-                    return (
-                      <div key={item.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text-primary)' }}>{item.name}</span>
-                              {item.isRecipe && (
-                                <span style={{ fontSize: '9px', fontWeight: '700', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }}>
-                                  🍹 Recipe
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              {item.category} · <span style={{ color: item.type === 'FOOD' ? '#f59e0b' : item.type === 'DRINK' ? '#38bdf8' : '#c084fc', fontWeight: '600' }}>{item.type}</span>
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '12px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>
-                            {item.profitMargin.toFixed(1)}% Margin
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
-                          <div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Qty Sold</div>
-                            <div style={{ fontWeight: '700', marginTop: '2px' }}>{item.quantity}</div>
-                          </div>
-                          <div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Sell Price</div>
-                            <div style={{ fontWeight: '600', marginTop: '2px' }}>{formatMoney(item.price)}</div>
-                          </div>
-                          <div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Unit Cost</div>
-                            <div style={{ fontWeight: '600', marginTop: '2px', color: item.isRecipe ? 'var(--gold-light)' : (isUnsetCost ? 'var(--warning-light)' : 'inherit') }}>
-                              {item.isRecipe ? (item.costPrice > 0 ? `${formatMoney(item.costPrice)} (R)` : '⚠️ 0 (Recipe)') : (isUnsetCost ? '⚠️ 0 ETB' : formatMoney(item.costPrice))}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '13px' }}>
-                          <div style={{ fontSize: '12px' }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>Revenue: </span>
-                            <b style={{ color: 'var(--gold)' }}>{formatMoney(item.revenue)}</b>
-                            <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>|</span>
-                            <span style={{ color: 'var(--text-secondary)' }}>Cost: </span>
-                            <span style={{ color: 'var(--danger-light)' }}>{formatMoney(item.totalCost)}</span>
-                          </div>
-                          <div>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Profit: </span>
-                            <b style={{ color: item.grossProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)', fontSize: '14px' }}>
-                              {formatMoney(item.grossProfit)}
-                            </b>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  },
-                  'No profit items match your filter criteria.'
-                )}
+                    ) : filteredItems.map((item, idx) => {
+                      const marginColor = item.profitMargin >= 50 ? '#059669' : item.profitMargin >= 25 ? '#D97706' : '#DC2626'
+                      return (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.6)' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{item.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.category}</div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: 'var(--black-hover)', color: 'var(--text-secondary)' }}>
+                              {item.type}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>{item.quantity}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.price)}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.costPrice > 0 ? formatMoney(item.costPrice) : '0.00 ETB'}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.revenue)}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: '#E11D48', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.totalCost)}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: item.grossProfit >= 0 ? '#059669' : '#DC2626', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatMoney(item.grossProfit)}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: marginColor }}>
+                              {item.profitMargin.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
+            </div>
+          </div>
+        )
+      })()}
 
-              {/* Section D: Waste & Spoilage Audit Log */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger-light)', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Trash2 size={16} color="var(--danger-light)" /> Waste & Spoilage Cost Impact ({data.wasteBreakdown?.length || 0} items)
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Total Spoilage Loss: <b style={{ color: 'var(--danger-light)' }}>-{formatMoney(wasteCost)}</b>
-                  </div>
-                </div>
+      {/* ============================================================ */}
+      {/* 7. TAB 3: DAILY SALES BREAKDOWN                              */}
+      {/* ============================================================ */}
+      {activeTab === 'daily' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Daily Sales Audit
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Day-by-day revenue, ticket counts, and category drill-downs
+            </p>
+          </div>
 
-                {data.wasteBreakdown && data.wasteBreakdown.length > 0 ? (
-                  <>
-                    <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-                      <div className="table-scrollbar">
-                        <table className="inventory-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.2)' }}>
-                              {['Date & Time', 'Item Name', 'Source', 'Reason / Notes', 'Qty Discarded', 'Unit Cost', 'Financial Loss', 'Logged By'].map(h => (
-                                <th key={h} style={{ padding: '12px 16px', textAlign: h === 'Qty Discarded' || h === 'Unit Cost' || h === 'Financial Loss' ? 'right' : 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+          <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                  <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Orders</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Revenue</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Average Ticket</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'center', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', width: '90px' }}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.dailySales.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                      No daily records found.
+                    </td>
+                  </tr>
+                ) : data.dailySales.map(day => {
+                  const isExpanded = selectedDay === day.date
+                  return (
+                    <React.Fragment key={day.date}>
+                      <tr
+                        onClick={() => setSelectedDay(isExpanded ? null : day.date)}
+                        style={{
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--black-border)',
+                          cursor: 'pointer',
+                          background: isExpanded ? 'rgba(180,138,30,0.04)' : '#FFFFFF',
+                          transition: 'background 0.15s ease'
+                        }}
+                      >
+                        <td style={{ padding: '14px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                          {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>
+                          {day.orders}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatMoney(day.revenue)}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                          {day.orders > 0 ? formatMoney(day.revenue / day.orders) : '-'}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--gold-dark)' }}>
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--black-border)' }}>
+                          <td colSpan={5} style={{ padding: '16px 24px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>
+                              Item Breakdown for {new Date(day.date).toLocaleDateString()}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                              {day.categories.map(cat => (
+                                <div key={cat.categoryName} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '8px', padding: '12px' }}>
+                                  <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px solid var(--black-border)', paddingBottom: '6px', marginBottom: '8px' }}>
+                                    {cat.categoryName}
+                                  </div>
+                                  {cat.items.map(it => (
+                                    <div key={it.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 0' }}>
+                                      <span style={{ color: 'var(--text-secondary)' }}>{it.quantity}x {it.name}</span>
+                                      <b style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(it.revenue)}</b>
+                                    </div>
+                                  ))}
+                                </div>
                               ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {data.wasteBreakdown.map(wb => (
-                              <tr key={wb.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                  {new Date(wb.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
-                                </td>
-                                <td style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>{wb.itemName}</td>
-                                <td style={{ padding: '12px 16px' }}><span className="badge badge-outline" style={{ fontSize: '11px' }}>{wb.type}</span></td>
-                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>{wb.reason}</td>
-                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--danger-light)' }}>-{wb.quantity}</td>
-                                <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', color: 'var(--text-muted)' }}>{formatMoney(wb.unitCost)}</td>
-                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--danger-light)' }}>-{formatMoney(wb.totalCost)}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>{wb.userName}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-                    {/* Mobile Cards for Waste */}
-                    <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {data.wasteBreakdown.map(wb => (
-                        <div key={wb.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid rgba(239,68,68,0.25)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>{wb.itemName}</span>
-                            <span style={{ fontWeight: '700', color: 'var(--danger-light)', fontSize: '14px' }}>-{formatMoney(wb.totalCost)}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            <span>{wb.reason}</span>
-                            <span>Qty: <b style={{ color: 'var(--danger-light)' }}>-{wb.quantity}</b> ({formatMoney(wb.unitCost)}/u)</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--black-border)', paddingTop: '6px' }}>
-                            <span>{new Date(wb.createdAt).toLocaleDateString('en-ET')}</span>
-                            <span>{wb.userName}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'rgba(16,185,129,0.03)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                    ✅ No waste or spoilage logged during this period.
-                  </div>
-                )}
-              </div>
+      {/* ============================================================ */}
+      {/* 8. TAB 4: CATEGORIZED ARTICLES (Clean modern luxury style)   */}
+      {/* ============================================================ */}
+      {activeTab === 'categorized' && (() => {
+        const report = data.categorizedReport
+        if (!report || report.categories.length === 0) {
+          return (
+            <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No categorized sales records found.
             </div>
           )
         }
 
-        if (activeTab === 'categorized') {
-          const report = data.categorizedReport
-          if (!report || report.categories.length === 0) {
-            return (
-              <div className="card" style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
-                No sales data available for the selected period.
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                  Categorized & Summarized by Article
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+                  Audited sales voucher ledger organized by category hierarchy
+                </p>
               </div>
-            )
-          }
+              <button
+                className="btn btn-gold btn-sm"
+                onClick={exportCategorizedToExcel}
+                style={{ fontSize: '12px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Download size={14} /> Download Excel Spreadsheet
+              </button>
+            </div>
 
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button className="btn btn-gold btn-sm" onClick={exportCategorizedToExcel}>
-                  <Download size={14} style={{ marginRight: '6px' }} /> Export to Excel
-                </button>
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="desktop-only" style={{ background: '#FFFFFF', color: '#1A1A1A', borderRadius: '12px', padding: '32px', boxShadow: '0 4px 30px rgba(0,0,0,0.4)', overflowX: 'auto', border: '1px solid #E5E7EB' }}>
-                <div style={{ textAlign: 'center', marginBottom: '24px', fontFamily: '"Courier New", Courier, monospace' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: '0 0 6px', color: '#1F2937', letterSpacing: '0.5px' }}>Categorized And Summarized By Article</h2>
-                  <p style={{ fontSize: '12px', color: '#4B5563', margin: 0 }}>
-                    Cash Sales Voucher Report filtered by Void State = Not Void, {from || to ? `from ${from || 'Start'} to ${to || 'End'}` : `at the day of ${new Date().toLocaleDateString('en-US')}`}
-                  </p>
-                </div>
-
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', fontFamily: 'Arial, sans-serif' }}>
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.02)'
+            }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
-                    <tr style={{ background: '#4F727C', color: '#FFFFFF', borderBottom: '2px solid #1F2937' }}>
-                      <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 'bold' }}>Category</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 'bold' }}>Sub Category</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 'bold' }}>Article Code</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 'bold' }}>Article Name</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>Quantity</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>Avg Amount</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>Total Amount</th>
+                    <tr style={{ background: '#0F172A', color: '#FFFFFF' }}>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Article Code</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Article Name</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quantity</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg Price</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Amount</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {report.categories.map((cat, catIdx) => (
+                    {report.categories.map(cat => (
                       <React.Fragment key={cat.categoryName}>
-                        <tr style={{ background: '#598B9C', color: '#FFFFFF' }}>
-                          <td colSpan={7} style={{ padding: '8px 12px', fontWeight: 'bold', fontSize: '14px', textTransform: 'uppercase' }}>
+                        {/* Category Heading Band */}
+                        <tr style={{ background: '#1E293B', color: '#FFFFFF' }}>
+                          <td colSpan={5} style={{ padding: '10px 16px', fontWeight: '700', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                             {cat.categoryName}
                           </td>
                         </tr>
 
-                        {cat.subCategories.map((sub, subIdx) => (
+                        {cat.subCategories.map(sub => (
                           <React.Fragment key={sub.subCategoryName}>
-                            <tr style={{ background: '#CED9DC', color: '#1F2937' }}>
-                              <td style={{ padding: '6px 12px' }}></td>
-                              <td colSpan={6} style={{ padding: '6px 12px', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase' }}>
-                                {sub.subCategoryName}
+                            {/* Subcategory sub-band */}
+                            <tr style={{ background: 'var(--black-hover)', color: 'var(--text-primary)' }}>
+                              <td colSpan={5} style={{ padding: '8px 16px 8px 24px', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', borderBottom: '1px solid var(--black-border)' }}>
+                                ↳ {sub.subCategoryName}
                               </td>
                             </tr>
 
-                            {sub.articles.map((art) => (
-                              <tr key={art.code} style={{ borderBottom: '1px solid #E5E7EB', color: '#374151' }}>
-                                <td style={{ padding: '6px 12px' }}></td>
-                                <td style={{ padding: '6px 12px' }}></td>
-                                <td style={{ padding: '6px 12px', fontFamily: 'monospace' }}>{art.code}</td>
-                                <td style={{ padding: '6px 12px' }}>{art.name}</td>
-                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{art.quantity.toFixed(2)}</td>
-                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{art.avgAmount.toFixed(2)}</td>
-                                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: '600' }}>{art.totalAmount.toFixed(2)}</td>
+                            {/* Articles */}
+                            {sub.articles.map(art => (
+                              <tr key={art.code} style={{ borderBottom: '1px solid var(--black-border)', color: 'var(--text-primary)' }}>
+                                <td style={{ padding: '9px 16px 9px 36px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-muted)' }}>{art.code}</td>
+                                <td style={{ padding: '9px 16px', fontWeight: '500' }}>{art.name}</td>
+                                <td style={{ padding: '9px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{art.quantity.toFixed(2)}</td>
+                                <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{art.avgAmount.toFixed(2)}</td>
+                                <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{art.totalAmount.toFixed(2)}</td>
                               </tr>
                             ))}
 
-                            <tr style={{ fontWeight: 'bold', color: '#111827', borderBottom: '1px solid #111827' }}>
-                              <td style={{ padding: '6px 12px' }}></td>
-                              <td style={{ padding: '6px 12px' }}></td>
-                              <td style={{ padding: '6px 12px' }}></td>
-                              <td style={{ padding: '6px 12px', borderTop: '1px solid #9CA3AF' }}>{sub.subCategoryName} Total</td>
-                              <td style={{ padding: '6px 12px', textAlign: 'right', borderTop: '1px solid #9CA3AF' }}>{sub.totalQuantity.toFixed(2)}</td>
-                              <td style={{ padding: '6px 12px', borderTop: '1px solid #9CA3AF' }}></td>
-                              <td style={{ padding: '6px 12px', textAlign: 'right', borderTop: '1px solid #9CA3AF' }}>{sub.totalRevenue.toFixed(2)}</td>
+                            {/* Subcategory Total */}
+                            <tr style={{ background: 'rgba(248,250,252,0.8)', fontWeight: '600', borderBottom: '1px solid var(--black-border)' }}>
+                              <td colSpan={2} style={{ padding: '8px 16px 8px 36px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                {sub.subCategoryName} Subtotal
+                              </td>
+                              <td style={{ padding: '8px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sub.totalQuantity.toFixed(2)}</td>
+                              <td style={{ padding: '8px 16px' }}></td>
+                              <td style={{ padding: '8px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: '700' }}>{sub.totalRevenue.toFixed(2)}</td>
                             </tr>
                           </React.Fragment>
                         ))}
 
-                        <tr style={{ fontWeight: 'bold', color: '#111827', borderBottom: '2px solid #111827', background: '#F9FAFB' }}>
-                          <td style={{ padding: '8px 12px' }}></td>
-                          <td style={{ padding: '8px 12px' }}></td>
-                          <td style={{ padding: '8px 12px' }}></td>
-                          <td style={{ padding: '8px 12px' }}>{cat.categoryName} Total</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>{cat.totalQuantity.toFixed(2)}</td>
-                          <td style={{ padding: '8px 12px' }}></td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>{cat.totalRevenue.toFixed(2)}</td>
+                        {/* Category Total */}
+                        <tr style={{ background: '#F1F5F9', fontWeight: '700', borderBottom: '2px solid var(--black-border)' }}>
+                          <td colSpan={2} style={{ padding: '10px 16px', color: 'var(--text-primary)' }}>
+                            {cat.categoryName} Total
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{cat.totalQuantity.toFixed(2)}</td>
+                          <td style={{ padding: '10px 16px' }}></td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--gold-dark)' }}>{cat.totalRevenue.toFixed(2)}</td>
                         </tr>
                       </React.Fragment>
                     ))}
                   </tbody>
                 </table>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
-                  <table style={{ borderCollapse: 'collapse', fontSize: '13px', width: '320px', fontFamily: 'Arial, sans-serif' }}>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid #D1D5DB' }}>
-                        <td style={{ padding: '6px 12px', fontWeight: 'bold', color: '#4B5563' }}>Sub Total</td>
-                        <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>{report.subTotal.toFixed(2)}</td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #111827' }}>
-                        <td style={{ padding: '6px 12px', fontWeight: 'bold', color: '#4B5563' }}>Discount</td>
-                        <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>{report.discount.toFixed(2)}</td>
-                      </tr>
-                      <tr style={{ borderBottom: '4px double #111827', background: '#F3F4F6' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 'bold', fontSize: '14px', color: '#111827' }}>Grand Total</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px', color: '#111827' }}>{report.grandTotal.toFixed(2)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
               </div>
 
-              {/* Mobile Card List View */}
-              <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {report.categories.map(cat => (
-                  <div key={cat.categoryName} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)' }}>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--gold)', borderBottom: '1px solid var(--black-border)', paddingBottom: '8px', marginBottom: '12px', textTransform: 'uppercase' }}>
-                      {cat.categoryName}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      {cat.subCategories.map(sub => (
-                        <div key={sub.subCategoryName} style={{ borderLeft: '2px solid var(--gold-dark)', paddingLeft: '10px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>
-                            {sub.subCategoryName}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {sub.articles.map(art => (
-                              <div key={art.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '13px', borderBottom: '1px dashed var(--black-border)', paddingBottom: '6px' }}>
-                                <div>
-                                  <div style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{art.name}</div>
-                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Code: {art.code} · Qty: {art.quantity.toFixed(2)} @ {art.avgAmount.toFixed(2)}</div>
-                                </div>
-                                <div style={{ fontWeight: '600', color: 'var(--gold)' }}>{art.totalAmount.toFixed(2)}</div>
-                              </div>
-                            ))}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                              <span>{sub.subCategoryName} Total</span>
-                              <span>{sub.totalRevenue.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', borderTop: '1px solid var(--black-border)', paddingTop: '10px', marginTop: '12px' }}>
-                      <span>{cat.categoryName} Total</span>
-                      <span style={{ color: 'var(--gold)' }}>{cat.totalRevenue.toFixed(2)}</span>
-                    </div>
+              {/* Summary Financial Footer */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '20px 24px', background: 'var(--black-hover)', borderTop: '1px solid var(--black-border)' }}>
+                <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    <span>Sub Total:</span>
+                    <b style={{ fontVariantNumeric: 'tabular-nums' }}>{report.subTotal.toFixed(2)} ETB</b>
                   </div>
-                ))}
-
-                <div className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--gold-dark)', marginTop: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      <span>Sub Total</span>
-                      <span>{report.subTotal.toFixed(2)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      <span>Discount</span>
-                      <span>{report.discount.toFixed(2)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', borderTop: '1px solid var(--black-border)', paddingTop: '10px' }}>
-                      <span>Grand Total</span>
-                      <span style={{ color: 'var(--gold)' }}>{report.grandTotal.toFixed(2)}</span>
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    <span>Discount:</span>
+                    <b style={{ fontVariantNumeric: 'tabular-nums' }}>{report.discount.toFixed(2)} ETB</b>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', borderTop: '2px solid var(--black-border)', paddingTop: '8px' }}>
+                    <span>Grand Total:</span>
+                    <span style={{ color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{report.grandTotal.toFixed(2)} ETB</span>
                   </div>
                 </div>
               </div>
             </div>
-          )
-        }
+          </div>
+        )
+      })()}
 
-        if (activeTab === 'daily') {
-          return (
-            <>
-              {/* Desktop Table View */}
-              <div className="card desktop-only-table" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--black-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)', width: '100%' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* ============================================================ */}
+      {/* 9. TAB 5: TRANSACTION HISTORY LEDGER                         */}
+      {/* ============================================================ */}
+      {activeTab === 'history' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Transaction Ledger
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Chronological log of customer payments and order settlements
+            </p>
+          </div>
+
+          <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time & Date</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Table</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Staff</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Items</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Method</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                        No transactions recorded.
+                      </td>
+                    </tr>
+                  ) : data.transactions.map((tx, idx) => (
+                    <tr key={tx.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                      <td style={{ padding: '12px 18px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {new Date(tx.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ padding: '12px 18px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                        Table {tx.table}
+                      </td>
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{tx.waiter}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Cashier: {tx.cashier}</div>
+                      </td>
+                      <td style={{ padding: '12px 18px', color: 'var(--text-secondary)', maxWidth: '280px', lineHeight: 1.4 }}>
+                        {tx.items}
+                      </td>
+                      <td style={{ padding: '12px 18px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: tx.method === 'Cash' ? 'rgba(5,150,105,0.1)' : 'rgba(37,99,235,0.1)', color: tx.method === 'Cash' ? '#059669' : '#2563EB' }}>
+                          {tx.method}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatMoney(tx.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 10. TAB 6: BEST SELLERS RANKING                              */}
+      {/* ============================================================ */}
+      {activeTab === 'best-sellers' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Top Selling Articles
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Popularity rank, revenue contribution, and unit margins
+            </p>
+          </div>
+
+          <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'center', width: '60px', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Rank</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Item Name</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Units Sold</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Revenue</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Unit Cost</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profit</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Margin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.bestSelling.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                        No items sold during this period.
+                      </td>
+                    </tr>
+                  ) : data.bestSelling.map((item, idx) => {
+                    const margin = item.profitMargin ?? 0
+                    const marginColor = margin >= 50 ? '#059669' : margin >= 25 ? '#D97706' : '#DC2626'
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                        <td style={{ padding: '12px 18px', textAlign: 'center' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            background: idx < 3 ? 'var(--gold)' : 'var(--black-hover)',
+                            color: idx < 3 ? '#FFFFFF' : 'var(--text-secondary)'
+                          }}>
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                          {item.name}
+                        </td>
+                        <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>{item.category}</td>
+                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontVariantNumeric: 'tabular-nums' }}>{item.quantity}</td>
+                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.revenue)}</td>
+                        <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {item.costPrice ? formatMoney(item.costPrice) : '0.00'}
+                        </td>
+                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: (item.profit ?? 0) >= 0 ? '#059669' : '#DC2626', fontVariantNumeric: 'tabular-nums' }}>
+                          {item.profit !== undefined ? formatMoney(item.profit) : '-'}
+                        </td>
+                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: marginColor }}>
+                          {item.profitMargin !== undefined ? `${item.profitMargin.toFixed(1)}%` : '-'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 11. TAB 7: CANCELLATIONS & VOIDS                             */}
+      {/* ============================================================ */}
+      {activeTab === 'cancellations' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Order Cancellations & Voids
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Supervisor authorizations and cancellation rationale
+            </p>
+          </div>
+
+          <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Item Cancelled</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Table & Waiter</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Reason</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Authorized By</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.cancellations.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                        <CheckCircle2 size={24} style={{ color: 'var(--success)', margin: '0 auto 8px auto', display: 'block' }} />
+                        No cancellations recorded during this period.
+                      </td>
+                    </tr>
+                  ) : data.cancellations.map(c => (
+                    <tr key={c.id} style={{ borderBottom: '1px solid var(--black-border)' }}>
+                      <td style={{ padding: '12px 18px', fontWeight: '600', color: '#DC2626' }}>
+                        {c.orderItem.quantity}x {c.orderItem.menuItem.name}
+                      </td>
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Table {c.orderItem.order.table.number}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Waiter: {c.orderItem.order.waiter.fullName}</div>
+                      </td>
+                      <td style={{ padding: '12px 18px', fontStyle: 'italic', color: 'var(--text-secondary)' }}>
+                        "{c.reason}"
+                      </td>
+                      <td style={{ padding: '12px 18px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '4px', background: 'var(--black-hover)', color: 'var(--text-primary)' }}>
+                          {c.manager.fullName}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {new Date(c.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 12. TAB 8: ASSET VALUATION & INVENTORY                       */}
+      {/* ============================================================ */}
+      {activeTab === 'inventory' && (() => {
+        const val = data.inventoryValuation || { totalValue: 0, ingredientValue: 0, retailValue: 0 }
+        const allIngs = data.ingredients || []
+        const allItems = data.inventory || []
+        const lowStockList = data.lowStock || []
+
+        const filteredIngs = allIngs.filter(i => 
+          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.unit && i.unit.toLowerCase().includes(invSearch.toLowerCase()))
+        )
+        const filteredItems = allItems.filter(i =>
+          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.category?.name && i.category.name.toLowerCase().includes(invSearch.toLowerCase()))
+        )
+        const filteredLowStock = lowStockList.filter(i =>
+          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase())
+        )
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {/* Header */}
+            <div>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                Inventory Assets & Stock Valuation
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+                Store ingredients, prepared recipe items, retail goods, and reorder warnings
+              </p>
+            </div>
+
+            {/* Sub-navigation pill track + Search */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setInvSubTab('ingredients')}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: invSubTab === 'ingredients' ? '700' : '500',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: invSubTab === 'ingredients' ? '#0F172A' : 'var(--black-hover)',
+                    color: invSubTab === 'ingredients' ? '#FFFFFF' : 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Store Ingredients ({allIngs.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvSubTab('retail')}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: invSubTab === 'retail' ? '700' : '500',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: invSubTab === 'retail' ? '#0F172A' : 'var(--black-hover)',
+                    color: invSubTab === 'retail' ? '#FFFFFF' : 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Menu & Retail Items ({allItems.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvSubTab('lowstock')}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: invSubTab === 'lowstock' ? '700' : '500',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: invSubTab === 'lowstock' ? '#DC2626' : 'var(--black-hover)',
+                    color: invSubTab === 'lowstock' ? '#FFFFFF' : (lowStockList.length > 0 ? '#DC2626' : 'var(--text-secondary)'),
+                    cursor: 'pointer'
+                  }}
+                >
+                  Low Stock Alerts ({lowStockList.length})
+                </button>
+              </div>
+
+              <div style={{ position: 'relative', width: '240px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search inventory..."
+                  value={invSearch}
+                  onChange={e => setInvSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 12px 6px 30px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--black-border)',
+                    outline: 'none',
+                    background: 'var(--black-hover)'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Inventory Tables */}
+            <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                {invSubTab === 'ingredients' && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
-                      <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--black-border)' }}>
-                        {['Date', 'Total Orders', 'Revenue (ETB)', 'Avg Order Value', ''].map(h => (
-                          <th key={h} style={{ padding: '16px 20px', textAlign: 'left', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>{h}</th>
-                        ))}
+                      <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                        <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ingredient</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>In Store Qty</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Unit</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cost / Unit</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Asset Value</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'center', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.dailySales.length === 0 ? (
-                        <tr><td colSpan={5} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No daily sales data available.</td></tr>
-                      ) : data.dailySales.map((day) => (
-                        <React.Fragment key={day.date}>
-                          <tr
-                            className="table-row-hover"
-                            style={{ borderBottom: selectedDay === day.date ? 'none' : '1px solid var(--black-border)', cursor: 'pointer', background: selectedDay === day.date ? 'rgba(212,175,55,0.06)' : 'transparent' }}
-                            onClick={() => setSelectedDay(selectedDay === day.date ? null : day.date)}
-                          >
-                            <td style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                              <span style={{ marginRight: '8px', fontSize: '12px', color: 'var(--gold)' }}>{selectedDay === day.date ? '▼' : '▶'}</span>
-                              {new Date(day.date).toLocaleDateString('en-ET', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      {filteredIngs.length === 0 ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>No ingredients found.</td></tr>
+                      ) : filteredIngs.map((ing, idx) => {
+                        const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
+                        return (
+                          <tr key={ing.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                            <td style={{ padding: '12px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>{ing.name}</td>
+                            <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: isLow ? '#DC2626' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{ing.quantity}</td>
+                            <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>{ing.unit}</td>
+                            <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                              {ing.costPerUnit > 0 ? formatMoney(ing.costPerUnit) : '0.00 ETB'}
                             </td>
-                            <td style={{ padding: '16px 20px' }}><span className="badge badge-outline">{day.orders}</span></td>
-                            <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700', fontSize: '15px' }}>{formatMoney(day.revenue)}</td>
-                            <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{day.orders > 0 ? formatMoney(day.revenue / day.orders) : '-'}</td>
-                            <td style={{ padding: '16px 20px', fontSize: '12px', color: 'var(--text-muted)' }}>Click to expand</td>
+                            <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>
+                              {formatMoney(ing.totalValue || 0)}
+                            </td>
+                            <td style={{ padding: '12px 18px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: isLow ? 'rgba(220,38,38,0.1)' : 'rgba(5,150,105,0.1)', color: isLow ? '#DC2626' : '#059669' }}>
+                                {isLow ? 'LOW STOCK' : 'OK'}
+                              </span>
+                            </td>
                           </tr>
-                          {selectedDay === day.date && (
-                            <tr key={day.date + '-detail'}>
-                              <td colSpan={5} style={{ padding: '0', borderBottom: '1px solid var(--black-border)', background: 'rgba(212,175,55,0.03)' }}>
-                                <div style={{ padding: '20px 32px 24px' }}>
-                                  <div style={{ fontSize: '13px', color: 'var(--gold)', fontWeight: '600', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                                    📋 Breakdown for {new Date(day.date).toLocaleDateString('en-ET', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                  </div>
-                                  {day.categories.length === 0 ? (
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No item details available.</div>
-                                  ) : day.categories.map(cat => {
-                                    const catTotalQty = cat.items.reduce((s, i) => s + i.quantity, 0)
-                                    const catTotalRev = cat.items.reduce((s, i) => s + i.revenue, 0)
-                                    return (
-                                      <div key={cat.categoryName} style={{ marginBottom: '20px' }}>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid var(--black-border)' }}>
-                                          {cat.categoryName}
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0' }}>
-                                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '4px 8px', fontWeight: '600' }}>ITEM</div>
-                                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '4px 16px', fontWeight: '600', textAlign: 'center' }}>QTY</div>
-                                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '4px 8px', fontWeight: '600', textAlign: 'right' }}>REVENUE</div>
-                                          {cat.items.map(item => (
-                                            <React.Fragment key={item.name}>
-                                              <div style={{ padding: '6px 8px', fontSize: '14px', color: 'var(--text-primary)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>{item.name}</div>
-                                              <div style={{ padding: '6px 16px', fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.03)' }}>{item.quantity}</div>
-                                              <div style={{ padding: '6px 8px', fontSize: '14px', color: 'var(--gold)', fontWeight: '600', textAlign: 'right', borderTop: '1px solid rgba(255,255,255,0.03)' }}>{formatMoney(item.revenue)}</div>
-                                            </React.Fragment>
-                                          ))}
-                                          <div style={{ padding: '8px 8px 4px', fontSize: '13px', fontWeight: '700', color: 'var(--text-secondary)', borderTop: '1px solid var(--black-border)' }}>Subtotal</div>
-                                          <div style={{ padding: '8px 16px 4px', fontSize: '13px', fontWeight: '700', color: 'white', textAlign: 'center', borderTop: '1px solid var(--black-border)' }}>{catTotalQty}</div>
-                                          <div style={{ padding: '8px 8px 4px', fontSize: '13px', fontWeight: '700', color: 'white', textAlign: 'right', borderTop: '1px solid var(--black-border)' }}>{formatMoney(catTotalRev)}</div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--black-border)', display: 'flex', justifyContent: 'flex-end', gap: '32px' }}>
-                                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total Orders: <b style={{ color: 'var(--text-primary)' }}>{day.orders}</b></span>
-                                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total Revenue: <b style={{ color: 'var(--gold)', fontSize: '15px' }}>{formatMoney(day.revenue)}</b></span>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+
+                {invSubTab === 'retail' && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                        <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Article Name</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category / Type</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Store Stock</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Bar Stock</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cost Price</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Retail Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredItems.length === 0 ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>No articles found.</td></tr>
+                      ) : filteredItems.map((item, idx) => (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                          <td style={{ padding: '12px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>{item.name}</td>
+                          <td style={{ padding: '12px 18px', color: 'var(--text-muted)' }}>
+                            {item.category?.name || 'Uncategorized'} {item.isRecipe ? '· Recipe' : '· Retail'}
+                          </td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.isRecipe ? '—' : item.stockQuantity}
+                          </td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.isRecipe ? '—' : (item.barQuantity ?? 0)}
+                          </td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.isRecipe ? (item.recipeCost ? formatMoney(item.recipeCost) : '0.00') : formatMoney(item.costPrice || 0)}
+                          </td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatMoney(item.price)}
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </div>
+                )}
 
-              {/* Mobile Card List View */}
-              <div className="mobile-only" style={{ width: '100%' }}>
-                {data.dailySales.length === 0 ? (
-                  <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No daily sales data available.</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {data.dailySales.map((day) => {
-                      const isExpanded = selectedDay === day.date
-                      return (
-                        <div
-                          key={day.date}
-                          className="card"
-                          style={{
-                            background: 'var(--black-card)',
-                            border: isExpanded ? '1px solid var(--gold)' : '1px solid var(--black-border)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '12px'
-                          }}
-                          onClick={() => setSelectedDay(isExpanded ? null : day.date)}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: '700', fontSize: '14px', color: isExpanded ? 'var(--gold)' : 'var(--text-primary)' }}>
-                              {new Date(day.date).toLocaleDateString('en-ET', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {invSubTab === 'lowstock' && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                        <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Item Name</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Current Stock</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Threshold</th>
+                        <th style={{ padding: '12px 18px', textAlign: 'center', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Alert</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredLowStock.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                            <CheckCircle2 size={24} style={{ color: 'var(--success)', margin: '0 auto 8px auto', display: 'block' }} />
+                            All stock items are comfortably above threshold.
+                          </td>
+                        </tr>
+                      ) : filteredLowStock.map(item => (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: 'rgba(239,68,68,0.02)' }}>
+                          <td style={{ padding: '12px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>{item.name}</td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '800', color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{item.stockQuantity}</td>
+                          <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{item.lowStockThreshold}</td>
+                          <td style={{ padding: '12px 18px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: '#DC2626', background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                              REORDER
                             </span>
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{isExpanded ? '▼ Collapse' : '▶ Expand'}</span>
-                          </div>
-                          
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                            <div>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '6px' }}>Orders:</span>
-                              <span className="badge badge-outline" style={{ fontSize: '11px', padding: '2px 8px' }}>{day.orders}</span>
-                            </div>
-                            <div style={{ color: 'var(--gold)', fontWeight: '700', fontSize: '16px' }}>{formatMoney(day.revenue)}</div>
-                          </div>
-                          
-                          {day.orders > 0 && (
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              Avg Order Value: <b>{formatMoney(day.revenue / day.orders)}</b>
-                            </div>
-                          )}
-
-                          {isExpanded && (
-                            <div
-                              style={{
-                                borderTop: '1px solid var(--black-border)',
-                                paddingTop: '12px',
-                                marginTop: '4px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '12px'
-                              }}
-                              onClick={e => e.stopPropagation()}
-                            >
-                              <div style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                Item Breakdown
-                              </div>
-                              {day.categories.length === 0 ? (
-                                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No item details available.</div>
-                              ) : (
-                                day.categories.map(cat => {
-                                  const catTotalQty = cat.items.reduce((s, i) => s + i.quantity, 0)
-                                  const catTotalRev = cat.items.reduce((s, i) => s + i.revenue, 0)
-                                  return (
-                                    <div key={cat.categoryName} style={{ background: 'var(--black-hover)', borderRadius: '8px', padding: '10px', border: '1px solid var(--black-border)' }}>
-                                      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', borderBottom: '1px solid var(--black-border)', paddingBottom: '4px', marginBottom: '8px' }}>
-                                        {cat.categoryName}
-                                      </div>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {cat.items.map(item => (
-                                          <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                            <span style={{ color: 'var(--text-primary)' }}>{item.name} <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>×{item.quantity}</span></span>
-                                            <span style={{ color: 'var(--gold)', fontWeight: '500' }}>{formatMoney(item.revenue)}</span>
-                                          </div>
-                                        ))}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', borderTop: '1px dashed var(--black-border)', paddingTop: '4px', marginTop: '4px' }}>
-                                          <span>Total ({catTotalQty})</span>
-                                          <span>{formatMoney(catTotalRev)}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )
-                                })
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
-            </>
-          )
-        }
-
-        if (activeTab === 'history') return renderResponsiveTable(
-          ['Date & Time', 'Table', 'Served By', 'Items Ordered', 'Method', 'Total Paid'],
-          data.transactions,
-          (tx) => (
-            <tr key={tx.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-              <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{new Date(tx.date).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-              <td style={{ padding: '16px 20px', fontWeight: '700' }}>Table {tx.table}</td>
-              <td style={{ padding: '16px 20px' }}>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>{tx.waiter}</div>
-                <div style={{ fontSize: '11px', color: 'var(--gold)' }}>Cashier: {tx.cashier}</div>
-              </td>
-              <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '250px', lineHeight: '1.5' }}>
-                {tx.items.split(', ').map((it, idx) => <div key={idx}>• {it}</div>)}
-              </td>
-              <td style={{ padding: '16px 20px' }}><span className={`badge ${tx.method === 'Cash' ? 'badge-success' : 'badge-occupied'}`}>{tx.method}</span></td>
-              <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700', fontSize: '15px' }}>{formatMoney(tx.amount)}</td>
-            </tr>
-          ),
-          (tx) => (
-            <div key={tx.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: '700', fontSize: '14px' }}>Table {tx.table}</span>
-                <span className={`badge ${tx.method === 'Cash' ? 'badge-success' : 'badge-occupied'}`} style={{ fontSize: '10px' }}>{tx.method}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  {new Date(tx.date).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
-                </div>
-                <div style={{ color: 'var(--gold)', fontWeight: '700', fontSize: '15px' }}>{formatMoney(tx.amount)}</div>
-              </div>
-              <div style={{ fontSize: '13px', borderTop: '1px solid var(--black-border)', paddingTop: '8px' }}>
-                <div style={{ color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '4px' }}>Waiter: {tx.waiter} <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: 'normal' }}>(Cashier: {tx.cashier})</span></div>
-                <div style={{ color: 'var(--text-primary)', marginTop: '6px' }}>
-                  {tx.items.split(', ').map((it, idx) => <div key={idx} style={{ fontSize: '12px', marginBottom: '2px' }}>• {it}</div>)}
-                </div>
-              </div>
             </div>
-          ),
-          'No transactions found.'
+          </div>
         )
-
-        if (activeTab === 'best-sellers') return renderResponsiveTable(
-          ['Rank', 'Item Name', 'Category', 'Units Sold', 'Revenue', 'Unit Cost', 'Gross Profit', 'Margin %'],
-          data.bestSelling,
-          (item, i) => {
-            const hasCost = item.costPrice !== undefined && item.costPrice > 0
-            const margin = item.profitMargin ?? 0
-            const marginColor = margin >= 50 ? 'var(--success-light)' : margin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
-
-            return (
-              <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-                <td style={{ padding: '16px 20px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px' }}>
-                    {i + 1}
-                  </div>
-                </td>
-                <td style={{ padding: '16px 20px', fontWeight: '600', fontSize: '15px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <span>{item.name}</span>
-                    {item.isRecipe && (
-                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.3)' }}>
-                        🍹 Recipe
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{item.category}</td>
-                <td style={{ padding: '16px 20px', fontWeight: '700', color: 'var(--text-primary)' }}>{item.quantity}</td>
-                <td style={{ padding: '16px 20px', color: 'var(--gold)', fontWeight: '700' }}>{formatMoney(item.revenue)}</td>
-                <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {item.isRecipe ? (
-                    <span style={{ color: item.costPrice ? 'var(--text-primary)' : 'var(--warning-light)', fontWeight: '500' }}>
-                      {item.costPrice ? formatMoney(item.costPrice) : '⚠️ 0.00'}
-                    </span>
-                  ) : hasCost ? formatMoney(item.costPrice || 0) : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
-                </td>
-                <td style={{ padding: '16px 20px', fontWeight: '700', color: (item.profit ?? 0) >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                  {item.profit !== undefined ? formatMoney(item.profit) : '-'}
-                </td>
-                <td style={{ padding: '16px 20px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '3px 8px', borderRadius: '10px' }}>
-                    {item.profitMargin !== undefined ? `${item.profitMargin.toFixed(1)}%` : '-'}
-                  </span>
-                </td>
-              </tr>
-            )
-          },
-          (item, i) => {
-            const margin = item.profitMargin ?? 0
-            const marginColor = margin >= 50 ? 'var(--success-light)' : margin >= 25 ? 'var(--warning-light)' : 'var(--danger-light)'
-
-            return (
-              <div key={i} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--black-hover)', color: i < 3 ? 'var(--black)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', flexShrink: 0 }}>
-                    {i + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span>{item.name}</span>
-                      {item.isRecipe && (
-                        <span style={{ fontSize: '9px', fontWeight: '700', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)' }}>
-                          🍹 Recipe
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{item.category}</div>
-                  </div>
-                  {item.profitMargin !== undefined && (
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: marginColor, background: `${marginColor}18`, padding: '2px 7px', borderRadius: '8px' }}>
-                      {item.profitMargin.toFixed(1)}%
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '10px', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{item.quantity} sold · Rev: <b style={{ color: 'var(--gold)' }}>{formatMoney(item.revenue)}</b></span>
-                  {item.profit !== undefined && (
-                    <span style={{ color: 'var(--text-secondary)' }}>Profit: <b style={{ color: item.profit >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>{formatMoney(item.profit)}</b></span>
-                  )}
-                </div>
-              </div>
-            )
-          },
-          'No items sold yet.'
-        )
-
-
-        if (activeTab === 'cancellations') return renderResponsiveTable(
-          ['Item Cancelled', 'Order Info', 'Reason', 'Authorized By', 'Date & Time'],
-          data.cancellations,
-          (c) => (
-            <tr key={c.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-              <td style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--danger-light)' }}>{c.orderItem.quantity}x {c.orderItem.menuItem.name}</td>
-              <td style={{ padding: '16px 20px', fontSize: '13px' }}>
-                <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Table {c.orderItem.order.table.number}</div>
-                <div style={{ color: 'var(--text-secondary)' }}>Waiter: {c.orderItem.order.waiter.fullName}</div>
-              </td>
-              <td style={{ padding: '16px 20px', fontSize: '13px', fontStyle: 'italic', color: 'var(--text-muted)' }}>"{c.reason}"</td>
-              <td style={{ padding: '16px 20px' }}><span className="badge badge-waiting">{c.manager.fullName}</span></td>
-              <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>{new Date(c.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-            </tr>
-          ),
-          (c) => (
-            <div key={c.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ fontWeight: '600', color: 'var(--danger-light)', fontSize: '14px' }}>{c.orderItem.quantity}x {c.orderItem.menuItem.name}</div>
-                <span className="badge badge-waiting" style={{ fontSize: '9px', padding: '2px 6px' }}>{c.manager.fullName}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>Table {c.orderItem.order.table.number} · Waiter: {c.orderItem.order.waiter.fullName}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{new Date(c.createdAt).toLocaleDateString('en-ET', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              <div style={{ background: 'rgba(230,57,70,0.05)', borderLeft: '3px solid var(--danger-light)', padding: '8px 12px', borderRadius: '4px', fontStyle: 'italic', fontSize: '12px', color: 'var(--text-primary)', marginTop: '4px' }}>
-                "{c.reason}"
-              </div>
-            </div>
-          ),
-          'No cancellations recorded.'
-        )
-
-        if (activeTab === 'inventory') {
-          const val = data.inventoryValuation || {
-            totalValue: 0,
-            ingredientValue: 0,
-            retailValue: 0,
-          }
-          const allIngs = data.ingredients || []
-          const allItems = data.inventory || []
-          const lowStockList = data.lowStock || []
-
-          const filteredIngs = allIngs.filter(i => 
-            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.unit && i.unit.toLowerCase().includes(invSearch.toLowerCase()))
-          )
-
-          const filteredItems = allItems.filter(i =>
-            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.category?.name && i.category.name.toLowerCase().includes(invSearch.toLowerCase()))
-          )
-
-          const filteredLowStock = lowStockList.filter(i =>
-            !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase())
-          )
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {/* Header Title */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <h2 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Boxes size={22} color="var(--gold)" /> Inventory Assets & Stock Valuation
-                  </h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                    Valuation of raw store ingredients, prepared recipe items, retail inventory, and low stock warnings
-                  </p>
-                </div>
-              </div>
-
-              {/* 4 Asset Valuation KPI Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                <div className="card" style={{ background: 'linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%)', border: '1px solid #FEF08A', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Total Inventory Assets</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', margin: '6px 0 2px' }}>{formatMoney(val.totalValue)}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ingredients + Retail Stock</div>
-                </div>
-
-                <div className="card" style={{ background: 'linear-gradient(135deg, #F0F9FF 0%, #FFFFFF 100%)', border: '1px solid #BAE6FD', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-                  <div style={{ fontSize: '11px', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Raw Store Ingredients</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284C7', margin: '6px 0 2px' }}>{formatMoney(val.ingredientValue)}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{allIngs.length} raw ingredients in stock</div>
-                </div>
-
-                <div className="card" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%)', border: '1px solid #A7F3D0', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Retail Products Stock</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--success)', margin: '6px 0 2px' }}>{formatMoney(val.retailValue)}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stand-alone goods (bar + store)</div>
-                </div>
-
-                <div className="card" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FFFFFF 100%)', border: '1px solid #FECACA', padding: '16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '700' }}>Low Stock Items</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: lowStockList.length > 0 ? 'var(--danger)' : 'var(--text-primary)', margin: '6px 0 2px' }}>{lowStockList.length}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Items needing reorder</div>
-                </div>
-              </div>
-
-              {/* Sub-tab selection and search controls */}
-              <div className="card" style={{ padding: '12px 16px', background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    className={`btn btn-sm ${invSubTab === 'ingredients' ? 'btn-gold' : 'btn-ghost'}`}
-                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
-                    onClick={() => setInvSubTab('ingredients')}
-                  >
-                    🧪 Store Ingredients ({allIngs.length})
-                  </button>
-                  <button
-                    className={`btn btn-sm ${invSubTab === 'retail' ? 'btn-gold' : 'btn-ghost'}`}
-                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
-                    onClick={() => setInvSubTab('retail')}
-                  >
-                    🍽️ Menu & Retail Items ({allItems.length})
-                  </button>
-                  <button
-                    className={`btn btn-sm ${invSubTab === 'lowstock' ? 'btn-gold' : 'btn-ghost'}`}
-                    style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '6px' }}
-                    onClick={() => setInvSubTab('lowstock')}
-                  >
-                    ⚠️ Low Stock Alerts ({lowStockList.length})
-                  </button>
-                </div>
-
-                <div style={{ position: 'relative', flex: '1', minWidth: '200px', maxWidth: '340px' }}>
-                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="Search stock..."
-                    value={invSearch}
-                    onChange={e => setInvSearch(e.target.value)}
-                    style={{ paddingLeft: '34px', width: '100%', fontSize: '12px' }}
-                  />
-                </div>
-              </div>
-
-              {/* Sub-tab Content: 1) Store Ingredients */}
-              {invSubTab === 'ingredients' && renderResponsiveTable(
-                ['Ingredient', 'In-Store Qty', 'Unit', 'Cost / Unit', 'Total Asset Value', 'Alert Threshold', 'Status'],
-                filteredIngs,
-                (ing) => {
-                  const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
-                  return (
-                    <tr key={ing.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-                      <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-primary)' }}>{ing.name}</td>
-                      <td style={{ padding: '14px 20px', fontWeight: '700', color: isLow ? 'var(--danger-light)' : 'var(--text-primary)' }}>
-                        {ing.quantity}
-                      </td>
-                      <td style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>{ing.unit}</td>
-                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        {ing.costPerUnit > 0 ? `${formatMoney(ing.costPerUnit)} / ${ing.unit}` : <span style={{ color: 'var(--warning-light)', fontSize: '11px' }}>⚠️ 0.00</span>}
-                      </td>
-                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--gold)', fontSize: '14px' }}>
-                        {formatMoney(ing.totalValue || 0)}
-                      </td>
-                      <td style={{ padding: '14px 20px', color: 'var(--text-muted)', fontSize: '13px' }}>{ing.minAlert || 5} {ing.unit}</td>
-                      <td style={{ padding: '14px 20px' }}>
-                        {isLow ? (
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger-light)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                            ⚠️ LOW
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', color: 'var(--success-light)', border: '1px solid rgba(16,185,129,0.3)' }}>
-                            ✅ OK
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                },
-                (ing) => {
-                  const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
-                  return (
-                    <div key={ing.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '15px' }}>{ing.name}</span>
-                        {isLow ? (
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger-light)' }}>
-                            ⚠️ LOW
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(16,185,129,0.15)', color: 'var(--success-light)' }}>
-                            ✅ OK
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>In Store</div>
-                          <div style={{ fontWeight: '700', marginTop: '2px', color: isLow ? 'var(--danger-light)' : 'inherit' }}>{ing.quantity} {ing.unit}</div>
-                        </div>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Cost / Unit</div>
-                          <div style={{ fontWeight: '600', marginTop: '2px' }}>{ing.costPerUnit > 0 ? formatMoney(ing.costPerUnit) : '0 ETB'}</div>
-                        </div>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Asset Value</div>
-                          <div style={{ fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(ing.totalValue || 0)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                },
-                'No ingredients found in store.'
-              )}
-
-              {/* Sub-tab Content: 2) Menu & Retail Items */}
-              {invSubTab === 'retail' && renderResponsiveTable(
-                ['Item & Category', 'Type & Recipe Status', 'Store Stock', 'Bar Stock', 'Unit Cost / Recipe', 'Selling Price'],
-                filteredItems,
-                (item) => (
-                  <tr key={item.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-                    <td style={{ padding: '14px 20px' }}>
-                      <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category?.name || 'Uncategorized'}</div>
-                    </td>
-                    <td style={{ padding: '14px 20px' }}>
-                      {item.isRecipe ? (
-                        <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.35)' }}>
-                          🍹 Made from Ingredients (Prepared)
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
-                          📦 Direct Retail Stock
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: item.isRecipe ? 'var(--text-muted)' : (item.stockQuantity <= item.lowStockThreshold ? 'var(--danger-light)' : 'var(--text-primary)') }}>
-                      {item.isRecipe ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '12px' }}>0 (Made on demand)</span> : item.stockQuantity}
-                    </td>
-                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>
-                      {item.isRecipe ? '-' : (item.barQuantity ?? 0)}
-                    </td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px' }}>
-                      {item.isRecipe ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <b style={{ color: item.recipeCost ? 'var(--gold)' : 'var(--warning-light)' }}>{formatMoney(item.recipeCost || 0)}</b>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Recipe dynamic cost</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: item.costPrice > 0 ? 'var(--text-secondary)' : 'var(--warning-light)' }}>
-                          {item.costPrice > 0 ? formatMoney(item.costPrice) : '⚠️ 0.00'}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '14px 20px', color: 'var(--gold)', fontWeight: '600' }}>
-                      {formatMoney(item.price)}
-                    </td>
-                  </tr>
-                ),
-                (item) => (
-                  <div key={item.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ fontWeight: '700', fontSize: '15px' }}>{item.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.category?.name || 'Uncategorized'}</div>
-                      </div>
-                      {item.isRecipe ? (
-                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(212,175,55,0.18)', color: 'var(--gold)' }}>
-                          🍹 Recipe Item
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>
-                          📦 Retail Stock
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
-                      <div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Store / Bar Qty</div>
-                        <div style={{ fontWeight: '700', marginTop: '2px' }}>
-                          {item.isRecipe ? '0 (Demand)' : `${item.stockQuantity} / ${item.barQuantity ?? 0}`}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Cost / Unit</div>
-                        <div style={{ fontWeight: '600', marginTop: '2px', color: item.isRecipe ? 'var(--gold)' : 'inherit' }}>
-                          {item.isRecipe ? (item.recipeCost ? formatMoney(item.recipeCost) : '0 ETB') : formatMoney(item.costPrice || 0)}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Price</div>
-                        <div style={{ fontWeight: '700', color: 'var(--gold)', marginTop: '2px' }}>{formatMoney(item.price)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ),
-                'No menu items found.'
-              )}
-
-              {/* Sub-tab Content: 3) Low Stock Alerts */}
-              {invSubTab === 'lowstock' && renderResponsiveTable(
-                ['Item Name', 'Current Stock', 'Alert Threshold', 'Status'],
-                filteredLowStock,
-                (item) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: 'rgba(230,57,70,0.03)' }}>
-                    <td style={{ padding: '16px 20px', fontWeight: '600' }}>{item.name}</td>
-                    <td style={{ padding: '16px 20px', color: 'var(--danger-light)', fontWeight: '700', fontSize: '16px' }}>{item.stockQuantity}</td>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{item.lowStockThreshold}</td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '4px 10px', borderRadius: '12px', fontWeight: '700', letterSpacing: '1px' }}>
-                        <AlertTriangle size={12}/> LOW STOCK
-                      </span>
-                    </td>
-                  </tr>
-                ),
-                (item) => (
-                  <div key={item.id} className="card" style={{ background: 'rgba(230,57,70,0.02)', border: '1px solid rgba(230,57,70,0.2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: '600', fontSize: '14px' }}>{item.name}</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--danger-light)', background: 'rgba(230,57,70,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: '700' }}>
-                        <AlertTriangle size={10}/> LOW STOCK
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)', borderTop: '1px solid rgba(230,57,70,0.05)', paddingTop: '8px' }}>
-                      <span>Current Stock: <b style={{ color: 'var(--danger-light)', fontSize: '14px' }}>{item.stockQuantity}</b></span>
-                      <span>Alert Threshold: <b>{item.lowStockThreshold}</b></span>
-                    </div>
-                  </div>
-                ),
-                '✅ All items have sufficient stock.'
-              )}
-            </div>
-          )
-        }
-
-        if (activeTab === 'inventory-logs') return renderResponsiveTable(
-          ['Date & Time', 'Item Name', 'Source/Type', 'Action', 'Qty Changed', 'Prev Qty', 'New Qty', 'User'],
-          data.inventoryLogs || [],
-          (log) => (
-            <tr key={log.id} className="table-row-hover" style={{ borderBottom: '1px solid var(--black-border)' }}>
-              <td style={{ padding: '16px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
-              </td>
-              <td style={{ padding: '16px 20px', fontWeight: '700' }}>{log.itemName}</td>
-              <td style={{ padding: '16px 20px' }}>
-                <span className="badge badge-outline" style={{ fontSize: '11px' }}>{log.type}</span>
-              </td>
-              <td style={{ padding: '16px 20px' }}>
-                <span className={`badge ${
-                  log.action.startsWith('WASTE') ? 'badge-cancelled' :
-                  log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
-                  log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
-                }`}>
-                  {log.action}
-                </span>
-              </td>
-              <td style={{ padding: '16px 20px', fontWeight: '700', color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'var(--text-primary)' }}>
-                {log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}
-              </td>
-              <td style={{ padding: '16px 20px', color: 'var(--text-muted)' }}>{log.prevQty}</td>
-              <td style={{ padding: '16px 20px', fontWeight: '600' }}>{log.newQty}</td>
-              <td style={{ padding: '16px 20px', fontWeight: '600' }}>{log.userName}</td>
-            </tr>
-          ),
-          (log) => (
-            <div key={log.id} className="card" style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: '700', fontSize: '14px' }}>{log.itemName}</span>
-                <span className={`badge ${
-                  log.action.startsWith('WASTE') ? 'badge-cancelled' :
-                  log.action === 'ADD' || log.action === 'INITIAL' ? 'badge-free' : 
-                  log.action === 'TRANSFER' ? 'badge-occupied' : 'badge-open'
-                }`} style={{ fontSize: '10px' }}>{log.action}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>Type: <b>{log.type}</b></span>
-                <span>User: <b>{log.userName}</b></span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '8px', marginTop: '4px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {new Date(log.createdAt).toLocaleString('en-ET', { dateStyle: 'medium', timeStyle: 'short' })}
-                </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
-                  Qty: <b style={{ color: log.action.startsWith('WASTE') ? 'var(--danger-light)' : (log.action === 'ADD' || log.action === 'INITIAL') ? 'var(--success)' : 'inherit' }}>{log.action.startsWith('WASTE') ? `-${log.quantity}` : (log.action === 'ADD' || log.action === 'INITIAL') ? `+${log.quantity}` : log.quantity}</b> 
-                  <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '6px' }}>({log.prevQty} → {log.newQty})</span>
-                </div>
-              </div>
-            </div>
-          ),
-          'No inventory logs recorded.'
-        )
-
-        return null;
       })()}
 
-      <style dangerouslySetInnerHTML={{__html: `
-        .table-row-hover { transition: background 0.2s; }
-        .table-row-hover:hover { background: rgba(255,255,255,0.02); }
-      `}} />
+      {/* ============================================================ */}
+      {/* 13. TAB 9: INVENTORY AUDIT TRAIL                             */}
+      {/* ============================================================ */}
+      {activeTab === 'inventory-logs' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Inventory Control & Audit Trail
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Historical movements, intake additions, transfers, and spoilage records
+            </p>
+          </div>
+
+          <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Timestamp</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Article</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Source</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Action</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Delta</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Previous</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>New</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Operator</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.inventoryLogs || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                        No inventory audit logs found.
+                      </td>
+                    </tr>
+                  ) : (data.inventoryLogs || []).map((log, idx) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                      <td style={{ padding: '12px 18px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {new Date(log.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ padding: '12px 18px', fontWeight: '600', color: 'var(--text-primary)' }}>{log.itemName}</td>
+                      <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>{log.type}</td>
+                      <td style={{ padding: '12px 18px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: 'var(--black-hover)', color: 'var(--text-primary)' }}>
+                          {log.action}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '700', color: log.action.startsWith('WASTE') ? '#DC2626' : '#059669', fontVariantNumeric: 'tabular-nums' }}>
+                        {log.action.startsWith('WASTE') ? `-${log.quantity}` : `+${log.quantity}`}
+                      </td>
+                      <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{log.prevQty}</td>
+                      <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>{log.newQty}</td>
+                      <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>{log.userName}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
