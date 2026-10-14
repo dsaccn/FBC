@@ -698,6 +698,39 @@ export default function QRScannerPage() {
                     <b>Server Error:</b> {verifiedResult.errorMessage}
                   </div>
                 )}
+
+                {/* Direct link to official bank web receipt */}
+                {verifiedResult.reference && (
+                  <a
+                    href={
+                      verifiedResult.provider === 'TELEBIRR'
+                        ? `https://transactioninfo.ethiotelecom.et/receipt/${verifiedResult.reference}`
+                        : verifiedResult.reference.startsWith('v2-')
+                          ? `https://mbreciept.cbe.com.et/${verifiedResult.reference}`
+                          : `https://apps.cbe.com.et:100/?id=${verifiedResult.reference}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: verifiedResult.provider === 'TELEBIRR' ? '#67E8F9' : '#E9D5FF',
+                      textDecoration: 'none',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <ExternalLink size={13} />
+                    View Official {verifiedResult.provider} Slip in Browser
+                  </a>
+                )}
               </div>
             </div>
 

@@ -38,7 +38,47 @@ export function cleanReference(raw: string): string {
 }
 
 /**
- * Verify Telebirr receipt by transaction ID or URL
+ * Extract Telebirr transaction ID from plain text, URL, or Telebirr SuperApp EMVCo QR code
+ */
+export function extractTelebirrTransactionId(raw: string): string {
+  const clean = (raw || '').trim()
+  if (!clean) return ''
+
+  // 1. If it's a URL
+  const urlMatch = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
+  if (urlMatch) {
+    return urlMatch[1].toUpperCase()
+  }
+
+  // 2. If it's a Base64-encoded Telebirr SuperApp QR code
+  try {
+    const decoded = Buffer.from(clean, 'base64').toString('utf8')
+    const match = decoded.match(/000A([0-9a-fA-F]{20})/i)
+    if (match) {
+      const ascii = Buffer.from(match[1], 'hex').toString('utf8')
+      if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
+        return ascii.toUpperCase()
+      }
+    }
+  } catch {}
+
+  // 3. If it's directly the decoded EMVCo string
+  const directMatch = clean.match(/000A([0-9a-fA-F]{20})/i)
+  if (directMatch) {
+    try {
+      const ascii = Buffer.from(directMatch[1], 'hex').toString('utf8')
+      if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
+        return ascii.toUpperCase()
+      }
+    } catch {}
+  }
+
+  // 4. Default clean alphanumeric code
+  return clean.toUpperCase()
+}
+
+/**
+ * Verify Telebirr receipt by transaction ID, URL, or SuperApp QR code
  * Official endpoint: https://transactioninfo.ethiotelecom.et/receipt/{id}
  */
 export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedReceipt> {
@@ -54,17 +94,9 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
     }
   }
 
-  // Extract ID if full URL is passed
-  let transactionId = clean
-  let fetchUrl = clean
-  if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    fetchUrl = clean
-    const match = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
-    if (match) transactionId = match[1]
-  } else {
-    transactionId = clean.toUpperCase()
-    fetchUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionId}`
-  }
+  // Extract ID using helper (handles URLs, raw codes, and Base64 EMVCo QR codes)
+  const transactionId = extractTelebirrTransactionId(clean)
+  const fetchUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionId}`
 
   try {
     const res = await fetch(fetchUrl, {
@@ -72,7 +104,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(25000),
     })
 
     if (!res.ok) {
@@ -110,7 +142,8 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
     const receiverName = extractField(/Credited\s*Party\s*name[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
     const receiverPhone = extractField(/Credited\s*party\s*account\s*no[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
     const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i) || 'Completed'
-    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i) ||
+                      extractField(/Settled\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
     const rawDate = extractField(/Payment\s*date[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
 
     let parsedAmount: number | undefined
@@ -390,10 +423,14 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
     clean.startsWith('v2-') ||
     clean.includes('mbreciept')
 
+  const extractedTelebirrId = extractTelebirrTransactionId(clean)
   const isTelebirr =
     provider === 'TELEBIRR' ||
     clean.includes('ethiotelecom.et') ||
     clean.includes('telebirr') ||
+    clean.startsWith('ODAx') ||
+    clean.startsWith('8018') ||
+    (!isCbe && extractedTelebirrId !== clean && /^[A-Za-z0-9]{8,14}$/.test(extractedTelebirrId)) ||
     (!isCbe && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
 
   if (isCbe) {
