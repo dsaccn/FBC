@@ -88,4 +88,28 @@
       return origError.apply(console, arguments);
     };
   } catch (e) {}
+
+  // 5. Purge service worker and CacheStorage if accessing scanner or cloudflare tunnel
+  try {
+    if (
+      window.location.pathname.startsWith('/scanner') ||
+      window.location.hostname.indexOf('trycloudflare.com') !== -1
+    ) {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function (names) {
+          for (var j = 0; j < names.length; j++) {
+            caches.delete(names[j]);
+          }
+        });
+      }
+    }
+  } catch (e) {}
 })();
+

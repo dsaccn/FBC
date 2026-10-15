@@ -89,6 +89,24 @@ export default function QRScannerPage() {
     expectedAmountRef.current = expectedAmount
   }, [expectedAmount])
 
+  // Ensure scanner page never uses a stale service worker cache
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        for (const reg of regs) {
+          reg.unregister()
+        }
+      })
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          for (const name of names) {
+            caches.delete(name)
+          }
+        })
+      }
+    }
+  }, [])
+
   // Read URL query params on mount (?amount=450&provider=TELEBIRR)
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -342,30 +360,33 @@ export default function QRScannerPage() {
         verifyReference(decodedText, 'AUTO', undefined, expAmt)
       }
 
-      // Primary constraint: modern browser native facingMode
-      const cameraConstraint: any = { facingMode: facing }
+      const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      
+      // On mobile phones, prefer back camera (environment). On PC/laptop webcams (e.g. HP webcam), prefer user-facing.
+      const primaryTarget: any = isMobile ? { facingMode: facing } : { facingMode: facing === 'environment' ? 'user' : facing }
 
-      const startWithTimeout = (target: any) => {
+      const startWithTimeout = (target: any, timeoutMs = 25000) => {
         return Promise.race([
           html5QrCode.start(target, config, onScanSuccess, () => {}),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), 6500))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), timeoutMs))
         ])
       }
 
       try {
-        await startWithTimeout(cameraConstraint)
+        await startWithTimeout(primaryTarget, 20000)
       } catch (firstTryErr: any) {
-        console.warn('[Scanner] Direct facingMode failed, attempting camera enumeration fallback:', firstTryErr)
-        if (firstTryErr?.message === 'CAMERA_TIMEOUT') {
-          throw firstTryErr
-        }
+        console.warn('[Scanner] Primary camera start failed, attempting device enumeration fallback:', firstTryErr)
         try {
           const cameras = await Html5Qrcode.getCameras().catch(() => [])
           if (cameras && cameras.length > 0) {
-            const backCam = cameras.find((c: any) => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1]
-            await startWithTimeout(backCam.id)
+            const chosen = isMobile
+              ? (cameras.find((c: any) => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1])
+              : (cameras.find((c: any) => /front|user|integrated|wide vision/i.test(c.label)) || cameras[0])
+            await startWithTimeout(chosen.id, 15000)
           } else {
-            throw firstTryErr
+            // Last resort: try opposite facingMode
+            const opposite = facing === 'environment' ? 'user' : 'environment'
+            await startWithTimeout({ facingMode: opposite }, 10000)
           }
         } catch {
           throw firstTryErr
