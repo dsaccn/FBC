@@ -27,6 +27,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  allowedDevOrigins: [
+    '*.trycloudflare.com',
+    'trycloudflare.com',
+    'localhost:3000',
+    '127.0.0.1:3000',
+  ],
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
