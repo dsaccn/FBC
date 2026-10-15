@@ -18,15 +18,10 @@ import {
   History,
   CheckCircle2,
   XCircle,
-  Clock,
-  Sparkles,
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Zap,
-  Info,
-  Upload,
-  Image as ImageIcon
+  Zap
 } from 'lucide-react'
 
 interface VerifiedReceipt {
