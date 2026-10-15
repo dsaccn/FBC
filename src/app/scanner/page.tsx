@@ -83,6 +83,10 @@ export default function QRScannerPage() {
   const [fileError, setFileError] = useState<string | null>(null)
   const isStartingRef = useRef(false)
   const isStoppingRef = useRef(false)
+  const isVerifyingRef = useRef(false)
+  const scanLockRef = useRef(false)
+  const lastScannedTextRef = useRef<string | null>(null)
+  const lastScannedTimeRef = useRef<number>(0)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -177,6 +181,8 @@ export default function QRScannerPage() {
   ) => {
     const clean = codeOrUrl.trim()
     if (!clean) return
+    if (isVerifyingRef.current) return
+    isVerifyingRef.current = true
 
     setVerifying(true)
     setVerifiedResult(null)
@@ -248,6 +254,7 @@ export default function QRScannerPage() {
       triggerHaptic(false)
     } finally {
       setVerifying(false)
+      isVerifyingRef.current = false
     }
   }, [playChime, triggerHaptic])
 
@@ -259,6 +266,7 @@ export default function QRScannerPage() {
       if (html5QrCodeRef.current) {
         try {
           if (html5QrCodeRef.current.isScanning) {
+            try { html5QrCodeRef.current.pause(true) } catch {}
             await html5QrCodeRef.current.stop()
           }
           await html5QrCodeRef.current.clear()
@@ -267,6 +275,18 @@ export default function QRScannerPage() {
         }
         html5QrCodeRef.current = null
       }
+
+      // Hard stop any active media stream tracks so the camera hardware turns off immediately
+      try {
+        const container = document.getElementById(scannerContainerId)
+        const video = container?.querySelector('video') as HTMLVideoElement | null
+        if (video && video.srcObject) {
+          const stream = video.srcObject as MediaStream
+          stream.getTracks().forEach(t => t.stop())
+          video.srcObject = null
+        }
+      } catch {}
+
       if (mountedRef.current) {
         setCameraActive(false)
       }
@@ -279,6 +299,7 @@ export default function QRScannerPage() {
   const handleFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    scanLockRef.current = true
     setFileScanning(true)
     setFileError(null)
 
@@ -295,6 +316,7 @@ export default function QRScannerPage() {
     } catch (err: any) {
       console.warn('[Scanner] File scan failed:', err)
       setFileError('Could not detect a clear QR code in this photo. Please hold the phone closer to the QR code and try again, or enter the reference code manually.')
+      scanLockRef.current = false
     } finally {
       setFileScanning(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -355,7 +377,26 @@ export default function QRScannerPage() {
       }
 
       const onScanSuccess = async (decodedText: string) => {
+        const now = Date.now()
+        // Lock immediate duplicate frames (html5-qrcode processes at 12 FPS)
+        if (scanLockRef.current) return
+        if (lastScannedTextRef.current === decodedText && now - lastScannedTimeRef.current < 4000) return
+
+        scanLockRef.current = true
+        lastScannedTextRef.current = decodedText
+        lastScannedTimeRef.current = now
+
+        // 1. Freeze html5-qrcode video feed instantly
+        try {
+          if (html5QrCodeRef.current) {
+            try { html5QrCodeRef.current.pause(true) } catch {}
+          }
+        } catch {}
+
+        // 2. Stop camera stream completely so hardware turns off
         await stopScanner()
+
+        // 3. Trigger verification once
         const expAmt = expectedAmountRef.current ? parseFloat(expectedAmountRef.current) : undefined
         verifyReference(decodedText, 'AUTO', undefined, expAmt)
       }
@@ -457,6 +498,10 @@ export default function QRScannerPage() {
   }
 
   const resetForNextScan = () => {
+    scanLockRef.current = false
+    lastScannedTextRef.current = null
+    lastScannedTimeRef.current = 0
+    isVerifyingRef.current = false
     setVerifiedResult(null)
     setAmountMatches(null)
     setManualCode('')
@@ -571,7 +616,14 @@ export default function QRScannerPage() {
         }}>
           <button
             type="button"
-            onClick={() => { setMode('camera'); setVerifiedResult(null); }}
+            onClick={() => {
+              scanLockRef.current = false
+              lastScannedTextRef.current = null
+              lastScannedTimeRef.current = 0
+              isVerifyingRef.current = false
+              setMode('camera')
+              setVerifiedResult(null)
+            }}
             style={{
               padding: '11px 12px',
               fontSize: '13px',
