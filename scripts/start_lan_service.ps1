@@ -25,7 +25,7 @@ if (-not $cfProcess) {
   $cloudflaredExe = Join-Path $projectRoot "bin\cloudflared.exe"
   if (Test-Path $cloudflaredExe) {
     if (Test-Path $tunnelLog) { Remove-Item $tunnelLog -Force }
-    Start-Process -FilePath $cloudflaredExe -ArgumentList "tunnel --url http://localhost:3000 --http-host-header localhost:3000 --no-autoupdate --logfile `"$tunnelLog`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
+    Start-Process -FilePath $cloudflaredExe -ArgumentList "tunnel --url http://localhost:3000 --http-host-header localhost:3000 --protocol http2 --no-autoupdate --logfile `"$tunnelLog`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
   }
 }
 
