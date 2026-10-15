@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutGrid, UtensilsCrossed, CreditCard, Users,
   Package, BarChart2, LogOut, ClipboardList,
-  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich, Bike, Terminal, QrCode
+  ChevronRight, ChefHat, Wifi, WifiOff, Sandwich, Bike, Terminal
 } from 'lucide-react'
 
 interface NavItem {
@@ -23,7 +23,6 @@ const navItems: NavItem[] = [
   { label: 'Delivery', href: '/dashboard/delivery', icon: <Bike size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Orders', href: '/dashboard/orders', icon: <ClipboardList size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Payments', href: '/dashboard/payment', icon: <CreditCard size={18} />, roles: ['ADMIN', 'MANAGER', 'CASHIER'] },
-  { label: 'QR Scanner', href: '/scanner', icon: <QrCode size={18} />, roles: ['ADMIN', 'MANAGER', 'WAITER', 'CASHIER'] },
   { label: 'Menu', href: '/dashboard/menu', icon: <UtensilsCrossed size={18} />, roles: ['ADMIN'] },
   { label: 'Inventory', href: '/dashboard/inventory', icon: <Package size={18} />, roles: ['ADMIN', 'MANAGER'] },
   { label: 'Recipes', href: '/dashboard/recipes', icon: <ChefHat size={18} />, roles: ['ADMIN'] },
