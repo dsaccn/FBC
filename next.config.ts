@@ -28,6 +28,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   allowedDevOrigins: [
+    '*.kogna.coffee',
+    'kogna.coffee',
     '*.trycloudflare.com',
     'trycloudflare.com',
     'localhost:3000',
