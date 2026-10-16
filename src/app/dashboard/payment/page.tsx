@@ -8,7 +8,19 @@ import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
 
 interface OrderItem { id: string; menuItem: { name: string; price: number; category: { name: string } }; quantity: number; notes?: string; status: string }
-interface Order { id: string; table: { number: string; id: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }; waiter: { fullName: string }; orderItems: OrderItem[]; status: string }
+interface Order {
+  id: string
+  table: { number: string; id: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }
+  waiter: { fullName: string }
+  orderItems: OrderItem[]
+  status: string
+  verifiedRef?: string | null
+  verifiedProvider?: string | null
+  verifiedAmount?: number | null
+  verifiedPayer?: string | null
+  verifiedReceiver?: string | null
+  verifiedAt?: string | null
+}
 
 const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
 
@@ -38,10 +50,17 @@ export default function PaymentPage() {
       if (ordRes.ok) {
         const ords = await ordRes.json()
         setOrders(ords)
-        if (orderId) {
-          const found = ords.find((o: Order) => o.id === orderId)
-          if (found) setSelectedOrder(found)
-        }
+        setSelectedOrder(prev => {
+          if (prev) {
+            const found = ords.find((o: Order) => o.id === prev.id)
+            return found || prev
+          }
+          if (orderId) {
+            const found = ords.find((o: Order) => o.id === orderId)
+            return found || null
+          }
+          return null
+        })
       } else {
         toast.error('Failed to load open orders')
       }
@@ -51,7 +70,21 @@ export default function PaymentPage() {
     }
   }, [orderId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    // Poll every 4s so mobile phone verifications reflect on Cashier POS in real-time
+    const interval = setInterval(load, 4000)
+    return () => clearInterval(interval)
+  }, [load])
+
+  // When an order is selected, if it has already been verified on phone, pre-select that payment method
+  useEffect(() => {
+    if (selectedOrder?.verifiedProvider) {
+      const prov = selectedOrder.verifiedProvider.toUpperCase()
+      if (prov.includes('TELEBIRR')) setMethod('Telebirr')
+      else if (prov.includes('CBE')) setMethod('CBE')
+    }
+  }, [selectedOrder?.id, selectedOrder?.verifiedRef, selectedOrder?.verifiedProvider])
 
   const activeItems = selectedOrder?.orderItems.filter(i => i.status !== 'CANCELLED') || []
   const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
@@ -120,6 +153,21 @@ export default function PaymentPage() {
 
   const selectedInfo = selectedOrder ? parseOrderInfo(selectedOrder.table, selectedOrder.orderItems) : null
 
+  async function handleClearVerification(id: string) {
+    if (!confirm('Clear mobile phone payment verification for this order?')) return
+    try {
+      const res = await fetch(`/api/scanner/verify-order?orderId=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Mobile verification cleared')
+        load()
+      } else {
+        toast.error('Failed to clear verification')
+      }
+    } catch {
+      toast.error('Network error clearing verification')
+    }
+  }
+
   async function handlePay() {
     if (!selectedOrder) {
       toast.warning('Please select an order to pay')
@@ -132,10 +180,15 @@ export default function PaymentPage() {
     setLoading(true)
     try {
       const notesWithTip = tipAmt > 0 ? (notes ? `${notes} [Tip: ${tipAmt.toFixed(2)} ETB]` : `[Tip: ${tipAmt.toFixed(2)} ETB]`) : notes
+      const verifiedTag = selectedOrder.verifiedRef
+        ? `[${selectedOrder.verifiedProvider || 'Digital'} Ref: ${selectedOrder.verifiedRef}${selectedOrder.verifiedReceiver ? ` | Credited: ${selectedOrder.verifiedReceiver}` : ''}${selectedOrder.verifiedPayer ? ` | Payer: ${selectedOrder.verifiedPayer}` : ''}]`
+        : ''
+      const finalNotes = [notesWithTip, verifiedTag].filter(Boolean).join(' ')
+
       const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes: notesWithTip }),
+        body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes: finalNotes }),
       })
       if (res.ok) {
         setLastPayment({ amount: total, method })
@@ -301,6 +354,25 @@ export default function PaymentPage() {
                           {info.phone ? <span style={{ color: 'var(--gold)', marginRight: '6px' }}>📞 {info.phone} ·</span> : null}
                           {o.waiter.fullName} · {o.orderItems.length} items
                         </div>
+                        {o.verifiedRef && (
+                          <div style={{ marginTop: '5px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              background: 'rgba(16,185,129,0.15)',
+                              color: '#10B981',
+                              border: '1px solid rgba(16,185,129,0.3)',
+                              fontWeight: '700',
+                            }}>
+                              <CheckCircle size={11} />
+                              {o.verifiedProvider || 'Digital'} Verified ({o.verifiedAmount ? `${o.verifiedAmount.toFixed(2)} ETB` : 'Slip'})
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -396,7 +468,66 @@ export default function PaymentPage() {
       {selectedOrder && (
         <div className="mobile-full-w" style={{ width: '340px', maxWidth: '100%', flexShrink: 0 }}>
           <div className="card">
-            <h3 style={{ fontWeight: '600', marginBottom: '20px' }}>Payment Details</h3>
+            <h3 style={{ fontWeight: '600', marginBottom: '16px' }}>Payment Details</h3>
+
+            {/* Phone Verified Slip Details Card */}
+            {selectedOrder.verifiedRef && (
+              <div style={{
+                marginBottom: '16px',
+                background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(5,150,105,0.06) 100%)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10B981', fontWeight: '700', fontSize: '13px' }}>
+                    <CheckCircle size={16} />
+                    <span>Verified by Phone Scanner</span>
+                  </div>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: '#10B981',
+                    color: '#FFFFFF'
+                  }}>
+                    {selectedOrder.verifiedProvider || 'DIGITAL'}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '5px', color: '#E2E8F0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
+                    <b style={{ color: '#34D399' }}>{selectedOrder.verifiedReceiver || 'Kogna Coffee'}</b>
+                  </div>
+                  {selectedOrder.verifiedPayer && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#94A3B8' }}>Payer:</span>
+                      <b>{selectedOrder.verifiedPayer}</b>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94A3B8' }}>Verified Amount:</span>
+                    <b style={{ color: '#F1F5F9' }}>{(selectedOrder.verifiedAmount ?? subtotal).toFixed(2)} ETB</b>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94A3B8' }}>Transaction Ref:</span>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--gold-light)', fontWeight: '700' }}>{selectedOrder.verifiedRef}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleClearVerification(selectedOrder.id)}
+                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Clear phone verification
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Method */}
             <label className="input-label">Payment Method</label>

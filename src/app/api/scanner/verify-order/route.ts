@@ -1,0 +1,144 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { Client as PgClient } from 'pg'
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json()
+    const { orderId, reference, provider, amount, payerName, receiverName } = body
+
+    if (!orderId || !reference) {
+      return NextResponse.json({ success: false, error: 'Missing orderId or transaction reference' }, { status: 400 })
+    }
+
+    const cleanRef = String(reference).trim().toUpperCase()
+    const parsedAmount = typeof amount === 'number' ? amount : parseFloat(amount || '0')
+    const verifiedDate = new Date()
+
+    // 1. Update local database
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Order" 
+       SET "verifiedRef" = ?, 
+           "verifiedProvider" = ?, 
+           "verifiedAmount" = ?, 
+           "verifiedPayer" = ?, 
+           "verifiedReceiver" = ?, 
+           "verifiedAt" = ?, 
+           "pendingSync" = 1 
+       WHERE id = ?`,
+      cleanRef,
+      provider || 'AUTO',
+      isNaN(parsedAmount) ? null : parsedAmount,
+      payerName || null,
+      receiverName || null,
+      verifiedDate.toISOString(),
+      orderId
+    )
+
+    const updated = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        table: true,
+        waiter: { select: { fullName: true } }
+      }
+    })
+
+    // 2. Best-effort async push to Neon Cloud if configured
+    if (process.env.NEON_DATABASE_URL) {
+      const pg = new PgClient({
+        connectionString: process.env.NEON_DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 5000,
+      })
+      pg.connect()
+        .then(() =>
+          pg.query(
+            `UPDATE "Order" 
+             SET "verifiedRef" = $1, 
+                 "verifiedProvider" = $2, 
+                 "verifiedAmount" = $3, 
+                 "verifiedPayer" = $4, 
+                 "verifiedReceiver" = $5, 
+                 "verifiedAt" = $6 
+             WHERE id = $7`,
+            [cleanRef, provider || 'AUTO', isNaN(parsedAmount) ? null : parsedAmount, payerName || null, receiverName || null, verifiedDate, orderId]
+          )
+        )
+        .then(() => pg.end())
+        .catch(err => {
+          console.warn('[Sync to Neon failed for order verification]', err?.message)
+          try { pg.end() } catch {}
+        })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Payment verified for ${updated?.table?.number ? `Table ${updated.table.number}` : 'Order'}!`,
+      order: {
+        id: updated?.id || orderId,
+        tableNumber: updated?.table?.number || '?',
+        verifiedRef: cleanRef,
+        verifiedProvider: provider,
+        verifiedAmount: parsedAmount,
+        verifiedPayer: payerName,
+        verifiedReceiver: receiverName,
+        verifiedAt: verifiedDate,
+      }
+    })
+  } catch (err: any) {
+    console.error('[POST /api/scanner/verify-order]', err)
+    return NextResponse.json({ success: false, error: String(err?.message || err) }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const orderId = searchParams.get('orderId')
+    if (!orderId) {
+      return NextResponse.json({ success: false, error: 'Missing orderId' }, { status: 400 })
+    }
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Order" 
+       SET "verifiedRef" = NULL, 
+           "verifiedProvider" = NULL, 
+           "verifiedAmount" = NULL, 
+           "verifiedPayer" = NULL, 
+           "verifiedReceiver" = NULL, 
+           "verifiedAt" = NULL, 
+           "pendingSync" = 1 
+       WHERE id = ?`,
+      orderId
+    )
+
+    if (process.env.NEON_DATABASE_URL) {
+      const pg = new PgClient({
+        connectionString: process.env.NEON_DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 5000,
+      })
+      pg.connect()
+        .then(() =>
+          pg.query(
+            `UPDATE "Order" 
+             SET "verifiedRef" = NULL, 
+                 "verifiedProvider" = NULL, 
+                 "verifiedAmount" = NULL, 
+                 "verifiedPayer" = NULL, 
+                 "verifiedReceiver" = NULL, 
+                 "verifiedAt" = NULL 
+             WHERE id = $1`,
+            [orderId]
+          )
+        )
+        .then(() => pg.end())
+        .catch(() => { try { pg.end() } catch {} })
+    }
+
+    return NextResponse.json({ success: true, message: 'Order verification cleared' })
+  } catch (err: any) {
+    console.error('[DELETE /api/scanner/verify-order]', err)
+    return NextResponse.json({ success: false, error: String(err?.message || err) }, { status: 500 })
+  }
+}

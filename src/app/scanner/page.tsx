@@ -51,12 +51,39 @@ interface ScanHistoryItem {
   success: boolean
 }
 
+export interface OpenOrder {
+  id: string
+  tableId: string
+  displayTitle: string
+  isDelivery: boolean
+  isTakeaway: boolean
+  waiterName: string
+  createdAt: string
+  subtotal: number
+  total: number
+  itemsCount: number
+  itemsSummary: string
+  isVerified: boolean
+  verifiedRef?: string | null
+  verifiedProvider?: string | null
+  verifiedAmount?: number | null
+  verifiedPayer?: string | null
+  verifiedReceiver?: string | null
+  verifiedAt?: string | null
+}
+
 export default function QRScannerPage() {
   const [mode, setMode] = useState<'camera' | 'manual'>('camera')
   const [manualCode, setManualCode] = useState('')
   const [manualProvider, setManualProvider] = useState<'AUTO' | 'TELEBIRR' | 'CBE'>('AUTO')
   const [manualAccountDigits, setManualAccountDigits] = useState('')
   const [expectedAmount, setExpectedAmount] = useState('')
+
+  // Open Orders integration
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([])
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [isLinkingOrder, setIsLinkingOrder] = useState(false)
+  const [linkedSuccessMessage, setLinkedSuccessMessage] = useState<string | null>(null)
 
   // Scanner status
   const [cameraActive, setCameraActive] = useState(false)
@@ -88,6 +115,68 @@ export default function QRScannerPage() {
   const lastScannedTextRef = useRef<string | null>(null)
   const lastScannedTimeRef = useRef<number>(0)
   const mountedRef = useRef(true)
+
+  // Fetch open orders from API
+  const fetchOpenOrders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/scanner/orders')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && Array.isArray(data.orders)) {
+          setOpenOrders(data.orders)
+        }
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    fetchOpenOrders()
+    const interval = setInterval(fetchOpenOrders, 6000)
+    return () => clearInterval(interval)
+  }, [fetchOpenOrders])
+
+  const handleSelectOrder = (order: OpenOrder | null) => {
+    if (!order) {
+      setSelectedOrderId(null)
+      return
+    }
+    setSelectedOrderId(order.id)
+    setExpectedAmount(order.total.toString())
+    expectedAmountRef.current = order.total.toString()
+    setLinkedSuccessMessage(null)
+  }
+
+  const handleLinkToOrder = async (targetOrderId: string) => {
+    if (!verifiedResult || !verifiedResult.reference) return
+    setIsLinkingOrder(true)
+    setLinkedSuccessMessage(null)
+    try {
+      const res = await fetch('/api/scanner/verify-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: targetOrderId,
+          reference: verifiedResult.reference,
+          provider: verifiedResult.provider,
+          amount: verifiedResult.amount,
+          payerName: verifiedResult.payerName,
+          receiverName: verifiedResult.receiverName,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const targetOrder = openOrders.find(o => o.id === targetOrderId)
+        setLinkedSuccessMessage(`Verified payment sent to Cashier for ${targetOrder?.displayTitle || 'Order'}!`)
+        fetchOpenOrders()
+      } else {
+        alert(data.error || 'Failed to link payment to order')
+      }
+    } catch {
+      alert('Network error linking payment to order')
+    } finally {
+      setIsLinkingOrder(false)
+    }
+  }
 
   useEffect(() => {
     expectedAmountRef.current = expectedAmount
@@ -673,6 +762,123 @@ export default function QRScannerPage() {
         </div>
       </div>
 
+      {/* 2.5 Active Open Orders Bar */}
+      <div style={{ padding: '0 16px 12px', background: 'rgba(15,23,42,0.5)', position: 'relative', zIndex: 30 }}>
+        {selectedOrderId ? (
+          (() => {
+            const selected = openOrders.find(o => o.id === selectedOrderId)
+            return (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(201,168,76,0.15) 0%, rgba(180,138,30,0.08) 100%)',
+                border: '1px solid rgba(201,168,76,0.35)',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: '800', textTransform: 'uppercase' }}>
+                      Target Order:
+                    </span>
+                    <span style={{ fontSize: '14px', color: '#FFFFFF', fontWeight: '800' }}>
+                      {selected?.displayTitle || 'Order'}
+                    </span>
+                    {selected?.isVerified && (
+                      <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#10B981', color: '#FFFFFF', fontWeight: '700' }}>
+                        Verified
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#CBD5E1', marginTop: '2px' }}>
+                    Expected: <b style={{ color: 'var(--gold-light)' }}>{selected?.total.toFixed(2)} ETB</b> · {selected?.waiterName} ({selected?.itemsCount} items)
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSelectOrder(null)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(255,255,255,0.08)',
+                    color: '#E2E8F0',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            )
+          })()
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Open Orders ({openOrders.length}):
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--gold-light)' }}>
+                Tap a table to link payment
+              </span>
+            </div>
+            {openOrders.length > 0 ? (
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                overflowX: 'auto',
+                paddingBottom: '4px',
+                scrollbarWidth: 'none'
+              }}>
+                {openOrders.map(order => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => handleSelectOrder(order)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: order.isVerified
+                        ? '1px solid rgba(16,185,129,0.4)'
+                        : '1px solid rgba(255,255,255,0.12)',
+                      background: order.isVerified
+                        ? 'rgba(16,185,129,0.12)'
+                        : 'rgba(255,255,255,0.04)',
+                      color: '#FFFFFF',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '12px' }}>{order.displayTitle}</span>
+                      {order.isVerified && (
+                        <span style={{ fontSize: '9px', background: '#10B981', color: '#FFFFFF', padding: '1px 4px', borderRadius: '3px', fontWeight: '800' }}>
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '700' }}>
+                      {order.total.toFixed(2)} ETB
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic', padding: '4px 0' }}>
+                No active open orders currently. You can still scan any slip directly.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 3. Main Scanning / Verification Area */}
       <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column' }}>
 
@@ -802,6 +1008,20 @@ export default function QRScannerPage() {
                   <b style={{ color: '#FFFFFF' }}>{verifiedResult.provider}</b>
                 </div>
 
+                {verifiedResult.receiverName && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                    <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
+                    <b style={{ color: '#34D399', fontSize: '14px' }}>{verifiedResult.receiverName}</b>
+                  </div>
+                )}
+
+                {verifiedResult.receiverAccount && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                    <span style={{ color: '#94A3B8' }}>Receiver Account/Phone:</span>
+                    <span style={{ color: '#E2E8F0', fontFamily: 'monospace' }}>{verifiedResult.receiverAccount}</span>
+                  </div>
+                )}
+
                 {verifiedResult.payerName && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
                     <span style={{ color: '#94A3B8' }}>Payer Name:</span>
@@ -895,6 +1115,107 @@ export default function QRScannerPage() {
                 )}
               </div>
             </div>
+
+            {/* Cashier Link Action */}
+            {verifiedResult.success && (
+              <div style={{
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.3)',
+                borderRadius: '12px',
+                padding: '14px',
+                marginBottom: '14px'
+              }}>
+                {linkedSuccessMessage ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    color: '#34D399',
+                    fontWeight: '700',
+                    fontSize: '13px'
+                  }}>
+                    <CheckCircle2 size={20} color="#10B981" />
+                    <span>{linkedSuccessMessage}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#CBD5E1', marginBottom: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      ⚡ Confirm & Send to Cashier POS:
+                    </div>
+                    {selectedOrderId ? (
+                      (() => {
+                        const target = openOrders.find(o => o.id === selectedOrderId)
+                        return (
+                          <div>
+                            <div style={{ fontSize: '13px', color: '#F1F5F9', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Selected: <b>{target?.displayTitle || 'Order'}</b> ({target?.waiterName})</span>
+                              <b style={{ color: 'var(--gold-light)' }}>{target?.total.toFixed(2)} ETB</b>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isLinkingOrder}
+                              onClick={() => handleLinkToOrder(selectedOrderId)}
+                              style={{
+                                width: '100%',
+                                padding: '12px',
+                                borderRadius: '10px',
+                                border: 'none',
+                                background: '#10B981',
+                                color: '#FFFFFF',
+                                fontWeight: '700',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
+                              }}
+                            >
+                              {isLinkingOrder ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                              <span>Attach & Confirm for {target?.displayTitle || 'Table'}</span>
+                            </button>
+                          </div>
+                        )
+                      })()
+                    ) : openOrders.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '12px', color: '#94A3B8' }}>
+                          Select which table/order this payment belongs to:
+                        </div>
+                        <select
+                          style={{
+                            width: '100%',
+                            background: '#0F172A',
+                            border: '1px solid rgba(255,255,255,0.25)',
+                            color: '#FFFFFF',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600'
+                          }}
+                          onChange={e => {
+                            if (e.target.value) handleLinkToOrder(e.target.value)
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Choose Table / Order...</option>
+                          {openOrders.map(o => (
+                            <option key={o.id} value={o.id}>
+                              {o.displayTitle} — {o.total.toFixed(2)} ETB ({o.waiterName})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '12px', color: '#94A3B8', fontStyle: 'italic' }}>
+                        No open tables currently active to link.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Scan Next Action Button */}
             <button
