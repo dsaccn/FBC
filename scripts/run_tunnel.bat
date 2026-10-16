@@ -7,6 +7,15 @@ cd /d "%POS_DIR%"
 
 if not exist "%POS_DIR%\logs" mkdir "%POS_DIR%\logs"
 
+if exist "%POS_DIR%\bin\cloudflared.exe" (
+    for %%F in ("%POS_DIR%\bin\cloudflared.exe") do (
+        if %%~zF LSS 20000000 (
+            echo [%DATE% %TIME%] [ERROR] cloudflared.exe is incomplete or corrupted (size: %%~zF bytes). Removing damaged file. >> "%POS_DIR%\logs\tunnel.log"
+            del /f /q "%POS_DIR%\bin\cloudflared.exe" >nul 2>&1
+        )
+    )
+)
+
 if not exist "%POS_DIR%\bin\cloudflared.exe" (
     echo [%DATE% %TIME%] [ERROR] cloudflared.exe was not found in %POS_DIR%\bin\ >> "%POS_DIR%\logs\tunnel.log"
     echo [ERROR] cloudflared.exe was not found in %POS_DIR%\bin\

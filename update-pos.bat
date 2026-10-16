@@ -82,18 +82,42 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [5/5] Checking Cloudflare Mobile Scanner tunnel...
+if exist "%~dp0bin\cloudflared.exe" (
+    for %%F in ("%~dp0bin\cloudflared.exe") do (
+        if %%~zF LSS 20000000 (
+            echo       Detected corrupted or incomplete cloudflared.exe. Removing...
+            del /f /q "%~dp0bin\cloudflared.exe" >nul 2>&1
+        )
+    )
+)
+
 if not exist "%~dp0bin\cloudflared.exe" (
-    echo       cloudflared.exe not found. Downloading from official Cloudflare repository...
+    echo       cloudflared.exe not found. Downloading official Cloudflare binary...
     if not exist "%~dp0bin" mkdir "%~dp0bin"
-    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', '%~dp0bin\cloudflared.exe')"
-    if exist "%~dp0bin\cloudflared.exe" (
-        echo       Cloudflare tunnel binary downloaded: OK
+    set "CF_DL_URL=https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+    if "%PROCESSOR_ARCHITECTURE%"=="x86" (
+        if not defined PROCESSOR_ARCHITEW6432 (
+            echo       Detected 32-bit Windows system.
+            set "CF_DL_URL=https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-386.exe"
+        )
+    )
+    if exist "%~dp0bin\cloudflared.tmp" del /f /q "%~dp0bin\cloudflared.tmp" >nul 2>&1
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object Net.WebClient; $wc.Headers.Add('User-Agent', 'Mozilla/5.0'); $wc.DownloadFile('%CF_DL_URL%', '%~dp0bin\cloudflared.tmp')"
+    if exist "%~dp0bin\cloudflared.tmp" (
+        for %%F in ("%~dp0bin\cloudflared.tmp") do (
+            if %%~zF GTR 20000000 (
+                move /y "%~dp0bin\cloudflared.tmp" "%~dp0bin\cloudflared.exe" >nul
+                echo       Cloudflare tunnel binary downloaded and verified: OK
+            ) else (
+                del /f /q "%~dp0bin\cloudflared.tmp" >nul 2>&1
+                echo       [WARNING] Download was incomplete. Run test-cloudflare.bat or copy the 'bin' folder manually.
+            )
+        )
     ) else (
-        echo       [WARNING] Could not auto-download cloudflared.exe.
-        echo       You can run test-cloudflare.bat later to download it.
+        echo       [WARNING] Could not auto-download cloudflared.exe. Run test-cloudflare.bat later.
     )
 ) else (
-    echo       Cloudflare tunnel binary present: OK
+    echo       Cloudflare tunnel binary verified: OK
 )
 
 echo.
