@@ -1041,203 +1041,7 @@ export default function ReportsPage() {
       </div>
 
       {/* ============================================================ */}
-      {/* 3. REFINED EXECUTIVE KPI METRIC CARDS                        */}
-      {/* ============================================================ */}
-      <div className="reports-kpi-grid" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '12px',
-        marginBottom: '20px'
-      }}>
-        {/* Metric 1: Total Revenue */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid var(--gold)',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Total Revenue
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(180,138,30,0.1)', color: 'var(--gold-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <DollarSign size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {formatMoney(data.totalRevenue)}
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            {data.totalOrders} settled orders
-          </div>
-        </div>
-
-        {/* Metric 2: Total Cost of Goods */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid #E11D48',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                COGS Expense
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(225,29,72,0.1)', color: '#E11D48', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ShoppingBag size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: cogsVal > 0 ? '#E11D48' : 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {formatMoney(cogsVal)}
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            {data.totalRevenue > 0 ? `${((cogsVal / data.totalRevenue) * 100).toFixed(1)}% of revenue` : '0% cost ratio'}
-          </div>
-        </div>
-
-        {/* Metric 3: Gross Profit */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid var(--success)',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Gross Profit
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(5,150,105,0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TrendingUp size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: grossProfitVal >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {formatMoney(grossProfitVal)}
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            Revenue minus COGS
-          </div>
-        </div>
-
-        {/* Metric 4: Profit Margin */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid #6366F1',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Profit Margin
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Percent size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#6366F1', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {marginPct.toFixed(1)}%
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            Operational margin return
-          </div>
-        </div>
-
-        {/* Metric 5: Average Order Value */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid #F59E0B',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Avg Ticket Size
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Receipt size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#B45309', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {formatMoney(avgOrderValue)}
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            Average guest bill
-          </div>
-        </div>
-
-        {/* Metric 6: Inventory Assets Valuation */}
-        <div className="reports-kpi-card" style={{
-          background: '#FFFFFF',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          border: '1px solid var(--black-border)',
-          borderTop: '3px solid var(--text-primary)',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '100px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Stock Valuation
-              </span>
-              <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(15,23,42,0.06)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Boxes size={12}/>
-              </span>
-            </div>
-            <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-              {formatMoney(totalStockVal)}
-            </div>
-          </div>
-          <div className="reports-kpi-sub" style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-            Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
-          </div>
-        </div>
-      </div>
-
-      {/* ============================================================ */}
-      {/* 4. MOBILE QUICK-SWITCH DROPDOWN (< 768px)                   */}
+      {/* 3. MOBILE QUICK-SWITCH DROPDOWN (< 768px)                   */}
       {/* ============================================================ */}
       <div className="reports-mobile-tab-select" style={{ display: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -1272,14 +1076,14 @@ export default function ReportsPage() {
       </div>
 
       {/* ============================================================ */}
-      {/* 5. DESKTOP/TABLET CONNECTED TAB NAVIGATION (>= 768px)       */}
+      {/* 4. DESKTOP/TABLET CONNECTED TAB NAVIGATION (>= 768px)       */}
       {/* ============================================================ */}
       <div className="reports-tabs-track hide-scrollbar" style={{
         background: 'var(--black-hover)',
         border: '1px solid var(--black-border)',
         borderRadius: '12px',
         padding: '4px',
-        marginBottom: '24px',
+        marginBottom: '20px',
         display: 'flex',
         overflowX: 'auto',
         gap: '4px'
@@ -1317,10 +1121,204 @@ export default function ReportsPage() {
       </div>
 
       {/* ============================================================ */}
-      {/* 6. TAB 1: EXECUTIVE DASHBOARD SUMMARY                        */}
+      {/* 5. TAB 1: EXECUTIVE DASHBOARD SUMMARY                        */}
       {/* ============================================================ */}
       {activeTab === 'summary' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Executive KPI Metric Cards (Only on Executive Dashboard) */}
+          <div className="reports-kpi-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '12px'
+          }}>
+            {/* Metric 1: Total Revenue */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid var(--gold)',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Total Revenue
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(180,138,30,0.1)', color: 'var(--gold-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarSign size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(data.totalRevenue)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                {data.totalOrders} settled orders
+              </div>
+            </div>
+
+            {/* Metric 2: Total Cost of Goods */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid #E11D48',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    COGS Expense
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(225,29,72,0.1)', color: '#E11D48', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShoppingBag size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: cogsVal > 0 ? '#E11D48' : 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(cogsVal)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                {data.totalRevenue > 0 ? `${((cogsVal / data.totalRevenue) * 100).toFixed(1)}% of revenue` : '0% cost ratio'}
+              </div>
+            </div>
+
+            {/* Metric 3: Gross Profit */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid var(--success)',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Gross Profit
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(5,150,105,0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <TrendingUp size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: grossProfitVal >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(grossProfitVal)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                Revenue minus COGS
+              </div>
+            </div>
+
+            {/* Metric 4: Profit Margin */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid #6366F1',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Profit Margin
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Percent size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#6366F1', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {marginPct.toFixed(1)}%
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                Operational margin return
+              </div>
+            </div>
+
+            {/* Metric 5: Average Order Value */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid #F59E0B',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Avg Ticket Size
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Receipt size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#B45309', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(avgOrderValue)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                Average guest bill
+              </div>
+            </div>
+
+            {/* Metric 6: Inventory Assets Valuation */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid var(--text-primary)',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Stock Valuation
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(15,23,42,0.06)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Boxes size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(totalStockVal)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '16px' }}>
           
           {/* Chart A: Daily Sales Bar Chart */}
           <div style={{
@@ -1494,6 +1492,7 @@ export default function ReportsPage() {
               <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No revenue activity in this period.</div>
             )}
           </div>
+        </div>
         </div>
       )}
 
