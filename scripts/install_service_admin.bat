@@ -5,8 +5,18 @@ net session >nul 2>&1
 if %errorLevel% == 0 (
     echo [OK] Running with Administrator privileges...
     echo.
+    pushd "%~dp0.."
+    set "POS_DIR=%CD%"
+    popd
+
+    if not exist "%POS_DIR%\bin\cloudflared.exe" (
+        echo [ERROR] cloudflared.exe not found at %POS_DIR%\bin\cloudflared.exe
+        pause
+        exit /b 1
+    )
+
     echo Installing Cloudflared Windows Service...
-    "c:\Users\dawit\OneDrive\Documents\managment\FBC\bin\cloudflared.exe" service install eyJhIjoiM2UzNjljODU4YTllY2NhYTExNDkzZTIwNDhjODI0MmMiLCJ0IjoiZGM1ZTliYjYtNTU5Mi00YjgzLTlkMTMtYjA2MGExZmQyNzQzIiwicyI6Ik5tWmlNamMyWmpNdE5qVTBOQzAwWkRJNUxUZzBaVEl0T0dOak4ySTROemRpWlRrNSJ9
+    "%POS_DIR%\bin\cloudflared.exe" service install eyJhIjoiM2UzNjljODU4YTllY2NhYTExNDkzZTIwNDhjODI0MmMiLCJ0IjoiZGM1ZTliYjYtNTU5Mi00YjgzLTlkMTMtYjA2MGExZmQyNzQzIiwicyI6Ik5tWmlNamMyWmpNdE5qVTBOQzAwWkRJNUxUZzBaVEl0T0dOak4ySTROemRpWlRrNSJ9
     echo.
     echo Starting Cloudflared service...
     sc start cloudflared

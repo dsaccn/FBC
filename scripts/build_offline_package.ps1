@@ -21,11 +21,15 @@ New-Item -ItemType Directory -Path (Join-Path $distDir "public") | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $distDir "src") | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $distDir "prisma") | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $distDir "scripts") | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $distDir "bin") | Out-Null
 
 Copy-Item -Path "public\*" -Destination (Join-Path $distDir "public") -Recurse -Force
 Copy-Item -Path "src\*" -Destination (Join-Path $distDir "src") -Recurse -Force
 Copy-Item -Path "prisma\*" -Destination (Join-Path $distDir "prisma") -Recurse -Force
 Copy-Item -Path "scripts\*" -Destination (Join-Path $distDir "scripts") -Recurse -Force
+if (Test-Path "bin\*") {
+    Copy-Item -Path "bin\*" -Destination (Join-Path $distDir "bin") -Recurse -Force
+}
 
 $filesToCopy = @(
     ".env",

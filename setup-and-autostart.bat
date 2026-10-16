@@ -64,11 +64,22 @@ if exist "%DESKTOP%" (
     echo URL=http://localhost:3000 >> "%DESKTOP%\Open Kogna POS.url"
     echo    Desktop shortcut 'Open Kogna POS' created.
 
+    echo [InternetShortcut] > "%DESKTOP%\Kogna Mobile Scanner.url"
+    echo URL=https://scanner.kogna.coffee/scanner >> "%DESKTOP%\Kogna Mobile Scanner.url"
+    echo    Desktop shortcut 'Kogna Mobile Scanner' created.
+
     powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $d='%DESKTOP%'; $s=$ws.CreateShortcut(\"$d\Start Kogna POS (Silent).lnk\"); $s.TargetPath='%POS_DIR%start-silent.vbs'; $s.WorkingDirectory='%POS_DIR%'; $s.Save()" >nul 2>&1
     echo    Desktop shortcut 'Start Kogna POS (Silent)' created.
 
     powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $d='%DESKTOP%'; $s=$ws.CreateShortcut(\"$d\Stop Kogna POS.lnk\"); $s.TargetPath='%POS_DIR%stop-pos.bat'; $s.WorkingDirectory='%POS_DIR%'; $s.Save()" >nul 2>&1
     echo    Desktop shortcut 'Stop Kogna POS' created.
+)
+
+:: Configure Cloudflare Tunnel service if cloudflared is present
+if exist "%POS_DIR%bin\cloudflared.exe" (
+    "%POS_DIR%bin\cloudflared.exe" service install eyJhIjoiM2UzNjljODU4YTllY2NhYTExNDkzZTIwNDhjODI0MmMiLCJ0IjoiZGM1ZTliYjYtNTU5Mi00YjgzLTlkMTMtYjA2MGExZmQyNzQzIiwicyI6Ik5tWmlNamMyWmpNdE5qVTBOQzAwWkRJNUxUZzBaVEl0T0dOak4ySTROemRpWlRrNSJ9 >nul 2>&1
+    sc start cloudflared >nul 2>&1
+    echo    Cloudflare Mobile Scanner Service: Installed ^& Started: OK
 )
 
 echo    Auto-Start on boot (Silent): Configured successfully!

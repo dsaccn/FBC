@@ -41,12 +41,14 @@ mkdir "%DIST_DIR%\prisma"
 mkdir "%DIST_DIR%\public"
 mkdir "%DIST_DIR%\src"
 mkdir "%DIST_DIR%\scripts"
+mkdir "%DIST_DIR%\bin"
 
 :: Copy code and configs
 xcopy /E /I /Y "public" "%DIST_DIR%\public" >nul
 xcopy /E /I /Y "src" "%DIST_DIR%\src" >nul
 xcopy /E /I /Y "prisma" "%DIST_DIR%\prisma" >nul
 xcopy /E /I /Y "scripts" "%DIST_DIR%\scripts" >nul
+if exist "bin\" xcopy /E /I /Y "bin" "%DIST_DIR%\bin" >nul
 
 copy ".env" "%DIST_DIR%\" >nul
 copy "package.json" "%DIST_DIR%\" >nul

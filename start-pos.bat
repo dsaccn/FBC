@@ -61,11 +61,22 @@ if %errorlevel% equ 0 (
     )
 )
 
-:: 4. Open the browser to the POS
+:: 4. Start Cloudflare mobile tunnel for phone scanner if present
+if exist "%~dp0bin\cloudflared.exe" (
+    tasklist /fi "imagename eq cloudflared.exe" 2>nul | findstr /i "cloudflared.exe" >nul 2>&1
+    if errorlevel 1 (
+        echo [OK] Starting Cloudflare mobile tunnel for phone scanner...
+        start "" wscript.exe "%~dp0scripts\run_tunnel.vbs"
+    ) else (
+        echo [OK] Cloudflare mobile tunnel is already running.
+    )
+)
+
+:: 5. Open the browser to the POS
 echo Opening http://localhost:3000 in your browser...
 start http://localhost:3000
 
-:: 4. Start Next.js production server
+:: 6. Start Next.js production server
 echo.
 echo Starting POS server on port 3000...
 echo (Keep this window open while using the POS!)

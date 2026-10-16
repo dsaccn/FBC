@@ -1,5 +1,9 @@
 $ErrorActionPreference = "SilentlyContinue"
-$projectRoot = "c:\Users\dawit\OneDrive\Documents\managment\FBC"
+
+# 0. Dynamically resolve project root from script directory
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $scriptDir) { $scriptDir = $PSScriptRoot }
+$projectRoot = Split-Path -Parent $scriptDir
 Set-Location $projectRoot
 
 # 1. Ensure logs directory exists
@@ -11,7 +15,8 @@ $tunnelLog = Join-Path $logDir "tunnel.log"
 $portTest = Test-NetConnection -ComputerName "localhost" -Port 3000 -WarningAction SilentlyContinue
 if (-not $portTest.TcpTestSucceeded) {
   Write-Host "Starting Next.js server on port 3000..."
-  Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev" -WorkingDirectory $projectRoot -WindowStyle Hidden
+  $startCmd = if (Test-Path (Join-Path $projectRoot ".next")) { "npm start" } else { "npm run dev" }
+  Start-Process -FilePath "cmd.exe" -ArgumentList "/c $startCmd" -WorkingDirectory $projectRoot -WindowStyle Hidden
   for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
     $check = Test-NetConnection -ComputerName "localhost" -Port 3000 -WarningAction SilentlyContinue
@@ -22,7 +27,7 @@ if (-not $portTest.TcpTestSucceeded) {
 # 3. Check if cloudflared is running; if not, launch it
 $cfProcess = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
 if (-not $cfProcess) {
-  $batFile = Join-Path $projectRoot "scripts\run_tunnel.bat"
+  $batFile = Join-Path $scriptDir "run_tunnel.bat"
   if (Test-Path $batFile) {
     Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$batFile`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
   }
@@ -34,9 +39,9 @@ $scannerUrl = "https://scanner.kogna.coffee/scanner"
 # 5. Save the URL to Desktop for easy access (both OneDrive Desktop and local Desktop)
 $destFolders = @(
   [Environment]::GetFolderPath("Desktop"),
-  "C:\Users\dawit\Desktop",
-  "C:\Users\dawit\OneDrive\Desktop"
-) | Select-Object -Unique
+  (Join-Path $env:USERPROFILE "Desktop"),
+  (Join-Path $env:USERPROFILE "OneDrive\Desktop")
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
 foreach ($folder in $destFolders) {
   if (Test-Path $folder) {
@@ -66,4 +71,3 @@ Features:
 }
 
 Write-Host "Kogna Mobile Scanner service successfully started: $scannerUrl"
-
