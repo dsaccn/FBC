@@ -70,6 +70,10 @@ if exist "%~dp0bin\cloudflared.exe" (
     ) else (
         echo [OK] Cloudflare mobile tunnel is already running.
     )
+) else (
+    echo [WARNING] bin\cloudflared.exe was not found!
+    echo           Mobile scanner tunnel (scanner.kogna.coffee) will NOT be accessible.
+    echo           Double-click 'test-cloudflare.bat' to download and start it.
 )
 
 :: 5. Open the browser to the POS

@@ -31,6 +31,10 @@ mkdir "%DIST_DIR%\prisma"
 mkdir "%DIST_DIR%\public"
 mkdir "%DIST_DIR%\src"
 mkdir "%DIST_DIR%\scripts"
+if exist "bin\" (
+    mkdir "%DIST_DIR%\bin"
+    copy "bin\cloudflared.exe" "%DIST_DIR%\bin\" >nul
+)
 
 :: Copy code and configs (excluding node_modules and .next)
 xcopy /E /I /Y "public" "%DIST_DIR%\public" >nul
@@ -51,6 +55,7 @@ copy "start-silent.vbs" "%DIST_DIR%\" >nul
 copy "start-pos.bat" "%DIST_DIR%\" >nul
 copy "stop-pos.bat" "%DIST_DIR%\" >nul
 copy "update-pos.bat" "%DIST_DIR%\" >nul
+copy "test-cloudflare.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
 
 echo.

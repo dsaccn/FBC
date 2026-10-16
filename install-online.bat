@@ -64,6 +64,22 @@ if %errorlevel% neq 0 (
 echo    Build complete: OK
 echo.
 
+:: 4. Cloudflare Mobile Scanner Tunnel
+echo [4/4] Checking Cloudflare Mobile Scanner Tunnel...
+if not exist "%POS_DIR%bin\cloudflared.exe" (
+    echo    cloudflared.exe not found. Downloading from official Cloudflare releases...
+    if not exist "%POS_DIR%bin" mkdir "%POS_DIR%bin"
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', '%POS_DIR%bin\cloudflared.exe')"
+    if exist "%POS_DIR%bin\cloudflared.exe" (
+        echo    Cloudflare tunnel binary downloaded: OK
+    ) else (
+        echo    [WARNING] Could not auto-download cloudflared.exe. Mobile scanner won't start automatically.
+    )
+) else (
+    echo    Cloudflare tunnel binary found: OK
+)
+echo.
+
 echo =========================================================
 echo  SUCCESS: Localhost POS is ready on this PC!
 echo =========================================================

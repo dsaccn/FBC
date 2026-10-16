@@ -65,6 +65,7 @@ copy "stop-pos.bat" "%DIST_DIR%\" >nul
 copy "update-pos.bat" "%DIST_DIR%\" >nul
 copy "package-offline.bat" "%DIST_DIR%\" >nul
 copy "fix-readonly-db.bat" "%DIST_DIR%\" >nul
+copy "test-cloudflare.bat" "%DIST_DIR%\" >nul
 copy "README.md" "%DIST_DIR%\" >nul
 
 :: Copy Node.js installer if present
