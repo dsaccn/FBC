@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
 git config --global --add safe.directory "%CD%" >nul 2>&1
 git config --global --add safe.directory "*" >nul 2>&1
 
-echo [1/4] Checking and connecting to GitHub repository...
+echo [1/5] Checking and connecting to GitHub repository...
 if not exist ".git" (
     echo       Initializing local Git connection...
     git init >nul 2>&1
@@ -39,7 +39,7 @@ if not exist ".git" (
 )
 
 echo.
-echo [2/4] Downloading latest code updates from GitHub...
+echo [2/5] Downloading latest code updates from GitHub...
 git fetch origin main
 if %errorlevel% neq 0 (
     echo.
@@ -60,7 +60,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [3/4] Updating database schema & permissions...
+echo [3/5] Updating database schema & permissions...
 attrib -r -s -h "prisma\*" /s /d >nul 2>&1
 attrib -r -s -h "prisma\kogna.db*" >nul 2>&1
 if exist "prisma\*.db-journal" del /f /q "prisma\*.db-journal" >nul 2>&1
@@ -71,7 +71,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [4/4] Building updated POS application...
+echo [4/5] Building updated POS application...
 call npm run build
 if %errorlevel% neq 0 (
     echo.
@@ -81,11 +81,27 @@ if %errorlevel% neq 0 (
 )
 
 echo.
+echo [5/5] Checking Cloudflare Mobile Scanner tunnel...
+if not exist "%~dp0bin\cloudflared.exe" (
+    echo       cloudflared.exe not found. Downloading from official Cloudflare repository...
+    if not exist "%~dp0bin" mkdir "%~dp0bin"
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', '%~dp0bin\cloudflared.exe')"
+    if exist "%~dp0bin\cloudflared.exe" (
+        echo       Cloudflare tunnel binary downloaded: OK
+    ) else (
+        echo       [WARNING] Could not auto-download cloudflared.exe.
+        echo       You can run test-cloudflare.bat later to download it.
+    )
+) else (
+    echo       Cloudflare tunnel binary present: OK
+)
+
+echo.
 echo =========================================================
 echo  SUCCESS: Your POS has been updated to the latest version!
 echo =========================================================
-echo  All date filters, silent launchers, and database updates
-echo  are now applied and ready.
+echo  All date filters, silent launchers, Cloudflare scanner,
+echo  and database updates are now applied and ready.
 echo.
 echo  To start the POS:
 echo    Double-click: start-silent.vbs (or start-pos.bat)
