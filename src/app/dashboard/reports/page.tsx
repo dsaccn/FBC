@@ -120,7 +120,24 @@ interface ReportData {
     ingredientValue: number
     retailValue: number
   }
-  transactions: { id: string; date: string; amount: number; method: string; cashier: string; waiter: string; table: string; items: string }[]
+  transactions: {
+    id: string
+    date: string
+    amount: number
+    method: string
+    cashier: string
+    waiter: string
+    table: string
+    items: string
+    verifiedRef?: string | null
+    verifiedProvider?: string | null
+    verifiedPayer?: string | null
+    verifiedReceiver?: string | null
+    verifiedAt?: string | null
+    isVerified?: boolean
+    isDigital?: boolean
+    notes?: string | null
+  }[]
   dailySales: { date: string; orders: number; revenue: number; categories: { categoryName: string; items: { name: string; quantity: number; revenue: number }[] }[] }[]
   categorizedReport: {
     categories: {
@@ -172,6 +189,9 @@ export default function ReportsPage() {
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
   const [invSubTab, setInvSubTab] = useState<'ingredients' | 'retail' | 'lowstock'>('ingredients')
   const [invSearch, setInvSearch] = useState('')
+  const [ledgerMethodFilter, setLedgerMethodFilter] = useState<'ALL' | 'Cash' | 'Telebirr' | 'CBE'>('ALL')
+  const [ledgerStatusFilter, setLedgerStatusFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL')
+  const [ledgerSearch, setLedgerSearch] = useState('')
   const [quickDateActive, setQuickDateActive] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'>('all')
 
   const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
@@ -429,6 +449,311 @@ export default function ReportsPage() {
     const a = document.createElement('a')
     a.href = url
     a.download = `Profit_Loss_Report_${from || new Date().toISOString().split('T')[0]}.xls`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportLedgerToExcel() {
+    if (!data || !data.transactions) return
+    const txs = data.transactions
+    const dateLabel = from || to
+      ? `from ${from || 'Start'} to ${to || 'End'}`
+      : `at the day of ${new Date().toLocaleDateString('en-US')}`
+
+    const tdBase = `border:1px solid #D1D5DB;padding:6px 10px;font-family:system-ui,sans-serif;font-size:10pt;`
+    const numTd = `${tdBase}text-align:right;`
+
+    // Segregate by payment channel
+    const cashTxs = txs.filter(t => t.method === 'Cash')
+    const telebirrTxs = txs.filter(t => t.method.toLowerCase().includes('telebirr'))
+    const cbeTxs = txs.filter(t => t.method.toLowerCase().includes('cbe'))
+    const otherTxs = txs.filter(t => t.method !== 'Cash' && !t.method.toLowerCase().includes('telebirr') && !t.method.toLowerCase().includes('cbe'))
+
+    const cashTotal = cashTxs.reduce((sum, t) => sum + t.amount, 0)
+    const telebirrTotal = telebirrTxs.reduce((sum, t) => sum + t.amount, 0)
+    const telebirrVerifiedTotal = telebirrTxs.filter(t => t.isVerified).reduce((sum, t) => sum + t.amount, 0)
+    const telebirrUnverifiedTotal = telebirrTotal - telebirrVerifiedTotal
+
+    const cbeTotal = cbeTxs.reduce((sum, t) => sum + t.amount, 0)
+    const cbeVerifiedTotal = cbeTxs.filter(t => t.isVerified).reduce((sum, t) => sum + t.amount, 0)
+    const cbeUnverifiedTotal = cbeTotal - cbeVerifiedTotal
+
+    const otherTotal = otherTxs.reduce((sum, t) => sum + t.amount, 0)
+    const grandTotal = cashTotal + telebirrTotal + cbeTotal + otherTotal
+
+    // 1. CASH ROWS
+    let cashRows = ''
+    cashTxs.forEach(t => {
+      const d = new Date(t.date)
+      const dateStr = d.toLocaleDateString('en-US')
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      cashRows += `<tr>
+        <td style="${tdBase}">${dateStr}</td>
+        <td style="${tdBase}">${timeStr}</td>
+        <td style="${tdBase}font-weight:600;">Table ${t.table}</td>
+        <td style="${tdBase}">${t.cashier}</td>
+        <td style="${tdBase}">${t.waiter}</td>
+        <td style="${tdBase}font-weight:600;color:#059669;">Cash</td>
+        <td style="${tdBase}background-color:#F0FDF4;color:#15803d;font-weight:600;">Cash - Register Settled</td>
+        <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
+      </tr>`
+    })
+
+    // 2. TELEBIRR ROWS
+    let telebirrRows = ''
+    telebirrTxs.forEach(t => {
+      const d = new Date(t.date)
+      const dateStr = d.toLocaleDateString('en-US')
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      const statusStyle = t.isVerified 
+        ? 'background-color:#ECFDF5;color:#047857;font-weight:bold;' 
+        : 'background-color:#FEF2F2;color:#B91C1C;font-weight:bold;'
+      const statusText = t.isVerified ? '✓ VERIFIED' : '⚠️ UNVERIFIED'
+      const refStyle = t.isVerified ? 'font-family:monospace;font-weight:bold;color:#0F172A;' : 'color:#94A3B8;font-style:italic;'
+      telebirrRows += `<tr>
+        <td style="${tdBase}">${dateStr}</td>
+        <td style="${tdBase}">${timeStr}</td>
+        <td style="${tdBase}font-weight:600;">Table ${t.table}</td>
+        <td style="${tdBase}">${t.cashier}</td>
+        <td style="${tdBase}">${t.waiter}</td>
+        <td style="${tdBase}${refStyle}">${t.verifiedRef || 'None'}</td>
+        <td style="${tdBase}">${t.verifiedPayer || '-'}</td>
+        <td style="${tdBase}">${t.verifiedReceiver || 'Kogna Coffee'}</td>
+        <td style="${tdBase}${statusStyle}">${statusText}</td>
+        <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
+      </tr>`
+    })
+
+    // 3. CBE ROWS
+    let cbeRows = ''
+    cbeTxs.forEach(t => {
+      const d = new Date(t.date)
+      const dateStr = d.toLocaleDateString('en-US')
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      const statusStyle = t.isVerified 
+        ? 'background-color:#ECFDF5;color:#047857;font-weight:bold;' 
+        : 'background-color:#FEF2F2;color:#B91C1C;font-weight:bold;'
+      const statusText = t.isVerified ? '✓ VERIFIED' : '⚠️ UNVERIFIED'
+      const refStyle = t.isVerified ? 'font-family:monospace;font-weight:bold;color:#0F172A;' : 'color:#94A3B8;font-style:italic;'
+      cbeRows += `<tr>
+        <td style="${tdBase}">${dateStr}</td>
+        <td style="${tdBase}">${timeStr}</td>
+        <td style="${tdBase}font-weight:600;">Table ${t.table}</td>
+        <td style="${tdBase}">${t.cashier}</td>
+        <td style="${tdBase}">${t.waiter}</td>
+        <td style="${tdBase}${refStyle}">${t.verifiedRef || 'None'}</td>
+        <td style="${tdBase}">${t.verifiedPayer || '-'}</td>
+        <td style="${tdBase}">${t.verifiedReceiver || 'Kogna Coffee'}</td>
+        <td style="${tdBase}${statusStyle}">${statusText}</td>
+        <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
+      </tr>`
+    })
+
+    // 4. OTHER ROWS (if any)
+    let otherRows = ''
+    otherTxs.forEach(t => {
+      const d = new Date(t.date)
+      const dateStr = d.toLocaleDateString('en-US')
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      otherRows += `<tr>
+        <td style="${tdBase}">${dateStr}</td>
+        <td style="${tdBase}">${timeStr}</td>
+        <td style="${tdBase}font-weight:600;">Table ${t.table}</td>
+        <td style="${tdBase}">${t.cashier}</td>
+        <td style="${tdBase}">${t.waiter}</td>
+        <td style="${tdBase}">${t.verifiedRef || '-'}</td>
+        <td style="${tdBase}">${t.verifiedPayer || '-'}</td>
+        <td style="${tdBase}">${t.verifiedReceiver || '-'}</td>
+        <td style="${tdBase}">${t.isVerified ? '✓ VERIFIED' : 'Unverified'}</td>
+        <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
+      </tr>`
+    })
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8"/>
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: system-ui, sans-serif; }
+          td, th { border: 1px solid #D1D5DB; }
+        </style>
+      </head>
+      <body>
+        <p style="text-align:center;font-size:16pt;font-weight:bold;font-family:system-ui,sans-serif;margin-bottom:4px;color:#0F172A;">Kogna Coffee - Transaction & Payment Verification Ledger</p>
+        <p style="text-align:center;font-size:10pt;font-family:system-ui,sans-serif;color:#475569;margin-bottom:16px;">
+          Settlement Report with Bank Referral Codes & Verification Status (${dateLabel})
+        </p>
+
+        <!-- 1. CASH SECTION -->
+        <h3 style="font-family:system-ui,sans-serif;color:#065F46;margin-top:20px;margin-bottom:8px;">💵 1. Cash Transactions (${cashTxs.length} orders)</h3>
+        <table>
+          <thead>
+            <tr style="background-color:#065F46;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Date</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Time</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Table</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Cashier</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Waiter</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Method</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Verification Status</th>
+              <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Items Ordered</th>
+              <th style="${numTd}background-color:#065F46;color:#FFFFFF;">Amount (ETB)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cashRows || '<tr><td colspan="9" style="text-align:center;padding:12px;color:#94A3B8;">No cash transactions recorded.</td></tr>'}
+            <tr style="background-color:#D1FAE5;font-weight:bold;">
+              <td colspan="8" style="${tdBase}text-align:right;background-color:#D1FAE5;color:#065F46;font-size:11pt;">Cash Sub-Total (${cashTxs.length} orders):</td>
+              <td style="${numTd}background-color:#D1FAE5;color:#065F46;font-size:11pt;">${cashTotal.toFixed(2)} ETB</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 2. TELEBIRR SECTION -->
+        <h3 style="font-family:system-ui,sans-serif;color:#0369A1;margin-top:28px;margin-bottom:8px;">📱 2. Telebirr Transactions (${telebirrTxs.length} orders)</h3>
+        <table>
+          <thead>
+            <tr style="background-color:#0369A1;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Date</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Time</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Table</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Cashier</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Waiter</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Reference Code</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Payer Name</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Credited Receiver</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Verification</th>
+              <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Items Ordered</th>
+              <th style="${numTd}background-color:#0369A1;color:#FFFFFF;">Amount (ETB)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${telebirrRows || '<tr><td colspan="11" style="text-align:center;padding:12px;color:#94A3B8;">No Telebirr transactions recorded.</td></tr>'}
+            <tr style="background-color:#E0F2FE;font-weight:bold;">
+              <td colspan="10" style="${tdBase}text-align:right;background-color:#E0F2FE;color:#0369A1;font-size:11pt;">Telebirr Sub-Total (${telebirrTxs.length} orders · Verified: ${telebirrVerifiedTotal.toFixed(2)} ETB | Unverified: ${telebirrUnverifiedTotal.toFixed(2)} ETB):</td>
+              <td style="${numTd}background-color:#E0F2FE;color:#0369A1;font-size:11pt;">${telebirrTotal.toFixed(2)} ETB</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 3. CBE SECTION -->
+        <h3 style="font-family:system-ui,sans-serif;color:#854D0E;margin-top:28px;margin-bottom:8px;">🏦 3. CBE Transactions (${cbeTxs.length} orders)</h3>
+        <table>
+          <thead>
+            <tr style="background-color:#854D0E;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Date</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Time</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Table</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Cashier</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Waiter</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Reference Code</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Payer Name</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Credited Receiver</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Verification</th>
+              <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Items Ordered</th>
+              <th style="${numTd}background-color:#854D0E;color:#FFFFFF;">Amount (ETB)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cbeRows || '<tr><td colspan="11" style="text-align:center;padding:12px;color:#94A3B8;">No CBE transactions recorded.</td></tr>'}
+            <tr style="background-color:#FEF3C7;font-weight:bold;">
+              <td colspan="10" style="${tdBase}text-align:right;background-color:#FEF3C7;color:#854D0E;font-size:11pt;">CBE Sub-Total (${cbeTxs.length} orders · Verified: ${cbeVerifiedTotal.toFixed(2)} ETB | Unverified: ${cbeUnverifiedTotal.toFixed(2)} ETB):</td>
+              <td style="${numTd}background-color:#FEF3C7;color:#854D0E;font-size:11pt;">${cbeTotal.toFixed(2)} ETB</td>
+            </tr>
+          </tbody>
+        </table>
+
+        ${otherTxs.length > 0 ? `
+        <!-- 4. OTHER SECTION -->
+        <h3 style="font-family:system-ui,sans-serif;color:#475569;margin-top:28px;margin-bottom:8px;">💳 4. Other Bank Transfers (${otherTxs.length} orders)</h3>
+        <table>
+          <thead>
+            <tr style="background-color:#475569;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Date</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Time</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Table</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Cashier</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Waiter</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Reference Code</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Payer</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Receiver</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Verification</th>
+              <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Items Ordered</th>
+              <th style="${numTd}background-color:#475569;color:#FFFFFF;">Amount (ETB)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${otherRows}
+            <tr style="background-color:#F1F5F9;font-weight:bold;">
+              <td colspan="10" style="${tdBase}text-align:right;">Other Transfers Sub-Total:</td>
+              <td style="${numTd}">${otherTotal.toFixed(2)} ETB</td>
+            </tr>
+          </tbody>
+        </table>` : ''}
+
+        <!-- 5. GRAND SUMMARY AT THE END -->
+        <h3 style="font-family:system-ui,sans-serif;color:#0F172A;margin-top:36px;margin-bottom:8px;">📊 Settlement Summary & Grand Total</h3>
+        <table style="max-width:700px;">
+          <thead>
+            <tr style="background-color:#0F172A;color:#FFFFFF;">
+              <th style="${tdBase}text-align:left;background-color:#0F172A;color:#FFFFFF;">Payment Channel</th>
+              <th style="${numTd}background-color:#0F172A;color:#FFFFFF;">Total Orders</th>
+              <th style="${numTd}background-color:#0F172A;color:#FFFFFF;">Verified Amount</th>
+              <th style="${numTd}background-color:#0F172A;color:#FFFFFF;">Unverified Amount</th>
+              <th style="${numTd}background-color:#0F172A;color:#FFFFFF;">Total Revenue (ETB)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="${tdBase}font-weight:600;">💵 Cash</td>
+              <td style="${numTd}">${cashTxs.length}</td>
+              <td style="${numTd}">${cashTotal.toFixed(2)}</td>
+              <td style="${numTd}">-</td>
+              <td style="${numTd}font-weight:700;">${cashTotal.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="${tdBase}font-weight:600;">📱 Telebirr</td>
+              <td style="${numTd}">${telebirrTxs.length}</td>
+              <td style="${numTd}color:#047857;font-weight:600;">${telebirrVerifiedTotal.toFixed(2)}</td>
+              <td style="${numTd}color:#B91C1C;font-weight:600;">${telebirrUnverifiedTotal.toFixed(2)}</td>
+              <td style="${numTd}font-weight:700;">${telebirrTotal.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="${tdBase}font-weight:600;">🏦 CBE (Commercial Bank)</td>
+              <td style="${numTd}">${cbeTxs.length}</td>
+              <td style="${numTd}color:#047857;font-weight:600;">${cbeVerifiedTotal.toFixed(2)}</td>
+              <td style="${numTd}color:#B91C1C;font-weight:600;">${cbeUnverifiedTotal.toFixed(2)}</td>
+              <td style="${numTd}font-weight:700;">${cbeTotal.toFixed(2)}</td>
+            </tr>
+            ${otherTxs.length > 0 ? `
+            <tr>
+              <td style="${tdBase}font-weight:600;">💳 Other Bank Transfers</td>
+              <td style="${numTd}">${otherTxs.length}</td>
+              <td style="${numTd}">-</td>
+              <td style="${numTd}">-</td>
+              <td style="${numTd}font-weight:700;">${otherTotal.toFixed(2)}</td>
+            </tr>` : ''}
+            <tr style="background-color:#1E293B;color:#FFFFFF;font-weight:bold;font-size:11pt;">
+              <td style="${tdBase}background-color:#1E293B;color:#FFFFFF;">🏆 GRAND TOTAL</td>
+              <td style="${numTd}background-color:#1E293B;color:#FFFFFF;">${txs.length}</td>
+              <td style="${numTd}background-color:#1E293B;color:#34D399;">${(cashTotal + telebirrVerifiedTotal + cbeVerifiedTotal).toFixed(2)}</td>
+              <td style="${numTd}background-color:#1E293B;color:#FCA5A5;">${(telebirrUnverifiedTotal + cbeUnverifiedTotal).toFixed(2)}</td>
+              <td style="${numTd}background-color:#1E293B;color:#FCD34D;font-size:12pt;font-weight:900;">${grandTotal.toFixed(2)} ETB</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+      </html>`
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Transaction_Ledger_${from || new Date().toISOString().split('T')[0]}.xls`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1632,85 +1957,409 @@ export default function ReportsPage() {
       {/* ============================================================ */}
       {/* 10. TAB 5: TRANSACTION HISTORY LEDGER                        */}
       {/* ============================================================ */}
-      {activeTab === 'history' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-              Transaction Ledger
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0 0' }}>
-              Chronological log of customer payments and order settlements
-            </p>
-          </div>
+      {activeTab === 'history' && (() => {
+        const txs = data.transactions || []
 
-          {/* Desktop Table View */}
-          <div className="desktop-table-view" style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Table</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Staff</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Items</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Method</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.transactions.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No transactions found.</td></tr>
-                ) : data.transactions.map((tx, idx) => (
-                  <tr key={tx.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
-                    <td style={{ padding: '10px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      {new Date(tx.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td style={{ padding: '10px 16px', fontWeight: '700' }}>Table {tx.table}</td>
-                    <td style={{ padding: '10px 16px' }}>
-                      <div style={{ fontWeight: '600' }}>{tx.waiter}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Cashier: {tx.cashier}</div>
-                    </td>
-                    <td style={{ padding: '10px 16px', color: 'var(--text-secondary)', maxWidth: '240px' }}>{tx.items}</td>
-                    <td style={{ padding: '10px 16px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', background: tx.method === 'Cash' ? 'rgba(5,150,105,0.1)' : 'rgba(37,99,235,0.1)', color: tx.method === 'Cash' ? '#059669' : '#2563EB' }}>
-                        {tx.method}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(tx.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        // Summary calculations
+        const cashTxs = txs.filter(t => t.method === 'Cash')
+        const telebirrTxs = txs.filter(t => t.method.toLowerCase().includes('telebirr'))
+        const cbeTxs = txs.filter(t => t.method.toLowerCase().includes('cbe'))
 
-          {/* Mobile Touch Cards View (< 768px) */}
-          <div className="mobile-card-view" style={{ display: 'none', flexDirection: 'column', gap: '8px' }}>
-            {data.transactions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', background: '#FFFFFF', borderRadius: '10px' }}>No transactions found.</div>
-            ) : data.transactions.map(tx => (
-              <div key={tx.id} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>Table {tx.table}</span>
-                  <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: tx.method === 'Cash' ? 'rgba(5,150,105,0.1)' : 'rgba(37,99,235,0.1)', color: tx.method === 'Cash' ? '#059669' : '#2563EB' }}>
-                    {tx.method}
+        const cashTotal = cashTxs.reduce((sum, t) => sum + t.amount, 0)
+        const telebirrTotal = telebirrTxs.reduce((sum, t) => sum + t.amount, 0)
+        const telebirrVerifiedCount = telebirrTxs.filter(t => t.isVerified).length
+
+        const cbeTotal = cbeTxs.reduce((sum, t) => sum + t.amount, 0)
+        const cbeVerifiedCount = cbeTxs.filter(t => t.isVerified).length
+
+        const grandTotal = txs.reduce((sum, t) => sum + t.amount, 0)
+
+        // Filter transactions
+        const filteredTxs = txs.filter(t => {
+          // Method filter
+          if (ledgerMethodFilter === 'Cash' && t.method !== 'Cash') return false
+          if (ledgerMethodFilter === 'Telebirr' && !t.method.toLowerCase().includes('telebirr')) return false
+          if (ledgerMethodFilter === 'CBE' && !t.method.toLowerCase().includes('cbe')) return false
+
+          // Status filter
+          if (ledgerStatusFilter === 'VERIFIED' && !t.isVerified) return false
+          if (ledgerStatusFilter === 'UNVERIFIED' && (t.method === 'Cash' || t.isVerified)) return false
+
+          // Search term
+          if (ledgerSearch.trim()) {
+            const q = ledgerSearch.toLowerCase()
+            const matchTable = t.table?.toLowerCase().includes(q)
+            const matchCashier = t.cashier?.toLowerCase().includes(q)
+            const matchWaiter = t.waiter?.toLowerCase().includes(q)
+            const matchRef = t.verifiedRef?.toLowerCase().includes(q)
+            const matchPayer = t.verifiedPayer?.toLowerCase().includes(q)
+            const matchReceiver = t.verifiedReceiver?.toLowerCase().includes(q)
+            const matchItems = t.items?.toLowerCase().includes(q)
+            if (!matchTable && !matchCashier && !matchWaiter && !matchRef && !matchPayer && !matchReceiver && !matchItems) {
+              return false
+            }
+          }
+          return true
+        })
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Header + Export to Excel Button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>Transaction Ledger & Payment Audit</span>
+                  <span style={{ fontSize: '11px', background: 'rgba(180,138,30,0.12)', color: 'var(--gold-dark)', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(180,138,30,0.25)', fontWeight: '700' }}>
+                    {txs.length} Settled
                   </span>
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0 0' }}>
+                  Chronological customer payment settlements, bank referral codes, and verification audit
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-gold btn-sm"
+                onClick={exportLedgerToExcel}
+                style={{
+                  fontSize: '12px',
+                  padding: '8px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: '700',
+                  boxShadow: '0 2px 6px rgba(180,138,30,0.25)'
+                }}
+              >
+                <Download size={14} />
+                <span>Export Ledger to Excel (.xls)</span>
+              </button>
+            </div>
+
+            {/* Financial Summary Metric Bar */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '12px'
+            }}>
+              {/* Cash Summary */}
+              <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderTop: '3px solid #059669', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  💵 Cash Revenue
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 6px 0' }}>
-                  {new Date(tx.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} · Waiter: {tx.waiter} (Cashier: {tx.cashier})
+                <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatMoney(cashTotal)}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--black-hover)', padding: '6px 8px', borderRadius: '6px', marginBottom: '8px' }}>
-                  {tx.items}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '6px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total Settled</span>
-                  <b style={{ fontSize: '14px', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(tx.amount)}</b>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {cashTxs.length} settled orders
                 </div>
               </div>
-            ))}
+
+              {/* Telebirr Summary */}
+              <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderTop: '3px solid #0284C7', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  📱 Telebirr Revenue
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatMoney(telebirrTotal)}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {telebirrTxs.length} orders · <b style={{ color: '#059669' }}>{telebirrVerifiedCount} Verified</b>
+                </div>
+              </div>
+
+              {/* CBE Summary */}
+              <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderTop: '3px solid #D97706', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  🏦 CBE Revenue
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatMoney(cbeTotal)}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {cbeTxs.length} orders · <b style={{ color: '#059669' }}>{cbeVerifiedCount} Verified</b>
+                </div>
+              </div>
+
+              {/* Grand Total */}
+              <div style={{ background: 'linear-gradient(135deg, rgba(201,168,76,0.12) 0%, rgba(180,138,30,0.06) 100%)', border: '1px solid rgba(201,168,76,0.4)', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--gold-dark)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  🏆 Total Settled
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '900', color: 'var(--text-primary)', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatMoney(grandTotal)}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {txs.length} total settlements
+                </div>
+              </div>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--black-border)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '10px',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              {/* Channel Filter Pills */}
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '4px' }}>
+                  Channel:
+                </span>
+                {([
+                  { id: 'ALL', label: `All (${txs.length})` },
+                  { id: 'Cash', label: `💵 Cash (${cashTxs.length})` },
+                  { id: 'Telebirr', label: `📱 Telebirr (${telebirrTxs.length})` },
+                  { id: 'CBE', label: `🏦 CBE (${cbeTxs.length})` }
+                ] as const).map(p => {
+                  const isActive = ledgerMethodFilter === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setLedgerMethodFilter(p.id)}
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: '11px',
+                        fontWeight: isActive ? '700' : '500',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: isActive ? '#0F172A' : 'var(--black-hover)',
+                        color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Status Filter & Search Input */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={ledgerStatusFilter}
+                  onChange={e => setLedgerStatusFilter(e.target.value as any)}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    borderRadius: '6px',
+                    border: '1px solid var(--black-border)',
+                    background: '#FFFFFF',
+                    color: 'var(--text-primary)',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="VERIFIED">✓ Verified Only</option>
+                  <option value="UNVERIFIED">⚠️ Unverified Digital</option>
+                </select>
+
+                <div style={{ position: 'relative', minWidth: '180px' }}>
+                  <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    value={ledgerSearch}
+                    onChange={e => setLedgerSearch(e.target.value)}
+                    placeholder="Search table, ref, staff..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px 6px 26px',
+                      fontSize: '11px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--black-border)',
+                      background: 'var(--black-hover)',
+                      color: 'var(--text-primary)',
+                      outline: 'none'
+                    }}
+                  />
+                  {ledgerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setLedgerSearch('')}
+                      style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px' }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="desktop-table-view" style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Table</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Staff</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Items</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Method</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Verification & Reference Code</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTxs.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                        No transactions matching current filters.
+                      </td>
+                    </tr>
+                  ) : filteredTxs.map((tx, idx) => {
+                    const isCash = tx.method === 'Cash'
+                    const isTele = tx.method.toLowerCase().includes('telebirr')
+                    const isCBE = tx.method.toLowerCase().includes('cbe')
+                    const methodColor = isCash ? '#059669' : isTele ? '#0284C7' : isCBE ? '#D97706' : '#64748B'
+                    const methodBg = isCash ? 'rgba(5,150,105,0.1)' : isTele ? 'rgba(2,132,199,0.1)' : isCBE ? 'rgba(217,119,6,0.1)' : 'rgba(100,116,139,0.1)'
+
+                    return (
+                      <tr key={tx.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
+                        <td style={{ padding: '10px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                            {new Date(tx.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            {new Date(tx.date).toLocaleDateString('en-US')}
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 16px', fontWeight: '700' }}>Table {tx.table}</td>
+                        <td style={{ padding: '10px 16px' }}>
+                          <div style={{ fontWeight: '600' }}>{tx.waiter}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Cashier: {tx.cashier}</div>
+                        </td>
+                        <td style={{ padding: '10px 16px', color: 'var(--text-secondary)', maxWidth: '220px', fontSize: '12px' }}>{tx.items}</td>
+                        <td style={{ padding: '10px 16px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '4px', background: methodBg, color: methodColor }}>
+                            {tx.method}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 16px' }}>
+                          {isCash ? (
+                            <span style={{ fontSize: '11px', color: '#059669', background: 'rgba(5,150,105,0.08)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                              💵 Cash - Register Settled
+                            </span>
+                          ) : tx.isVerified ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '9px', background: '#10B981', color: '#FFFFFF', padding: '1px 5px', borderRadius: '3px', fontWeight: '800' }}>
+                                  ✓ VERIFIED
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--text-primary)', fontSize: '12px' }}>
+                                  {tx.verifiedRef}
+                                </span>
+                              </div>
+                              {(tx.verifiedPayer || tx.verifiedReceiver) && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                  {tx.verifiedReceiver ? `Credited: ${tx.verifiedReceiver}` : ''}
+                                  {tx.verifiedPayer ? ` · Payer: ${tx.verifiedPayer}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span style={{ fontSize: '9px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#DC2626', padding: '1px 6px', borderRadius: '3px', fontWeight: '800', width: 'fit-content' }}>
+                                ⚠️ UNVERIFIED
+                              </span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                No bank receipt slip linked
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums', fontSize: '14px' }}>
+                          {formatMoney(tx.amount)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Touch Cards View (< 768px) */}
+            <div className="mobile-card-view" style={{ display: 'none', flexDirection: 'column', gap: '8px' }}>
+              {filteredTxs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', background: '#FFFFFF', borderRadius: '10px' }}>
+                  No transactions found.
+                </div>
+              ) : filteredTxs.map(tx => {
+                const isCash = tx.method === 'Cash'
+                const isTele = tx.method.toLowerCase().includes('telebirr')
+                const isCBE = tx.method.toLowerCase().includes('cbe')
+                const methodColor = isCash ? '#059669' : isTele ? '#0284C7' : isCBE ? '#D97706' : '#64748B'
+                const methodBg = isCash ? 'rgba(5,150,105,0.1)' : isTele ? 'rgba(2,132,199,0.1)' : isCBE ? 'rgba(217,119,6,0.1)' : 'rgba(100,116,139,0.1)'
+
+                return (
+                  <div key={tx.id} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>Table {tx.table}</span>
+                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', background: methodBg, color: methodColor }}>
+                        {tx.method}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 6px 0' }}>
+                      {new Date(tx.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} · Waiter: {tx.waiter} (Cashier: {tx.cashier})
+                    </div>
+
+                    {/* Verification Status Pill on Mobile */}
+                    <div style={{ marginBottom: '8px' }}>
+                      {isCash ? (
+                        <span style={{ fontSize: '10px', color: '#059669', background: 'rgba(5,150,105,0.08)', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>
+                          💵 Cash - Register Settled
+                        </span>
+                      ) : tx.isVerified ? (
+                        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', padding: '6px 8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '9px', background: '#10B981', color: '#FFFFFF', padding: '1px 5px', borderRadius: '3px', fontWeight: '800' }}>
+                              ✓ VERIFIED
+                            </span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--text-primary)', fontSize: '11px' }}>
+                              {tx.verifiedRef}
+                            </span>
+                          </div>
+                          {(tx.verifiedPayer || tx.verifiedReceiver) && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {tx.verifiedReceiver ? `Credited: ${tx.verifiedReceiver}` : ''}
+                              {tx.verifiedPayer ? ` · Payer: ${tx.verifiedPayer}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '9px', background: '#EF4444', color: '#FFFFFF', padding: '1px 5px', borderRadius: '3px', fontWeight: '800' }}>
+                            ⚠️ UNVERIFIED
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#DC2626' }}>No slip linked</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--black-hover)', padding: '6px 8px', borderRadius: '6px', marginBottom: '8px' }}>
+                      {tx.items}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '6px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total Settled</span>
+                      <b style={{ fontSize: '14px', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(tx.amount)}</b>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ============================================================ */}
       {/* 11. TAB 6: BEST SELLERS RANKING                              */}

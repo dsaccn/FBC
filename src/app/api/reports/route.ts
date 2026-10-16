@@ -300,17 +300,61 @@ export async function GET(req: Request) {
     staffPerf[name].revenue += p.amount
   })
 
+  // Helper to extract verification info from order or notes
+  function getTransactionVerification(p: any) {
+    let verifiedRef = p.order?.verifiedRef || null
+    let verifiedProvider = p.order?.verifiedProvider || null
+    let verifiedPayer = p.order?.verifiedPayer || null
+    let verifiedReceiver = p.order?.verifiedReceiver || null
+    let verifiedAt = p.order?.verifiedAt || null
+
+    if (!verifiedRef && p.notes) {
+      const matchRef = p.notes.match(/Ref:\s*([A-Za-z0-9_-]+)/i)
+      if (matchRef) verifiedRef = matchRef[1]
+      const matchCredited = p.notes.match(/Credited:\s*([^|\]]+)/i)
+      if (matchCredited) verifiedReceiver = matchCredited[1].trim()
+      const matchPayer = p.notes.match(/Payer:\s*([^|\]]+)/i)
+      if (matchPayer) verifiedPayer = matchPayer[1].trim()
+      if (p.notes.includes('Telebirr') || p.notes.includes('TELEBIRR')) verifiedProvider = 'TELEBIRR'
+      else if (p.notes.includes('CBE')) verifiedProvider = 'CBE'
+    }
+
+    const isDigital = p.method === 'Telebirr' || p.method === 'CBE' || p.method === 'CBE Birr' || p.method?.toLowerCase().includes('bank')
+    const isVerified = Boolean(verifiedRef)
+
+    return {
+      verifiedRef,
+      verifiedProvider: verifiedProvider || (isDigital ? p.method.toUpperCase() : null),
+      verifiedPayer,
+      verifiedReceiver,
+      verifiedAt,
+      isVerified,
+      isDigital,
+    }
+  }
+
   // Transactions
-  const transactions = payments.map(p => ({
-    id: p.id,
-    date: p.createdAt,
-    amount: p.amount,
-    method: p.method,
-    cashier: p.cashier?.fullName || 'Unknown',
-    waiter: p.order.waiter.fullName,
-    table: p.order.table.number,
-    items: p.order.orderItems.map((oi: any) => `${oi.quantity}x ${oi.menuItem.name}`).join(', ')
-  }))
+  const transactions = payments.map(p => {
+    const ver = getTransactionVerification(p)
+    return {
+      id: p.id,
+      date: p.createdAt,
+      amount: p.amount,
+      method: p.method,
+      cashier: p.cashier?.fullName || 'Unknown',
+      waiter: p.order?.waiter?.fullName || 'Unknown',
+      table: p.order?.table?.number || '?',
+      items: p.order?.orderItems?.map((oi: any) => `${oi.quantity}x ${oi.menuItem.name}`).join(', ') || '',
+      verifiedRef: ver.verifiedRef,
+      verifiedProvider: ver.verifiedProvider,
+      verifiedPayer: ver.verifiedPayer,
+      verifiedReceiver: ver.verifiedReceiver,
+      verifiedAt: ver.verifiedAt,
+      isVerified: ver.isVerified,
+      isDigital: ver.isDigital,
+      notes: p.notes,
+    }
+  })
 
   // Daily Sales with per-category item breakdown
   const dailyMap: Record<string, {
