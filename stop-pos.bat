@@ -28,6 +28,7 @@ for /f "tokens=5" %%p in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING 2^
 )
 
 :: 3. Terminate Cloudflare mobile tunnel if running
+sc stop cloudflared >nul 2>&1
 taskkill /f /im cloudflared.exe >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Stopped Cloudflare mobile tunnel (cloudflared.exe).
