@@ -161,6 +161,9 @@ if exist "%DESKTOP%" (
     echo URL=http://localhost:3000 >> "%DESKTOP%\Open Kogna POS.url"
     echo    Desktop shortcut 'Open Kogna POS' created: OK
 
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%POS_DIR%scripts\create_silent_print_shortcut.ps1" >nul 2>&1
+    echo    Desktop shortcut 'Kogna POS (Silent Print)' created: OK
+
     echo [InternetShortcut] > "%DESKTOP%\Kogna Mobile Scanner.url"
     echo URL=https://scanner.kogna.coffee/scanner >> "%DESKTOP%\Kogna Mobile Scanner.url"
     echo    Desktop shortcut 'Kogna Mobile Scanner' created: OK

@@ -333,6 +333,9 @@ export default function PaymentPage() {
         setLastPayment({ amount: total, method })
         setPaid(true)
         toast.success(`Payment of ${total.toFixed(2)} ETB (${method}) processed successfully!`)
+        setTimeout(() => {
+          printReceipt()
+        }, 200)
       } else {
         const data = await res.json().catch(() => ({}))
         toast.error(data.error || 'Failed to process payment')
