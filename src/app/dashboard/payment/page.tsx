@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, CheckCircle, Bike, ShoppingBag } from 'lucide-react'
+import { Printer, CheckCircle, Bike, ShoppingBag, Zap } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
@@ -40,6 +40,14 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(false)
   const [paid, setPaid] = useState(false)
   const [lastPayment, setLastPayment] = useState<{ amount: number; method: string } | null>(null)
+  const [recentPhoneScan, setRecentPhoneScan] = useState<{
+    reference: string
+    provider: string
+    amount?: number
+    payerName?: string
+    receiverName?: string
+    timestamp: string
+  } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -72,9 +80,106 @@ export default function PaymentPage() {
 
   useEffect(() => {
     load()
-    // Poll every 4s so mobile phone verifications reflect on Cashier POS in real-time
-    const interval = setInterval(load, 4000)
-    return () => clearInterval(interval)
+    // Backup polling every 1.5s
+    const interval = setInterval(load, 1500)
+
+    // Instant Millisecond Real-Time Push via Server-Sent Events (SSE)
+    let es: EventSource | null = null
+    try {
+      es = new EventSource('/api/scanner/events')
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload.type === 'ORDER_VERIFIED') {
+            // 1. Instantly update order in orders list in 0 ms!
+            setOrders(prev => prev.map(o => {
+              if (o.id === payload.orderId) {
+                return {
+                  ...o,
+                  verifiedRef: payload.reference,
+                  verifiedProvider: payload.provider,
+                  verifiedAmount: payload.amount,
+                  verifiedPayer: payload.payerName,
+                  verifiedReceiver: payload.receiverName,
+                  verifiedAt: payload.timestamp,
+                }
+              }
+              return o
+            }))
+
+            // 2. Instantly update selectedOrder if matching
+            setSelectedOrder(prev => {
+              if (prev && prev.id === payload.orderId) {
+                return {
+                  ...prev,
+                  verifiedRef: payload.reference,
+                  verifiedProvider: payload.provider,
+                  verifiedAmount: payload.amount,
+                  verifiedPayer: payload.payerName,
+                  verifiedReceiver: payload.receiverName,
+                  verifiedAt: payload.timestamp,
+                }
+              }
+              return prev
+            })
+
+            // 3. Auto-select payment method immediately
+            if (payload.provider) {
+              const p = String(payload.provider).toUpperCase()
+              if (p.includes('TELEBIRR')) setMethod('Telebirr')
+              else if (p.includes('CBE')) setMethod('CBE')
+            }
+
+            // 4. Play audio chime and toast notification
+            try {
+              const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+              if (AudioContextClass) {
+                const ctx = new AudioContextClass()
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+                osc.frequency.setValueAtTime(587.33, ctx.currentTime)
+                osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1)
+                gain.gain.setValueAtTime(0.2, ctx.currentTime)
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+                osc.start(ctx.currentTime)
+                osc.stop(ctx.currentTime + 0.35)
+              }
+            } catch {}
+
+            toast.success(`⚡ Instant Verification: ${payload.tableNumber ? `Table ${payload.tableNumber}` : 'Order'} (${payload.provider} ${payload.amount ? `${payload.amount} ETB` : ''})`)
+          } else if (payload.type === 'RECEIPT_SCANNED') {
+            setRecentPhoneScan(payload)
+            // Play a soft chime
+            try {
+              const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+              if (AudioContextClass) {
+                const ctx = new AudioContextClass()
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+                osc.frequency.setValueAtTime(659.25, ctx.currentTime) // E5
+                gain.gain.setValueAtTime(0.15, ctx.currentTime)
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
+                osc.start(ctx.currentTime)
+                osc.stop(ctx.currentTime + 0.25)
+              }
+            } catch {}
+            toast.info(`📱 Scanned on Phone: ${payload.provider} ${payload.amount ? `${payload.amount} ETB` : ''} (Ref: ${payload.reference})`)
+          } else if (payload.type === 'ORDER_CLEARED') {
+            setOrders(prev => prev.map(o => o.id === payload.orderId ? { ...o, verifiedRef: null, verifiedProvider: null, verifiedAmount: null, verifiedPayer: null, verifiedReceiver: null, verifiedAt: null } : o))
+            setSelectedOrder(prev => prev && prev.id === payload.orderId ? { ...prev, verifiedRef: null, verifiedProvider: null, verifiedAmount: null, verifiedPayer: null, verifiedReceiver: null, verifiedAt: null } : prev)
+          }
+        } catch {}
+      }
+    } catch {}
+
+    return () => {
+      clearInterval(interval)
+      if (es) es.close()
+    }
   }, [load])
 
   // When an order is selected, if it has already been verified on phone, pre-select that payment method
@@ -88,6 +193,40 @@ export default function PaymentPage() {
 
   const activeItems = selectedOrder?.orderItems.filter(i => i.status !== 'CANCELLED') || []
   const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+
+  // Auto-calculate tip when verified amount exceeds order subtotal
+  useEffect(() => {
+    if (selectedOrder?.verifiedAmount && selectedOrder.verifiedAmount > subtotal && !tipAmount) {
+      const extra = (selectedOrder.verifiedAmount - subtotal).toFixed(2)
+      setTipAmount(extra)
+    }
+  }, [selectedOrder?.verifiedAmount, subtotal, tipAmount])
+
+  async function handleLinkRecentScan(orderId: string) {
+    if (!recentPhoneScan) return
+    try {
+      const res = await fetch('/api/scanner/verify-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          reference: recentPhoneScan.reference,
+          provider: recentPhoneScan.provider,
+          amount: recentPhoneScan.amount,
+          payerName: recentPhoneScan.payerName,
+          receiverName: recentPhoneScan.receiverName,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Attached phone scan to order!')
+        setRecentPhoneScan(null)
+      } else {
+        toast.error('Failed to attach phone scan')
+      }
+    } catch {
+      toast.error('Network error attaching scan')
+    }
+  }
   const discountAmt = discountValue
     ? discountType === 'percentage' ? (subtotal * parseFloat(discountValue)) / 100 : parseFloat(discountValue)
     : 0
@@ -468,7 +607,70 @@ export default function PaymentPage() {
       {selectedOrder && (
         <div className="mobile-full-w" style={{ width: '340px', maxWidth: '100%', flexShrink: 0 }}>
           <div className="card">
-            <h3 style={{ fontWeight: '600', marginBottom: '16px' }}>Payment Details</h3>
+            {/* Live Floating Phone Scan Alert */}
+            {recentPhoneScan && (!selectedOrder.verifiedRef || selectedOrder.verifiedRef !== recentPhoneScan.reference) && (
+              <div style={{
+                marginBottom: '16px',
+                background: 'linear-gradient(135deg, rgba(201,168,76,0.18) 0%, rgba(180,138,30,0.08) 100%)',
+                border: '1px solid rgba(201,168,76,0.45)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(201,168,76,0.15)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--gold)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <Zap size={14} />
+                    <span>Live Phone Scan Detected</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecentPhoneScan(null)}
+                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                  >
+                    Dismiss ✕
+                  </button>
+                </div>
+                <div style={{ fontSize: '13px', color: '#FFFFFF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span><b>{recentPhoneScan.provider}</b>: <code style={{ color: 'var(--gold-light)' }}>{recentPhoneScan.reference}</code></span>
+                  <b style={{ color: '#34D399', fontSize: '14px' }}>
+                    {recentPhoneScan.amount ? `${recentPhoneScan.amount.toFixed(2)} ETB` : ''}
+                  </b>
+                </div>
+                {recentPhoneScan.receiverName && (
+                  <div style={{ fontSize: '11px', color: '#CBD5E1' }}>
+                    Credited: <b style={{ color: '#34D399' }}>{recentPhoneScan.receiverName}</b>
+                    {recentPhoneScan.payerName && ` · Payer: ${recentPhoneScan.payerName}`}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleLinkRecentScan(selectedOrder.id)}
+                  style={{
+                    marginTop: '2px',
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: '#10B981',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#FFFFFF',
+                    fontWeight: '700',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(16,185,129,0.3)'
+                  }}
+                >
+                  <CheckCircle size={14} />
+                  <span>Attach This Scan to {selectedInfo?.title || 'This Order'}</span>
+                </button>
+              </div>
+            )}
 
             {/* Phone Verified Slip Details Card */}
             {selectedOrder.verifiedRef && (
@@ -515,6 +717,42 @@ export default function PaymentPage() {
                     <span style={{ color: '#94A3B8' }}>Transaction Ref:</span>
                     <span style={{ fontFamily: 'monospace', color: 'var(--gold-light)', fontWeight: '700' }}>{selectedOrder.verifiedRef}</span>
                   </div>
+
+                  {/* Partial or Tip Analysis Banner */}
+                  {selectedOrder.verifiedAmount && selectedOrder.verifiedAmount < subtotal && (
+                    <div style={{
+                      marginTop: '6px',
+                      padding: '8px 10px',
+                      background: 'rgba(245,158,11,0.12)',
+                      border: '1px solid rgba(245,158,11,0.3)',
+                      borderRadius: '6px',
+                      color: '#FDE68A',
+                      fontSize: '11px',
+                      lineHeight: 1.4
+                    }}>
+                      <b>🟡 Partial Payment:</b> Scanned {(selectedOrder.verifiedAmount).toFixed(2)} ETB of {subtotal.toFixed(2)} ETB bill.
+                      <div style={{ marginTop: '2px', fontWeight: '700', color: '#FCD34D' }}>
+                        Remaining to collect: {(subtotal - selectedOrder.verifiedAmount).toFixed(2)} ETB (e.g. in Cash)
+                      </div>
+                    </div>
+                  )}
+                  {selectedOrder.verifiedAmount && selectedOrder.verifiedAmount > subtotal && (
+                    <div style={{
+                      marginTop: '6px',
+                      padding: '8px 10px',
+                      background: 'rgba(16,185,129,0.12)',
+                      border: '1px solid rgba(16,185,129,0.3)',
+                      borderRadius: '6px',
+                      color: '#A7F3D0',
+                      fontSize: '11px',
+                      lineHeight: 1.4
+                    }}>
+                      <b>🟢 Extra Payment (Tip):</b> Scanned {(selectedOrder.verifiedAmount).toFixed(2)} ETB for a {subtotal.toFixed(2)} ETB bill.
+                      <div style={{ marginTop: '2px', fontWeight: '700', color: '#34D399' }}>
+                        Extra +{(selectedOrder.verifiedAmount - subtotal).toFixed(2)} ETB recorded as Tip.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>

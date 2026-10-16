@@ -48,6 +48,8 @@ next-env.d.ts
 # Distribution archives and installers
 *.zip
 *.msi
+*.exe
+/bin/
 
 # Agent and IDE local directories
 .agents

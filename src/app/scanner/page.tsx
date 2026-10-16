@@ -105,6 +105,7 @@ export default function QRScannerPage() {
   const html5QrCodeRef = useRef<any>(null)
   const scannerContainerId = 'kogna-qr-reader'
   const expectedAmountRef = useRef(expectedAmount)
+  const selectedOrderIdRef = useRef(selectedOrderId)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileScanning, setFileScanning] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -115,6 +116,10 @@ export default function QRScannerPage() {
   const lastScannedTextRef = useRef<string | null>(null)
   const lastScannedTimeRef = useRef<number>(0)
   const mountedRef = useRef(true)
+
+  useEffect(() => {
+    selectedOrderIdRef.current = selectedOrderId
+  }, [selectedOrderId])
 
   // Fetch open orders from API
   const fetchOpenOrders = useCallback(async () => {
@@ -278,6 +283,7 @@ export default function QRScannerPage() {
     setAmountMatches(null)
 
     try {
+      const activeOrderId = selectedOrderIdRef.current || undefined
       const res = await fetch('/api/verify-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -286,6 +292,7 @@ export default function QRScannerPage() {
           provider: prov,
           accountDigits: accountDigits || undefined,
           expectedAmount: expAmt || undefined,
+          orderId: activeOrderId,
         }),
       })
 
@@ -295,6 +302,12 @@ export default function QRScannerPage() {
         const receipt: VerifiedReceipt = data.receipt
         setVerifiedResult(receipt)
         setAmountMatches(data.amountMatches ?? null)
+
+        if (data.linkedOrder) {
+          const target = openOrders.find(o => o.id === data.linkedOrder.id)
+          setLinkedSuccessMessage(`⚡ Automatically sent to Cashier POS for ${target?.displayTitle || 'Table'}!`)
+          fetchOpenOrders()
+        }
 
         playChime(receipt.success)
         triggerHaptic(receipt.success)
@@ -591,6 +604,8 @@ export default function QRScannerPage() {
     lastScannedTextRef.current = null
     lastScannedTimeRef.current = 0
     isVerifyingRef.current = false
+    setIsLinkingOrder(false)
+    setLinkedSuccessMessage(null)
     setVerifiedResult(null)
     setAmountMatches(null)
     setManualCode('')
@@ -1126,31 +1141,188 @@ export default function QRScannerPage() {
                 marginBottom: '14px'
               }}>
                 {linkedSuccessMessage ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    color: '#34D399',
-                    fontWeight: '700',
-                    fontSize: '13px'
-                  }}>
-                    <CheckCircle2 size={20} color="#10B981" />
-                    <span>{linkedSuccessMessage}</span>
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      color: '#34D399',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      marginBottom: '8px'
+                    }}>
+                      <CheckCircle2 size={20} color="#10B981" />
+                      <span>{linkedSuccessMessage}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLinkedSuccessMessage(null)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#94A3B8',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        padding: 0
+                      }}
+                    >
+                      Need to switch to another table? Tap here
+                    </button>
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '12px', color: '#CBD5E1', marginBottom: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: '12px', color: '#CBD5E1', marginBottom: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       ⚡ Confirm & Send to Cashier POS:
                     </div>
-                    {selectedOrderId ? (
-                      (() => {
-                        const target = openOrders.find(o => o.id === selectedOrderId)
-                        return (
-                          <div>
-                            <div style={{ fontSize: '13px', color: '#F1F5F9', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span>Selected: <b>{target?.displayTitle || 'Order'}</b> ({target?.waiterName})</span>
-                              <b style={{ color: 'var(--gold-light)' }}>{target?.total.toFixed(2)} ETB</b>
+
+                    {(() => {
+                      const target = openOrders.find(o => o.id === selectedOrderId)
+                      const scannedAmt = verifiedResult.amount
+                      const targetAmt = target?.total
+                      const diff = (typeof scannedAmt === 'number' && typeof targetAmt === 'number') ? scannedAmt - targetAmt : 0
+                      const isPartial = typeof scannedAmt === 'number' && typeof targetAmt === 'number' && diff < -0.5
+                      const isOverpaid = typeof scannedAmt === 'number' && typeof targetAmt === 'number' && diff > 0.5
+
+                      // Check if scanned amount matches any OTHER table
+                      const otherMatch = (typeof scannedAmt === 'number')
+                        ? openOrders.find(o => o.id !== selectedOrderId && Math.abs(o.total - scannedAmt) < 0.5)
+                        : null
+
+                      return (
+                        <div>
+                          {/* 1. Smart Suggestion if scanned amount matches a different table */}
+                          {otherMatch && (
+                            <div style={{
+                              background: 'linear-gradient(135deg, rgba(201,168,76,0.18) 0%, rgba(180,138,30,0.1) 100%)',
+                              border: '1px solid rgba(201,168,76,0.45)',
+                              borderRadius: '8px',
+                              padding: '10px 12px',
+                              marginBottom: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: '800' }}>
+                                  💡 MATCHES ANOTHER TABLE:
+                                </div>
+                                <div style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: '700' }}>
+                                  {otherMatch.displayTitle} ({formatMoney(otherMatch.total)})
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={isLinkingOrder}
+                                onClick={() => {
+                                  handleSelectOrder(otherMatch)
+                                  handleLinkToOrder(otherMatch.id)
+                                }}
+                                style={{
+                                  padding: '7px 12px',
+                                  borderRadius: '6px',
+                                  background: '#10B981',
+                                  color: '#FFFFFF',
+                                  fontWeight: '700',
+                                  fontSize: '12px',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                Switch & Send
+                              </button>
                             </div>
+                          )}
+
+                          {/* 2. Amount analysis for the selected table */}
+                          {target && isPartial && (
+                            <div style={{
+                              background: 'rgba(245,158,11,0.12)',
+                              border: '1px solid rgba(245,158,11,0.3)',
+                              borderRadius: '8px',
+                              padding: '10px 12px',
+                              marginBottom: '12px',
+                              color: '#FDE68A',
+                              fontSize: '12px'
+                            }}>
+                              <b>🟡 Partial Payment:</b> Customer paid {formatMoney(scannedAmt)} of {formatMoney(targetAmt)}.
+                              <div style={{ marginTop: '3px', fontWeight: '700', color: '#FCD34D' }}>
+                                Remaining balance to collect: {formatMoney(Math.abs(diff))} (e.g. in Cash)
+                              </div>
+                            </div>
+                          )}
+
+                          {target && isOverpaid && (
+                            <div style={{
+                              background: 'rgba(16,185,129,0.12)',
+                              border: '1px solid rgba(16,185,129,0.3)',
+                              borderRadius: '8px',
+                              padding: '10px 12px',
+                              marginBottom: '12px',
+                              color: '#A7F3D0',
+                              fontSize: '12px'
+                            }}>
+                              <b>🟢 Extra Amount / Tip:</b> Customer paid {formatMoney(scannedAmt)} for {formatMoney(targetAmt)} bill.
+                              <div style={{ marginTop: '3px', fontWeight: '700', color: '#34D399' }}>
+                                Extra +{formatMoney(diff)} will be recorded as Tip for staff.
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. Universal Table Selector & Switcher */}
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '12px', color: '#94A3B8' }}>
+                                {target ? 'Assigned Target Table:' : 'Select which table to attach:'}
+                              </span>
+                              {target && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectOrder(null)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--gold-light)',
+                                    fontSize: '11px',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                    padding: 0
+                                  }}
+                                >
+                                  Clear Selection
+                                </button>
+                              )}
+                            </div>
+                            <select
+                              value={selectedOrderId || ''}
+                              onChange={e => {
+                                const chosen = openOrders.find(o => o.id === e.target.value) || null
+                                handleSelectOrder(chosen)
+                              }}
+                              style={{
+                                width: '100%',
+                                background: '#0F172A',
+                                border: '1px solid rgba(255,255,255,0.25)',
+                                color: '#FFFFFF',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                fontSize: '13px',
+                                fontWeight: '600'
+                              }}
+                            >
+                              <option value="">-- Choose or Switch Table / Order --</option>
+                              {openOrders.map(o => (
+                                <option key={o.id} value={o.id}>
+                                  {o.displayTitle} — {formatMoney(o.total)} ({o.waiterName})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* 4. Action Button */}
+                          {selectedOrderId ? (
                             <button
                               type="button"
                               disabled={isLinkingOrder}
@@ -1173,45 +1345,22 @@ export default function QRScannerPage() {
                               }}
                             >
                               {isLinkingOrder ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                              <span>Attach & Confirm for {target?.displayTitle || 'Table'}</span>
+                              <span>
+                                {isPartial
+                                  ? `Attach Partial Payment to ${target?.displayTitle || 'Table'}`
+                                  : isOverpaid
+                                    ? `Attach Payment (+Tip) to ${target?.displayTitle || 'Table'}`
+                                    : `Confirm & Send to Cashier for ${target?.displayTitle || 'Table'}`}
+                              </span>
                             </button>
-                          </div>
-                        )
-                      })()
-                    ) : openOrders.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ fontSize: '12px', color: '#94A3B8' }}>
-                          Select which table/order this payment belongs to:
+                          ) : (
+                            <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center', padding: '6px 0', fontStyle: 'italic' }}>
+                              Select a table above to send this payment to the Cashier POS screen.
+                            </div>
+                          )}
                         </div>
-                        <select
-                          style={{
-                            width: '100%',
-                            background: '#0F172A',
-                            border: '1px solid rgba(255,255,255,0.25)',
-                            color: '#FFFFFF',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: '600'
-                          }}
-                          onChange={e => {
-                            if (e.target.value) handleLinkToOrder(e.target.value)
-                          }}
-                          defaultValue=""
-                        >
-                          <option value="" disabled>Choose Table / Order...</option>
-                          {openOrders.map(o => (
-                            <option key={o.id} value={o.id}>
-                              {o.displayTitle} — {o.total.toFixed(2)} ETB ({o.waiterName})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '12px', color: '#94A3B8', fontStyle: 'italic' }}>
-                        No open tables currently active to link.
-                      </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 )}
               </div>

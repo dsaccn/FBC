@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Client as PgClient } from 'pg'
+import { broadcastVerificationEvent } from '@/lib/scanner-events'
 
 export async function POST(req: Request) {
   try {
@@ -71,6 +72,19 @@ export async function POST(req: Request) {
         })
     }
 
+    // 3. Instant Millisecond Broadcast to Cashier POS screens
+    broadcastVerificationEvent({
+      type: 'ORDER_VERIFIED',
+      orderId,
+      tableNumber: updated?.table?.number,
+      reference: cleanRef,
+      provider: provider || 'AUTO',
+      amount: parsedAmount,
+      payerName: payerName || undefined,
+      receiverName: receiverName || undefined,
+      timestamp: verifiedDate.toISOString(),
+    })
+
     return NextResponse.json({
       success: true,
       message: `Payment verified for ${updated?.table?.number ? `Table ${updated.table.number}` : 'Order'}!`,
@@ -135,6 +149,13 @@ export async function DELETE(req: Request) {
         .then(() => pg.end())
         .catch(() => { try { pg.end() } catch {} })
     }
+
+    // Broadcast instant clear to Cashier screens
+    broadcastVerificationEvent({
+      type: 'ORDER_CLEARED',
+      orderId,
+      timestamp: new Date().toISOString(),
+    })
 
     return NextResponse.json({ success: true, message: 'Order verification cleared' })
   } catch (err: any) {
