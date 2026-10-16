@@ -62,18 +62,7 @@ if %errorlevel% equ 0 (
 )
 
 :: 4. Start Cloudflare mobile tunnel for phone scanner if present
-set "CF_VALID=0"
 if exist "%~dp0bin\cloudflared.exe" (
-    for %%F in ("%~dp0bin\cloudflared.exe") do (
-        if %%~zF GTR 20000000 set "CF_VALID=1"
-    )
-    if not "%CF_VALID%"=="1" (
-        echo [WARNING] bin\cloudflared.exe is incomplete or corrupted. Removing damaged file...
-        del /f /q "%~dp0bin\cloudflared.exe" >nul 2>&1
-    )
-)
-
-if "%CF_VALID%"=="1" (
     tasklist /fi "imagename eq cloudflared.exe" 2>nul | findstr /i "cloudflared.exe" >nul 2>&1
     if errorlevel 1 (
         echo [OK] Starting Cloudflare mobile tunnel for phone scanner...
@@ -82,9 +71,7 @@ if "%CF_VALID%"=="1" (
         echo [OK] Cloudflare mobile tunnel is already running.
     )
 ) else (
-    echo [WARNING] Valid bin\cloudflared.exe was not found!
-    echo           Mobile scanner tunnel (scanner.kogna.coffee) will NOT be accessible.
-    echo           Run 'test-cloudflare.bat' to download or copy the bin folder.
+    echo [INFO] bin\cloudflared.exe not found. Running in local Wi-Fi mode.
 )
 
 :: 5. Open the browser to the POS
