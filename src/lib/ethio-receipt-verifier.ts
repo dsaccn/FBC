@@ -4,6 +4,8 @@
  * Supports Telebirr, Commercial Bank of Ethiopia (CBE), and general receipt URL links.
  */
 
+import { getPaymentSettings } from '@/lib/payment-settings'
+
 export const DEFAULT_CBE_ACCOUNT = process.env.DEFAULT_CBE_ACCOUNT || ''
 
 export interface VerifiedReceipt {
@@ -155,6 +157,35 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
 
     const isSuccess = /completed|success|approved/i.test(rawStatus)
 
+    // Check receiver phone/account against configured settings
+    const settings = getPaymentSettings()
+    let isReceiverMatched = true
+    if (settings.telebirrReceiverPhone && settings.telebirrReceiverPhone.trim()) {
+      const cleanTarget = settings.telebirrReceiverPhone.replace(/\D/g, '').slice(-9)
+      const cleanReceived = (receiverPhone || '').replace(/\D/g, '').slice(-9)
+      if (cleanTarget && cleanReceived && cleanTarget !== cleanReceived) {
+        isReceiverMatched = false
+      }
+    }
+
+    if (isSuccess && !isReceiverMatched) {
+      return {
+        success: false,
+        provider: 'TELEBIRR',
+        reference: transactionId,
+        payerName: payerName || undefined,
+        payerAccountOrPhone: payerPhone || undefined,
+        receiverName: receiverName || undefined,
+        receiverAccount: receiverPhone || undefined,
+        amount: parsedAmount,
+        currency: 'ETB',
+        dateTime: rawDate || undefined,
+        status: 'FAILED',
+        isReceiverMatched: false,
+        errorMessage: `RECEIVER MISMATCH: Payment was credited to ${receiverPhone || receiverName || 'another account'}, NOT your official Telebirr (${settings.telebirrReceiverPhone})!`,
+      }
+    }
+
     return {
       success: isSuccess,
       provider: 'TELEBIRR',
@@ -163,6 +194,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
       payerAccountOrPhone: payerPhone || undefined,
       receiverName: receiverName || undefined,
       receiverAccount: receiverPhone || undefined,
+      isReceiverMatched,
       amount: parsedAmount,
       currency: 'ETB',
       dateTime: rawDate || undefined,
@@ -220,6 +252,35 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
     const amountVal = parseFloat(data.amountCredited || data.debitAmount || '0')
     const isSuccess = data.status === 'COMPLETED' || data.status === 'SUCCESS' || /complete|success/i.test(data.status || '')
 
+    // Check receiver account against configured settings
+    const settings = getPaymentSettings()
+    let isReceiverMatched = true
+    if (settings.cbeReceiverAccount && settings.cbeReceiverAccount.trim()) {
+      const cleanTarget = settings.cbeReceiverAccount.replace(/\D/g, '').slice(-8)
+      const cleanReceived = (data.creditAccountNo || '').replace(/\D/g, '').slice(-8)
+      if (cleanTarget && cleanReceived && !cleanReceived.includes(cleanTarget)) {
+        isReceiverMatched = false
+      }
+    }
+
+    if (isSuccess && !isReceiverMatched) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: data.id || cleanToken,
+        payerName: data.debitAccountHolder || undefined,
+        payerAccountOrPhone: data.debitAccountNo || undefined,
+        receiverName: data.creditAccountHolder || undefined,
+        receiverAccount: data.creditAccountNo || undefined,
+        amount: isNaN(amountVal) ? undefined : amountVal,
+        currency: data.creditCurrency || data.debitCurrency || 'ETB',
+        dateTime: data.dateTimes?.[0] || undefined,
+        status: 'FAILED',
+        isReceiverMatched: false,
+        errorMessage: `RECEIVER MISMATCH: Payment was credited to account ${data.creditAccountNo || 'another account'}, NOT your official CBE account (${settings.cbeReceiverAccount})!`,
+      }
+    }
+
     return {
       success: isSuccess,
       provider: 'CBE',
@@ -228,7 +289,7 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
       payerAccountOrPhone: data.debitAccountNo || undefined,
       receiverName: data.creditAccountHolder || undefined,
       receiverAccount: data.creditAccountNo || undefined,
-      isReceiverMatched: true,
+      isReceiverMatched,
       amount: isNaN(amountVal) ? undefined : amountVal,
       currency: data.creditCurrency || data.debitCurrency || 'ETB',
       dateTime: data.dateTimes?.[0] || undefined,
@@ -279,10 +340,11 @@ export async function verifyCbeReceipt(
   let fetchUrl = clean
   let ftCode = clean.toUpperCase()
 
-  // Use provided account digits or default configured account
+  // Use provided account digits or default configured account from settings
+  const settings = getPaymentSettings()
   const targetAcc = (accountDigits && accountDigits.trim().length > 0)
     ? accountDigits.trim()
-    : (DEFAULT_CBE_ACCOUNT || '')
+    : (settings.cbeReceiverAccount || DEFAULT_CBE_ACCOUNT || '')
 
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     fetchUrl = clean
@@ -366,9 +428,32 @@ export async function verifyCbeReceipt(
     const extractedRef = refMatch ? refMatch[1].trim() : ftCode
 
     const parsedReceiverAcc = receiverAccMatch ? receiverAccMatch[1].trim() : ''
-    const isReceiverMatched = targetAcc && targetAcc.length >= 8
-      ? (parsedReceiverAcc.includes(targetAcc) || parsedReceiverAcc.includes(targetAcc.slice(-8)))
-      : false
+    let isReceiverMatched = true
+    if (targetAcc && targetAcc.length >= 8) {
+      const cleanTarget = targetAcc.replace(/\D/g, '').slice(-8)
+      const cleanReceived = parsedReceiverAcc.replace(/\D/g, '').slice(-8)
+      if (cleanTarget && cleanReceived && !cleanReceived.includes(cleanTarget)) {
+        isReceiverMatched = false
+      }
+    }
+
+    if (!isReceiverMatched) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: extractedRef,
+        payerName: payerMatch ? payerMatch[1].trim() : undefined,
+        payerAccountOrPhone: payerAccMatch ? payerAccMatch[1].trim() : undefined,
+        receiverName: receiverMatch ? receiverMatch[1].trim() : undefined,
+        receiverAccount: parsedReceiverAcc || undefined,
+        amount,
+        currency: 'ETB',
+        dateTime: dateMatch ? dateMatch[1].trim() : undefined,
+        status: 'FAILED',
+        isReceiverMatched: false,
+        errorMessage: `RECEIVER MISMATCH: Payment was credited to CBE account ${parsedReceiverAcc || 'another account'}, NOT your official CBE account (${targetAcc})!`,
+      }
+    }
 
     return {
       success: true,

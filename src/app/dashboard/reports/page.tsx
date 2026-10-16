@@ -26,8 +26,13 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Clock,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
+  Save,
+  Phone,
+  CreditCard
 } from 'lucide-react'
+import { toast } from '@/components/ToastProvider'
 
 export interface ProfitCategory {
   category: string
@@ -56,6 +61,7 @@ export interface ProfitItem {
 
 interface ReportData {
   totalRevenue: number
+  totalTips?: number
   totalCOGS?: number
   grossProfit?: number
   profitMargin?: number
@@ -90,7 +96,7 @@ interface ReportData {
   }[]
   profitByCategory?: ProfitCategory[]
   profitByItem?: ProfitItem[]
-  staffPerformance: { name: string; orders: number; revenue: number }[]
+  staffPerformance: { name: string; orders: number; revenue: number; tips?: number }[]
   cancellations: { id: string; orderItem: { menuItem: { name: string }; quantity: number; order: { table: { number: string }; waiter: { fullName: string } } }; manager: { fullName: string }; reason: string; createdAt: string }[]
   lowStock: { id: string; name: string; stockQuantity: number; lowStockThreshold: number }[]
   inventory?: {
@@ -124,6 +130,8 @@ interface ReportData {
     id: string
     date: string
     amount: number
+    tip?: number
+    netAmount?: number
     method: string
     cashier: string
     waiter: string
@@ -193,6 +201,60 @@ export default function ReportsPage() {
   const [ledgerStatusFilter, setLedgerStatusFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL')
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [quickDateActive, setQuickDateActive] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'>('all')
+
+  // Official Receiver Account Verification Settings state
+  const [telebirrPhone, setTelebirrPhone] = useState('')
+  const [cbeAccount, setCbeAccount] = useState('')
+  const [merchantName, setMerchantName] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  const loadPaymentSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/payment-settings')
+      if (res.ok) {
+        const json = await res.json()
+        if (json.settings) {
+          setTelebirrPhone(json.settings.telebirrReceiverPhone || '')
+          setCbeAccount(json.settings.cbeReceiverAccount || '')
+          setMerchantName(json.settings.merchantName || 'Kogna Coffee')
+          setSettingsLoaded(true)
+        }
+      }
+    } catch (err) {
+      console.warn('[Reports] Failed to load payment settings:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadPaymentSettings()
+  }, [loadPaymentSettings])
+
+  const handleSavePaymentSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setSavingSettings(true)
+    try {
+      const res = await fetch('/api/system/payment-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telebirrReceiverPhone: telebirrPhone,
+          cbeReceiverAccount: cbeAccount,
+          merchantName,
+        }),
+      })
+      const json = await res.json()
+      if (res.ok && json.success) {
+        toast.success('Receiver account verification settings saved successfully!')
+      } else {
+        toast.error(json.error || 'Failed to save receiver settings')
+      }
+    } catch {
+      toast.error('Network error saving receiver settings')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
 
   const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
     setQuickDateActive(type)
@@ -481,12 +543,17 @@ export default function ReportsPage() {
     const otherTotal = otherTxs.reduce((sum, t) => sum + t.amount, 0)
     const grandTotal = cashTotal + telebirrTotal + cbeTotal + otherTotal
 
+    const totalTipsExcel = txs.reduce((sum, t) => sum + (t.tip || 0), 0)
+    const netGrandTotalExcel = Math.max(0, grandTotal - totalTipsExcel)
+
     // 1. CASH ROWS
     let cashRows = ''
     cashTxs.forEach(t => {
       const d = new Date(t.date)
       const dateStr = d.toLocaleDateString('en-US')
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      const tip = t.tip || 0
+      const net = t.netAmount !== undefined ? t.netAmount : Math.max(0, t.amount - tip)
       cashRows += `<tr>
         <td style="${tdBase}">${dateStr}</td>
         <td style="${tdBase}">${timeStr}</td>
@@ -496,6 +563,8 @@ export default function ReportsPage() {
         <td style="${tdBase}font-weight:600;color:#059669;">Cash</td>
         <td style="${tdBase}background-color:#F0FDF4;color:#15803d;font-weight:600;">Cash - Register Settled</td>
         <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}color:#DB2777;font-weight:600;">${tip > 0 ? `+${tip.toFixed(2)}` : '-'}</td>
+        <td style="${numTd}">${net.toFixed(2)}</td>
         <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
       </tr>`
     })
@@ -511,6 +580,8 @@ export default function ReportsPage() {
         : 'background-color:#FEF2F2;color:#B91C1C;font-weight:bold;'
       const statusText = t.isVerified ? '✓ VERIFIED' : '⚠️ UNVERIFIED'
       const refStyle = t.isVerified ? 'font-family:monospace;font-weight:bold;color:#0F172A;' : 'color:#94A3B8;font-style:italic;'
+      const tip = t.tip || 0
+      const net = t.netAmount !== undefined ? t.netAmount : Math.max(0, t.amount - tip)
       telebirrRows += `<tr>
         <td style="${tdBase}">${dateStr}</td>
         <td style="${tdBase}">${timeStr}</td>
@@ -522,6 +593,8 @@ export default function ReportsPage() {
         <td style="${tdBase}">${t.verifiedReceiver || 'Kogna Coffee'}</td>
         <td style="${tdBase}${statusStyle}">${statusText}</td>
         <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}color:#DB2777;font-weight:600;">${tip > 0 ? `+${tip.toFixed(2)}` : '-'}</td>
+        <td style="${numTd}">${net.toFixed(2)}</td>
         <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
       </tr>`
     })
@@ -537,6 +610,8 @@ export default function ReportsPage() {
         : 'background-color:#FEF2F2;color:#B91C1C;font-weight:bold;'
       const statusText = t.isVerified ? '✓ VERIFIED' : '⚠️ UNVERIFIED'
       const refStyle = t.isVerified ? 'font-family:monospace;font-weight:bold;color:#0F172A;' : 'color:#94A3B8;font-style:italic;'
+      const tip = t.tip || 0
+      const net = t.netAmount !== undefined ? t.netAmount : Math.max(0, t.amount - tip)
       cbeRows += `<tr>
         <td style="${tdBase}">${dateStr}</td>
         <td style="${tdBase}">${timeStr}</td>
@@ -548,6 +623,8 @@ export default function ReportsPage() {
         <td style="${tdBase}">${t.verifiedReceiver || 'Kogna Coffee'}</td>
         <td style="${tdBase}${statusStyle}">${statusText}</td>
         <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}color:#DB2777;font-weight:600;">${tip > 0 ? `+${tip.toFixed(2)}` : '-'}</td>
+        <td style="${numTd}">${net.toFixed(2)}</td>
         <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
       </tr>`
     })
@@ -558,6 +635,8 @@ export default function ReportsPage() {
       const d = new Date(t.date)
       const dateStr = d.toLocaleDateString('en-US')
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      const tip = t.tip || 0
+      const net = t.netAmount !== undefined ? t.netAmount : Math.max(0, t.amount - tip)
       otherRows += `<tr>
         <td style="${tdBase}">${dateStr}</td>
         <td style="${tdBase}">${timeStr}</td>
@@ -569,6 +648,8 @@ export default function ReportsPage() {
         <td style="${tdBase}">${t.verifiedReceiver || '-'}</td>
         <td style="${tdBase}">${t.isVerified ? '✓ VERIFIED' : 'Unverified'}</td>
         <td style="${tdBase}">${t.items}</td>
+        <td style="${numTd}color:#DB2777;font-weight:600;">${tip > 0 ? `+${tip.toFixed(2)}` : '-'}</td>
+        <td style="${numTd}">${net.toFixed(2)}</td>
         <td style="${numTd}font-weight:700;">${t.amount.toFixed(2)}</td>
       </tr>`
     })
@@ -601,13 +682,15 @@ export default function ReportsPage() {
               <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Method</th>
               <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Verification Status</th>
               <th style="${tdBase}text-align:left;background-color:#065F46;color:#FFFFFF;">Items Ordered</th>
-              <th style="${numTd}background-color:#065F46;color:#FFFFFF;">Amount (ETB)</th>
+              <th style="${numTd}background-color:#065F46;color:#FFFFFF;">Tip (ETB)</th>
+              <th style="${numTd}background-color:#065F46;color:#FFFFFF;">Net Revenue (ETB)</th>
+              <th style="${numTd}background-color:#065F46;color:#FFFFFF;">Total Paid (ETB)</th>
             </tr>
           </thead>
           <tbody>
-            ${cashRows || '<tr><td colspan="9" style="text-align:center;padding:12px;color:#94A3B8;">No cash transactions recorded.</td></tr>'}
+            ${cashRows || '<tr><td colspan="11" style="text-align:center;padding:12px;color:#94A3B8;">No cash transactions recorded.</td></tr>'}
             <tr style="background-color:#D1FAE5;font-weight:bold;">
-              <td colspan="8" style="${tdBase}text-align:right;background-color:#D1FAE5;color:#065F46;font-size:11pt;">Cash Sub-Total (${cashTxs.length} orders):</td>
+              <td colspan="10" style="${tdBase}text-align:right;background-color:#D1FAE5;color:#065F46;font-size:11pt;">Cash Sub-Total (${cashTxs.length} orders):</td>
               <td style="${numTd}background-color:#D1FAE5;color:#065F46;font-size:11pt;">${cashTotal.toFixed(2)} ETB</td>
             </tr>
           </tbody>
@@ -628,13 +711,15 @@ export default function ReportsPage() {
               <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Credited Receiver</th>
               <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Verification</th>
               <th style="${tdBase}text-align:left;background-color:#0369A1;color:#FFFFFF;">Items Ordered</th>
-              <th style="${numTd}background-color:#0369A1;color:#FFFFFF;">Amount (ETB)</th>
+              <th style="${numTd}background-color:#0369A1;color:#FFFFFF;">Tip (ETB)</th>
+              <th style="${numTd}background-color:#0369A1;color:#FFFFFF;">Net Revenue (ETB)</th>
+              <th style="${numTd}background-color:#0369A1;color:#FFFFFF;">Total Paid (ETB)</th>
             </tr>
           </thead>
           <tbody>
-            ${telebirrRows || '<tr><td colspan="11" style="text-align:center;padding:12px;color:#94A3B8;">No Telebirr transactions recorded.</td></tr>'}
+            ${telebirrRows || '<tr><td colspan="13" style="text-align:center;padding:12px;color:#94A3B8;">No Telebirr transactions recorded.</td></tr>'}
             <tr style="background-color:#E0F2FE;font-weight:bold;">
-              <td colspan="10" style="${tdBase}text-align:right;background-color:#E0F2FE;color:#0369A1;font-size:11pt;">Telebirr Sub-Total (${telebirrTxs.length} orders · Verified: ${telebirrVerifiedTotal.toFixed(2)} ETB | Unverified: ${telebirrUnverifiedTotal.toFixed(2)} ETB):</td>
+              <td colspan="12" style="${tdBase}text-align:right;background-color:#E0F2FE;color:#0369A1;font-size:11pt;">Telebirr Sub-Total (${telebirrTxs.length} orders · Verified: ${telebirrVerifiedTotal.toFixed(2)} ETB | Unverified: ${telebirrUnverifiedTotal.toFixed(2)} ETB):</td>
               <td style="${numTd}background-color:#E0F2FE;color:#0369A1;font-size:11pt;">${telebirrTotal.toFixed(2)} ETB</td>
             </tr>
           </tbody>
@@ -655,13 +740,15 @@ export default function ReportsPage() {
               <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Credited Receiver</th>
               <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Verification</th>
               <th style="${tdBase}text-align:left;background-color:#854D0E;color:#FFFFFF;">Items Ordered</th>
-              <th style="${numTd}background-color:#854D0E;color:#FFFFFF;">Amount (ETB)</th>
+              <th style="${numTd}background-color:#854D0E;color:#FFFFFF;">Tip (ETB)</th>
+              <th style="${numTd}background-color:#854D0E;color:#FFFFFF;">Net Revenue (ETB)</th>
+              <th style="${numTd}background-color:#854D0E;color:#FFFFFF;">Total Paid (ETB)</th>
             </tr>
           </thead>
           <tbody>
-            ${cbeRows || '<tr><td colspan="11" style="text-align:center;padding:12px;color:#94A3B8;">No CBE transactions recorded.</td></tr>'}
+            ${cbeRows || '<tr><td colspan="13" style="text-align:center;padding:12px;color:#94A3B8;">No CBE transactions recorded.</td></tr>'}
             <tr style="background-color:#FEF3C7;font-weight:bold;">
-              <td colspan="10" style="${tdBase}text-align:right;background-color:#FEF3C7;color:#854D0E;font-size:11pt;">CBE Sub-Total (${cbeTxs.length} orders · Verified: ${cbeVerifiedTotal.toFixed(2)} ETB | Unverified: ${cbeUnverifiedTotal.toFixed(2)} ETB):</td>
+              <td colspan="12" style="${tdBase}text-align:right;background-color:#FEF3C7;color:#854D0E;font-size:11pt;">CBE Sub-Total (${cbeTxs.length} orders · Verified: ${cbeVerifiedTotal.toFixed(2)} ETB | Unverified: ${cbeUnverifiedTotal.toFixed(2)} ETB):</td>
               <td style="${numTd}background-color:#FEF3C7;color:#854D0E;font-size:11pt;">${cbeTotal.toFixed(2)} ETB</td>
             </tr>
           </tbody>
@@ -683,13 +770,15 @@ export default function ReportsPage() {
               <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Receiver</th>
               <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Verification</th>
               <th style="${tdBase}text-align:left;background-color:#475569;color:#FFFFFF;">Items Ordered</th>
+              <th style="${numTd}background-color:#475569;color:#FFFFFF;">Tip (ETB)</th>
+              <th style="${numTd}background-color:#475569;color:#FFFFFF;">Net (ETB)</th>
               <th style="${numTd}background-color:#475569;color:#FFFFFF;">Amount (ETB)</th>
             </tr>
           </thead>
           <tbody>
             ${otherRows}
             <tr style="background-color:#F1F5F9;font-weight:bold;">
-              <td colspan="10" style="${tdBase}text-align:right;">Other Transfers Sub-Total:</td>
+              <td colspan="12" style="${tdBase}text-align:right;">Other Transfers Sub-Total:</td>
               <td style="${numTd}">${otherTotal.toFixed(2)} ETB</td>
             </tr>
           </tbody>
@@ -697,7 +786,7 @@ export default function ReportsPage() {
 
         <!-- 5. GRAND SUMMARY AT THE END -->
         <h3 style="font-family:system-ui,sans-serif;color:#0F172A;margin-top:36px;margin-bottom:8px;">📊 Settlement Summary & Grand Total</h3>
-        <table style="max-width:700px;">
+        <table style="max-width:760px;">
           <thead>
             <tr style="background-color:#0F172A;color:#FFFFFF;">
               <th style="${tdBase}text-align:left;background-color:#0F172A;color:#FFFFFF;">Payment Channel</th>
@@ -737,12 +826,23 @@ export default function ReportsPage() {
               <td style="${numTd}">-</td>
               <td style="${numTd}font-weight:700;">${otherTotal.toFixed(2)}</td>
             </tr>` : ''}
+            <tr style="background-color:#FDF2F8;">
+              <td style="${tdBase}font-weight:700;color:#DB2777;">💝 Waiter Tips Pool</td>
+              <td style="${numTd}color:#DB2777;">${txs.filter(t => (t.tip || 0) > 0).length}</td>
+              <td style="${numTd}color:#DB2777;font-weight:700;">${totalTipsExcel.toFixed(2)}</td>
+              <td style="${numTd}">-</td>
+              <td style="${numTd}color:#DB2777;font-weight:700;">${totalTipsExcel.toFixed(2)} (Tips)</td>
+            </tr>
             <tr style="background-color:#1E293B;color:#FFFFFF;font-weight:bold;font-size:11pt;">
-              <td style="${tdBase}background-color:#1E293B;color:#FFFFFF;">🏆 GRAND TOTAL</td>
+              <td style="${tdBase}background-color:#1E293B;color:#FFFFFF;">🏆 TOTAL BUSINESS REVENUE</td>
               <td style="${numTd}background-color:#1E293B;color:#FFFFFF;">${txs.length}</td>
-              <td style="${numTd}background-color:#1E293B;color:#34D399;">${(cashTotal + telebirrVerifiedTotal + cbeVerifiedTotal).toFixed(2)}</td>
+              <td style="${numTd}background-color:#1E293B;color:#34D399;">${Math.max(0, cashTotal + telebirrVerifiedTotal + cbeVerifiedTotal - totalTipsExcel).toFixed(2)}</td>
               <td style="${numTd}background-color:#1E293B;color:#FCA5A5;">${(telebirrUnverifiedTotal + cbeUnverifiedTotal).toFixed(2)}</td>
-              <td style="${numTd}background-color:#1E293B;color:#FCD34D;font-size:12pt;font-weight:900;">${grandTotal.toFixed(2)} ETB</td>
+              <td style="${numTd}background-color:#1E293B;color:#FCD34D;font-size:12pt;font-weight:900;">${netGrandTotalExcel.toFixed(2)} ETB</td>
+            </tr>
+            <tr style="background-color:#0F172A;color:#94A3B8;font-size:10pt;">
+              <td colspan="4" style="${tdBase}background-color:#0F172A;text-align:right;color:#94A3B8;">Grand Total Settlements (Net Revenue + Waiter Tips):</td>
+              <td style="${numTd}background-color:#0F172A;color:#FFFFFF;font-weight:700;">${grandTotal.toFixed(2)} ETB</td>
             </tr>
           </tbody>
         </table>
@@ -768,6 +868,7 @@ export default function ReportsPage() {
     { id: 'daily', label: 'Daily Sales', icon: <DollarSign size={15}/> },
     { id: 'categorized', label: 'Categorized Articles', icon: <Receipt size={15}/> },
     { id: 'history', label: 'Transaction Ledger', icon: <ShoppingBag size={15}/> },
+    { id: 'verification-settings', label: 'Receiver Accounts', icon: <ShieldCheck size={15}/> },
     { id: 'best-sellers', label: 'Best Sellers', icon: <Sparkles size={15}/> },
     { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={15}/> },
     { id: 'inventory', label: 'Asset Valuation', icon: <Boxes size={15}/> },
@@ -1314,6 +1415,37 @@ export default function ReportsPage() {
               </div>
               <div className="reports-kpi-sub" style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
                 Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
+              </div>
+            </div>
+
+            {/* Metric 7: Waiter Tips Collected (Excluded from Revenue & Profit) */}
+            <div className="reports-kpi-card" style={{
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--black-border)',
+              borderTop: '3px solid #EC4899',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: '100px'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Waiter Tips Collected
+                  </span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(236,72,153,0.1)', color: '#EC4899', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={12}/>
+                  </span>
+                </div>
+                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#DB2777', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                  {formatMoney(data.totalTips || 0)}
+                </div>
+              </div>
+              <div className="reports-kpi-sub" style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
+                Held for waitstaff (Excluded from revenue & profit)
               </div>
             </div>
           </div>
@@ -1960,6 +2092,9 @@ export default function ReportsPage() {
         const txs = data.transactions || []
 
         // Summary calculations
+        const tipsTotal = txs.reduce((sum, t) => sum + (t.tip || 0), 0)
+        const tipsCount = txs.filter(t => (t.tip || 0) > 0).length
+
         const cashTxs = txs.filter(t => t.method === 'Cash')
         const telebirrTxs = txs.filter(t => t.method.toLowerCase().includes('telebirr'))
         const cbeTxs = txs.filter(t => t.method.toLowerCase().includes('cbe'))
@@ -2003,7 +2138,7 @@ export default function ReportsPage() {
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Header + Export to Excel Button */}
+            {/* Header + Export to Excel Button + Receiver Accounts Quick Access */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2013,33 +2148,52 @@ export default function ReportsPage() {
                   </span>
                 </h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0 0' }}>
-                  Chronological customer payment settlements, bank referral codes, and verification audit
+                  Chronological customer payment settlements, bank referral codes, and waiter tip distribution audit
                 </p>
               </div>
 
-              <button
-                type="button"
-                className="btn btn-gold btn-sm"
-                onClick={exportLedgerToExcel}
-                style={{
-                  fontSize: '12px',
-                  padding: '8px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '700',
-                  boxShadow: '0 2px 6px rgba(180,138,30,0.25)'
-                }}
-              >
-                <Download size={14} />
-                <span>Export Ledger to Excel (.xls)</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setActiveTab('verification-settings')}
+                  style={{
+                    fontSize: '12px',
+                    padding: '8px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: '600'
+                  }}
+                >
+                  <ShieldCheck size={14} style={{ color: 'var(--gold-dark)' }} />
+                  <span>Receiver Accounts</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-gold btn-sm"
+                  onClick={exportLedgerToExcel}
+                  style={{
+                    fontSize: '12px',
+                    padding: '8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: '700',
+                    boxShadow: '0 2px 6px rgba(180,138,30,0.25)'
+                  }}
+                >
+                  <Download size={14} />
+                  <span>Export Ledger to Excel (.xls)</span>
+                </button>
+              </div>
             </div>
 
             {/* Financial Summary Metric Bar */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: '12px'
             }}>
               {/* Cash Summary */}
@@ -2078,6 +2232,19 @@ export default function ReportsPage() {
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                   {cbeTxs.length} orders · <b style={{ color: '#059669' }}>{cbeVerifiedCount} Verified</b>
+                </div>
+              </div>
+
+              {/* Waiter Tips Summary Card */}
+              <div style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderTop: '3px solid #EC4899', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#EC4899', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  💝 Waiter Tips Pool
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: '#DB2777', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatMoney(tipsTotal)}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {tipsCount} tipped orders · (Held for waiters)
                 </div>
               </div>
 
@@ -2204,13 +2371,14 @@ export default function ReportsPage() {
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Items</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Method</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Verification & Reference Code</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: '#EC4899', textTransform: 'uppercase' }}>Tip (ETB)</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Settled</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredTxs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                         No transactions matching current filters.
                       </td>
                     </tr>
@@ -2220,6 +2388,8 @@ export default function ReportsPage() {
                     const isCBE = tx.method.toLowerCase().includes('cbe')
                     const methodColor = isCash ? '#059669' : isTele ? '#0284C7' : isCBE ? '#D97706' : '#64748B'
                     const methodBg = isCash ? 'rgba(5,150,105,0.1)' : isTele ? 'rgba(2,132,199,0.1)' : isCBE ? 'rgba(217,119,6,0.1)' : 'rgba(100,116,139,0.1)'
+                    const tip = tx.tip || 0
+                    const net = tx.netAmount !== undefined ? tx.netAmount : Math.max(0, tx.amount - tip)
 
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
@@ -2275,8 +2445,22 @@ export default function ReportsPage() {
                             </div>
                           )}
                         </td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {tip > 0 ? (
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: '#DB2777', background: 'rgba(236,72,153,0.1)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(236,72,153,0.25)' }}>
+                              +{tip.toFixed(2)} ETB
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
+                          )}
+                        </td>
                         <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums', fontSize: '14px' }}>
-                          {formatMoney(tx.amount)}
+                          <div>{formatMoney(tx.amount)}</div>
+                          {tip > 0 && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                              Net: {formatMoney(net)}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
@@ -2297,6 +2481,8 @@ export default function ReportsPage() {
                 const isCBE = tx.method.toLowerCase().includes('cbe')
                 const methodColor = isCash ? '#059669' : isTele ? '#0284C7' : isCBE ? '#D97706' : '#64748B'
                 const methodBg = isCash ? 'rgba(5,150,105,0.1)' : isTele ? 'rgba(2,132,199,0.1)' : isCBE ? 'rgba(217,119,6,0.1)' : 'rgba(100,116,139,0.1)'
+                const tip = tx.tip || 0
+                const net = tx.netAmount !== undefined ? tx.netAmount : Math.max(0, tx.amount - tip)
 
                 return (
                   <div key={tx.id} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '12px 14px' }}>
@@ -2349,8 +2535,23 @@ export default function ReportsPage() {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--black-border)', paddingTop: '6px' }}>
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total Settled</span>
-                      <b style={{ fontSize: '14px', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(tx.amount)}</b>
+                      <div>
+                        {tip > 0 ? (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#DB2777', background: 'rgba(236,72,153,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            💝 Tip: +{tip.toFixed(2)} ETB
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>No tip</span>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <b style={{ fontSize: '14px', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(tx.amount)}</b>
+                        {tip > 0 && (
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            Net: {formatMoney(net)}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -2869,6 +3070,156 @@ export default function ReportsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 15. TAB: OFFICIAL RECEIVER ACCOUNT VERIFICATION SETTINGS     */}
+      {/* ============================================================ */}
+      {activeTab === 'verification-settings' && (
+        <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{
+            background: '#FFFFFF',
+            border: '1px solid var(--black-border)',
+            borderRadius: '14px',
+            padding: '24px',
+            boxShadow: '0 2px 8px rgba(15,23,42,0.04)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '10px',
+                background: 'rgba(180,138,30,0.12)',
+                border: '1px solid rgba(180,138,30,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--gold-dark)'
+              }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                  Official Receiver Account Verification
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '2px 0 0 0' }}>
+                  Protect your restaurant from payment fraud by registering your official Telebirr and CBE accounts
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              margin: '16px 0',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              background: 'rgba(59,130,246,0.08)',
+              border: '1px solid rgba(59,130,246,0.25)',
+              fontSize: '13px',
+              color: '#1E40AF',
+              lineHeight: 1.5
+            }}>
+              <b>🛡️ Fraud Protection Active:</b> When staff scan customer Telebirr or CBE QR slips, the system automatically checks that the <i>Credited Party Account</i> matches the official accounts configured below. If someone presents a slip paid to a personal number or another restaurant, verification will <b>immediately fail and alert the cashier</b>.
+            </div>
+
+            <form onSubmit={handleSavePaymentSettings} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* Telebirr Phone */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  <Phone size={14} style={{ color: '#0284C7' }} />
+                  <span>Official Telebirr Receiver Phone Number</span>
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. 0911234567 or 0966444000"
+                  value={telebirrPhone}
+                  onChange={e => setTelebirrPhone(e.target.value)}
+                  style={{ fontSize: '14px', fontFamily: 'monospace' }}
+                />
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  The merchant or merchant-pay phone number registered to receive customer Telebirr transfers.
+                </p>
+              </div>
+
+              {/* CBE Account */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  <CreditCard size={14} style={{ color: '#D97706' }} />
+                  <span>Official Commercial Bank of Ethiopia (CBE) Account Number</span>
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. 1000123456789 (13 digits)"
+                  value={cbeAccount}
+                  onChange={e => setCbeAccount(e.target.value)}
+                  style={{ fontSize: '14px', fontFamily: 'monospace' }}
+                />
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Your restaurant's CBE account number. Matches the receiving account on CBE mobile banking slips and FT codes.
+                </p>
+              </div>
+
+              {/* Merchant Display Name */}
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  🏢 Restaurant / Merchant Business Name
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Kogna Coffee"
+                  value={merchantName}
+                  onChange={e => setMerchantName(e.target.value)}
+                  style={{ fontSize: '14px' }}
+                />
+              </div>
+
+              {/* Status Indicator */}
+              <div style={{
+                background: (telebirrPhone && cbeAccount) ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+                border: `1px solid ${(telebirrPhone && cbeAccount) ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}>
+                <CheckCircle2 size={18} color={(telebirrPhone && cbeAccount) ? '#059669' : '#D97706'} />
+                <div>
+                  <div style={{ fontWeight: '700', color: (telebirrPhone && cbeAccount) ? '#059669' : '#B45309' }}>
+                    {(telebirrPhone && cbeAccount) ? 'Verification Enforced & Active' : 'Configuration Notice'}
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {telebirrPhone ? `Telebirr: ${telebirrPhone}` : 'Telebirr phone not set'} · {cbeAccount ? `CBE: ${cbeAccount}` : 'CBE account not set'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={loadPaymentSettings}
+                  disabled={savingSettings}
+                >
+                  Reload
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-gold"
+                  disabled={savingSettings}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '700' }}
+                >
+                  <Save size={16} />
+                  <span>{savingSettings ? 'Saving...' : 'Save Receiver Settings'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

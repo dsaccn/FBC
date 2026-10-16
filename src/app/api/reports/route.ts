@@ -76,12 +76,25 @@ export async function GET(req: Request) {
     return { cost: directCost, isRecipe: hasRecipe, recipeCost: calculatedRecipeCost }
   }
 
-  // Total revenue
-  const totalRevenue = Math.round(payments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
+  // Helper to extract tip from payment notes
+  function extractTip(p: any): number {
+    const match = p.notes?.match(/\[Tip:\s*([\d.]+)\s*ETB\]/i)
+    return match ? parseFloat(match[1]) || 0 : 0
+  }
 
-  // Revenue by payment method
+  // Total waiter tips collected across all payments (held for waitstaff)
+  const totalTips = Math.round(payments.reduce((sum, p) => sum + extractTip(p), 0) * 100) / 100
+
+  // Total business revenue: restaurant sales excluding waiter tips
+  const totalRevenue = Math.round((payments.reduce((sum, p) => sum + Math.max(0, p.amount - extractTip(p)), 0)) * 100) / 100
+
+  // Revenue by payment method (Net of tips)
   const revenueByMethod: Record<string, number> = {}
-  payments.forEach(p => { revenueByMethod[p.method] = (revenueByMethod[p.method] || 0) + p.amount })
+  payments.forEach(p => { 
+    const tip = extractTip(p)
+    const net = Math.max(0, p.amount - tip)
+    revenueByMethod[p.method] = (revenueByMethod[p.method] || 0) + net 
+  })
 
   // Profit and Loss calculations from completed payments
   let totalCOGS = 0
@@ -291,13 +304,16 @@ export async function GET(req: Request) {
   })
   const bestSelling = Object.values(itemSales).sort((a, b) => b.quantity - a.quantity).slice(0, 10)
 
-  // Staff performance
-  const staffPerf: Record<string, { name: string; orders: number; revenue: number }> = {}
+  // Staff performance (Revenue net of tips, tips tracked separately)
+  const staffPerf: Record<string, { name: string; orders: number; revenue: number; tips: number }> = {}
   payments.forEach(p => {
     const name = p.order.waiter.fullName
-    if (!staffPerf[name]) staffPerf[name] = { name, orders: 0, revenue: 0 }
+    const tip = extractTip(p)
+    const net = Math.max(0, p.amount - tip)
+    if (!staffPerf[name]) staffPerf[name] = { name, orders: 0, revenue: 0, tips: 0 }
     staffPerf[name].orders++
-    staffPerf[name].revenue += p.amount
+    staffPerf[name].revenue = Math.round((staffPerf[name].revenue + net) * 100) / 100
+    staffPerf[name].tips = Math.round((staffPerf[name].tips + tip) * 100) / 100
   })
 
   // Helper to extract verification info from order or notes
@@ -333,13 +349,17 @@ export async function GET(req: Request) {
     }
   }
 
-  // Transactions
+  // Transactions (Including tip and net amount)
   const transactions = payments.map(p => {
     const ver = getTransactionVerification(p)
+    const tip = extractTip(p)
+    const netAmount = Math.max(0, Math.round((p.amount - tip) * 100) / 100)
     return {
       id: p.id,
       date: p.createdAt,
       amount: p.amount,
+      tip,
+      netAmount,
       method: p.method,
       cashier: p.cashier?.fullName || 'Unknown',
       waiter: p.order?.waiter?.fullName || 'Unknown',
@@ -356,7 +376,7 @@ export async function GET(req: Request) {
     }
   })
 
-  // Daily Sales with per-category item breakdown
+  // Daily Sales with per-category item breakdown (Revenue net of tips)
   const dailyMap: Record<string, {
     date: string; orders: number; revenue: number
     categories: Record<string, { categoryName: string; items: Record<string, { name: string; quantity: number; revenue: number }> }>
@@ -364,9 +384,11 @@ export async function GET(req: Request) {
 
   payments.forEach(p => {
     const d = new Date(p.createdAt).toISOString().split('T')[0]
+    const tip = extractTip(p)
+    const net = Math.max(0, p.amount - tip)
     if (!dailyMap[d]) dailyMap[d] = { date: d, orders: 0, revenue: 0, categories: {} }
     dailyMap[d].orders++
-    dailyMap[d].revenue += p.amount
+    dailyMap[d].revenue = Math.round((dailyMap[d].revenue + net) * 100) / 100
 
     p.order.orderItems.forEach((oi: any) => {
       if (oi.status === 'CANCELLED') return
@@ -531,6 +553,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     totalRevenue,
+    totalTips,
     totalCOGS,
     grossProfit,
     profitMargin,

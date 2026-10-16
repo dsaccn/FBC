@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, CheckCircle, Bike, ShoppingBag, Zap } from 'lucide-react'
+import { Printer, CheckCircle, Bike, ShoppingBag, Zap, HeartHandshake } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
@@ -38,6 +38,7 @@ export default function PaymentPage() {
   const [tipAmount, setTipAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const autoCalculatedOrderKeyRef = useRef<string | null>(null)
   const [paid, setPaid] = useState(false)
   const [lastPayment, setLastPayment] = useState<{ amount: number; method: string } | null>(null)
   const [recentPhoneScan, setRecentPhoneScan] = useState<{
@@ -194,13 +195,25 @@ export default function PaymentPage() {
   const activeItems = selectedOrder?.orderItems.filter(i => i.status !== 'CANCELLED') || []
   const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
 
-  // Auto-calculate tip when verified amount exceeds order subtotal
+  // Auto-calculate tip when verified amount exceeds order subtotal, but keep completely editable by cashier
   useEffect(() => {
-    if (selectedOrder?.verifiedAmount && selectedOrder.verifiedAmount > subtotal && !tipAmount) {
-      const extra = (selectedOrder.verifiedAmount - subtotal).toFixed(2)
-      setTipAmount(extra)
+    if (!selectedOrder) {
+      setTipAmount('')
+      autoCalculatedOrderKeyRef.current = null
+      return
     }
-  }, [selectedOrder?.verifiedAmount, subtotal, tipAmount])
+
+    const currentKey = `${selectedOrder.id}:${selectedOrder.verifiedAmount || 0}:${subtotal}`
+    if (autoCalculatedOrderKeyRef.current !== currentKey) {
+      autoCalculatedOrderKeyRef.current = currentKey
+      if (selectedOrder.verifiedAmount && selectedOrder.verifiedAmount > subtotal) {
+        const extra = Math.max(0, selectedOrder.verifiedAmount - subtotal).toFixed(2)
+        setTipAmount(extra)
+      } else {
+        setTipAmount('')
+      }
+    }
+  }, [selectedOrder?.id, selectedOrder?.verifiedAmount, subtotal])
 
   async function handleLinkRecentScan(orderId: string) {
     if (!recentPhoneScan) return
@@ -232,7 +245,7 @@ export default function PaymentPage() {
     : 0
   const tipAmt = parseFloat(tipAmount) || 0
   const isDigitalPayment = method === 'Telebirr' || method === 'CBE'
-  const total = Math.max(0, subtotal - discountAmt + (isDigitalPayment ? tipAmt : 0))
+  const total = Math.max(0, subtotal - discountAmt + tipAmt)
 
   // Helper: parse delivery/takeaway or standard table
   const parseOrderInfo = (table: { number: string; mergeGroupId?: string | null; mergeGroupLabel?: string | null }, items?: any[]) => {
@@ -383,10 +396,12 @@ export default function PaymentPage() {
       <hr/>
       <div style="display:flex;justify-content:space-between;"><span>Subtotal</span><span>${subtotal.toFixed(2)} ETB</span></div>
       ${discountAmt > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Discount</span><span>-${discountAmt.toFixed(2)} ETB</span></div>` : ''}
+      ${tipAmt > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Waiter Tip</span><span>+${tipAmt.toFixed(2)} ETB</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:15px;margin-top:4px;">
         <span>TOTAL</span><span>${total.toFixed(2)} ETB</span>
       </div>
       <div style="margin-top:8px;font-size:13px;"><b>Paid via:</b> ${method}</div>
+      ${selectedOrder?.verifiedRef ? `<div style="font-size:11px;margin-top:2px;"><b>Slip Ref:</b> ${selectedOrder.verifiedRef} (${selectedOrder.verifiedProvider || 'Digital'})</div>` : ''}
       <hr/>
       <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:8px;">
         <b>MEBA TECH PRO</b>
@@ -779,21 +794,57 @@ export default function PaymentPage() {
             </div>
 
 
-            {/* Tip for digital payments */}
-            {isDigitalPayment && (
-              <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
-                <label className="input-label" style={{ color: 'var(--gold)', marginBottom: '6px' }}>💝 Tip (Optional)</label>
-                <input
-                  className="input"
-                  type="number"
-                  placeholder="0.00 ETB"
-                  value={tipAmount}
-                  onChange={e => setTipAmount(e.target.value)}
-                  min="0"
-                  step="5"
-                />
+            {/* Tip (Auto-detected from receipt scan, editable, given to waiters) */}
+            <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '8px', padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label className="input-label" style={{ color: 'var(--gold)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>💝 Waiter Tip (Editable)</span>
+                  {selectedOrder.verifiedAmount && selectedOrder.verifiedAmount > subtotal && (
+                    <span style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#10B981', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                      Auto from scan (+{(selectedOrder.verifiedAmount - subtotal).toFixed(2)})
+                    </span>
+                  )}
+                </label>
+                {tipAmt > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTipAmount('')}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Clear tip
+                  </button>
+                )}
               </div>
-            )}
+              <input
+                className="input"
+                type="number"
+                placeholder="0.00 ETB (Held for waitstaff)"
+                value={tipAmount}
+                onChange={e => setTipAmount(e.target.value)}
+                min="0"
+                step="5"
+              />
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                {[10, 20, 50, 100].map(amt => (
+                  <button
+                    key={amt}
+                    type="button"
+                    className="btn btn-sm"
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      fontSize: '11px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--black-border)',
+                      color: 'var(--text-secondary)'
+                    }}
+                    onClick={() => setTipAmount(amt.toString())}
+                  >
+                    +{amt}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Discount */}
             {(session?.role === 'ADMIN' || session?.role === 'MANAGER') && (
@@ -825,9 +876,9 @@ export default function PaymentPage() {
                 <span style={{ color: 'var(--warning-light)' }}>-{discountAmt.toFixed(2)} ETB</span>
               </div>
             )}
-            {tipAmt > 0 && isDigitalPayment && (
+            {tipAmt > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ color: 'var(--gold)' }}>💝 Tip</span>
+                <span style={{ color: 'var(--gold)' }}>💝 Waiter Tip</span>
                 <span style={{ color: 'var(--gold)' }}>+{tipAmt.toFixed(2)} ETB</span>
               </div>
             )}

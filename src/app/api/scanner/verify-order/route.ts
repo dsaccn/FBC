@@ -16,6 +16,45 @@ export async function POST(req: Request) {
     const parsedAmount = typeof amount === 'number' ? amount : parseFloat(amount || '0')
     const verifiedDate = new Date()
 
+    // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on a PAID order or delivery
+    const duplicatePaidOrder = await prisma.order.findFirst({
+      where: {
+        verifiedRef: cleanRef,
+        status: 'PAID',
+        id: { not: orderId }
+      },
+      include: { table: true, payment: true }
+    })
+
+    const duplicatePaidPayment = !duplicatePaidOrder ? await prisma.payment.findFirst({
+      where: {
+        notes: { contains: cleanRef },
+        order: {
+          status: 'PAID',
+          id: { not: orderId }
+        }
+      },
+      include: { order: { include: { table: true } } }
+    }) : null
+
+    const conflictOrder = duplicatePaidOrder || duplicatePaidPayment?.order
+    if (conflictOrder) {
+      const rawTable = conflictOrder.table?.number || '?'
+      const isDeliv = rawTable.startsWith('DELIV') || rawTable.startsWith('Delivery')
+      const isTake = rawTable.startsWith('TAKE') || rawTable.startsWith('Takeaway')
+      const tableLabel = isDeliv 
+        ? `Delivery #${rawTable.replace(/^[A-Za-z-]+/, '')}`
+        : (isTake ? `Takeaway #${rawTable.replace(/^[A-Za-z-]+/, '')}` : `Table ${rawTable}`)
+      const paidAtStr = duplicatePaidOrder?.payment?.createdAt || duplicatePaidPayment?.createdAt || conflictOrder.updatedAt
+      const dateStr = paidAtStr ? new Date(paidAtStr).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
+
+      return NextResponse.json({
+        success: false,
+        duplicate: true,
+        error: `DUPLICATE RECEIPT: Transaction code ${cleanRef} was ALREADY paid & closed for ${tableLabel} on ${dateStr}! It cannot be reused.`
+      }, { status: 400 })
+    }
+
     // 1. Update local database
     await prisma.$executeRawUnsafe(
       `UPDATE "Order" 

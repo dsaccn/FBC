@@ -40,6 +40,56 @@ export async function POST(req: Request) {
     // If verification succeeded
     if (receipt.success) {
       const cleanRef = String(receipt.reference || referenceOrUrl).trim().toUpperCase()
+
+      // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on a PAID order or delivery
+      const duplicatePaidOrder = await prisma.order.findFirst({
+        where: {
+          verifiedRef: cleanRef,
+          status: 'PAID',
+          ...(orderId ? { id: { not: orderId } } : {})
+        },
+        include: {
+          table: true,
+          payment: true,
+        }
+      })
+
+      const duplicatePaidPayment = !duplicatePaidOrder ? await prisma.payment.findFirst({
+        where: {
+          notes: { contains: cleanRef },
+          order: {
+            status: 'PAID',
+            ...(orderId ? { id: { not: orderId } } : {})
+          }
+        },
+        include: {
+          order: { include: { table: true } }
+        }
+      }) : null
+
+      const conflictOrder = duplicatePaidOrder || duplicatePaidPayment?.order
+      if (conflictOrder) {
+        const rawTable = conflictOrder.table?.number || '?'
+        const isDeliv = rawTable.startsWith('DELIV') || rawTable.startsWith('Delivery')
+        const isTake = rawTable.startsWith('TAKE') || rawTable.startsWith('Takeaway')
+        const tableLabel = isDeliv 
+          ? `Delivery #${rawTable.replace(/^[A-Za-z-]+/, '')}`
+          : (isTake ? `Takeaway #${rawTable.replace(/^[A-Za-z-]+/, '')}` : `Table ${rawTable}`)
+        const paidAtStr = duplicatePaidOrder?.payment?.createdAt || duplicatePaidPayment?.createdAt || conflictOrder.updatedAt
+        const dateStr = paidAtStr ? new Date(paidAtStr).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
+
+        return NextResponse.json({
+          success: false,
+          duplicate: true,
+          error: `DUPLICATE RECEIPT: Transaction code ${cleanRef} was ALREADY paid & closed for ${tableLabel} on ${dateStr}! It cannot be reused.`,
+          receipt: {
+            ...receipt,
+            success: false,
+            errorMessage: `Duplicate Receipt: Already used for ${tableLabel} (${dateStr})`
+          }
+        }, { status: 400 })
+      }
+
       const parsedAmount = typeof receipt.amount === 'number' ? receipt.amount : parseFloat(String(receipt.amount || '0'))
       const verifiedDate = new Date()
 
