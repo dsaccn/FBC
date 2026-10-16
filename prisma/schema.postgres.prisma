@@ -78,6 +78,14 @@ model Order {
   pendingSync Boolean   @default(false) // On cloud, default false (already on cloud)
   syncedAt    DateTime?
 
+  // Phone QR Payment Verification fields
+  verifiedRef      String?
+  verifiedProvider String?
+  verifiedAmount   Float?
+  verifiedPayer    String?
+  verifiedReceiver String?
+  verifiedAt       DateTime?
+
   table      Table       @relation(fields: [tableId], references: [id])
   waiter     User        @relation(fields: [waiterId], references: [id])
   orderItems OrderItem[]

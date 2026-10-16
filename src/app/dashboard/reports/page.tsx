@@ -17,7 +17,6 @@ import {
   Info,
   Layers,
   Package,
-  Boxes,
   Calendar,
   Trash2,
   ChevronDown,
@@ -195,8 +194,6 @@ export default function ReportsPage() {
   const [plSearch, setPlSearch] = useState('')
   const [plTypeFilter, setPlTypeFilter] = useState<'ALL' | 'FOOD' | 'DRINKS'>('ALL')
   const [plSortBy, setPlSortBy] = useState<'profit' | 'margin' | 'revenue' | 'quantity' | 'cost'>('profit')
-  const [invSubTab, setInvSubTab] = useState<'ingredients' | 'retail' | 'lowstock'>('ingredients')
-  const [invSearch, setInvSearch] = useState('')
   const [ledgerMethodFilter, setLedgerMethodFilter] = useState<'ALL' | 'Cash' | 'Telebirr' | 'CBE'>('ALL')
   const [ledgerStatusFilter, setLedgerStatusFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL')
   const [ledgerSearch, setLedgerSearch] = useState('')
@@ -871,7 +868,6 @@ export default function ReportsPage() {
     { id: 'verification-settings', label: 'Receiver Accounts', icon: <ShieldCheck size={15}/> },
     { id: 'best-sellers', label: 'Best Sellers', icon: <Sparkles size={15}/> },
     { id: 'cancellations', label: 'Cancellations', icon: <XCircle size={15}/> },
-    { id: 'inventory', label: 'Asset Valuation', icon: <Boxes size={15}/> },
     { id: 'inventory-logs', label: 'Audit Trail', icon: <RefreshCw size={15}/> }
   ]
 
@@ -880,7 +876,7 @@ export default function ReportsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '65vh', color: 'var(--text-secondary)' }}>
         <RefreshCw className="animate-spin" size={32} style={{ color: 'var(--gold)', marginBottom: '16px' }} />
         <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Loading Intelligence Data...</div>
-        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Calculating financial metrics and stock valuation</div>
+        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Calculating financial metrics and sales performance</div>
       </div>
     )
   }
@@ -891,7 +887,6 @@ export default function ReportsPage() {
   const grossProfitVal = data.grossProfit || 0
   const cogsVal = data.totalCOGS || 0
   const marginPct = data.profitMargin ?? 0
-  const totalStockVal = data.inventoryValuation?.totalValue || 0
 
   return (
     <div style={{ paddingBottom: '60px', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -977,7 +972,7 @@ export default function ReportsPage() {
             </span>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px', margin: 0 }}>
-            Real-time financial analytics, product performance, and stock valuation
+            Real-time financial analytics, product performance, and operational audit
           </p>
         </div>
 
@@ -1387,38 +1382,7 @@ export default function ReportsPage() {
               </div>
             </div>
 
-            {/* Metric 6: Inventory Assets Valuation */}
-            <div className="reports-kpi-card" style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '14px 16px',
-              border: '1px solid var(--black-border)',
-              borderTop: '3px solid var(--text-primary)',
-              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              minHeight: '100px'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Stock Valuation
-                  </span>
-                  <span style={{ width: '22px', height: '22px', borderRadius: '5px', background: 'rgba(15,23,42,0.06)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Boxes size={12}/>
-                  </span>
-                </div>
-                <div className="reports-kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-                  {formatMoney(totalStockVal)}
-                </div>
-              </div>
-              <div className="reports-kpi-sub" style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
-                Raw: {formatMoney(data.inventoryValuation?.ingredientValue || 0)} · Retail: {formatMoney(data.inventoryValuation?.retailValue || 0)}
-              </div>
-            </div>
-
-            {/* Metric 7: Waiter Tips Collected (Excluded from Revenue & Profit) */}
+            {/* Metric 6: Waiter Tips Collected (Excluded from Revenue & Profit) */}
             <div className="reports-kpi-card" style={{
               background: '#FFFFFF',
               borderRadius: '12px',
@@ -2738,266 +2702,7 @@ export default function ReportsPage() {
       )}
 
       {/* ============================================================ */}
-      {/* 13. TAB 8: ASSET VALUATION & INVENTORY                       */}
-      {/* ============================================================ */}
-      {activeTab === 'inventory' && (() => {
-        const allIngs = data.ingredients || []
-        const allItems = data.inventory || []
-        const lowStockList = data.lowStock || []
-
-        const filteredIngs = allIngs.filter(i => 
-          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.unit && i.unit.toLowerCase().includes(invSearch.toLowerCase()))
-        )
-        const filteredItems = allItems.filter(i =>
-          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.category?.name && i.category.name.toLowerCase().includes(invSearch.toLowerCase()))
-        )
-        const filteredLowStock = lowStockList.filter(i =>
-          !invSearch || i.name.toLowerCase().includes(invSearch.toLowerCase())
-        )
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-                Inventory Assets & Stock Valuation
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0 0' }}>
-                Store ingredients, prepared recipe items, retail goods, and reorder warnings
-              </p>
-            </div>
-
-            {/* Sub-navigation pill track + Search */}
-            <div style={{
-              background: '#FFFFFF',
-              border: '1px solid var(--black-border)',
-              borderRadius: '10px',
-              padding: '10px 12px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setInvSubTab('ingredients')}
-                  style={{
-                    padding: '5px 10px',
-                    fontSize: '11px',
-                    fontWeight: invSubTab === 'ingredients' ? '700' : '500',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: invSubTab === 'ingredients' ? '#0F172A' : 'var(--black-hover)',
-                    color: invSubTab === 'ingredients' ? '#FFFFFF' : 'var(--text-secondary)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Store Ingredients ({allIngs.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvSubTab('retail')}
-                  style={{
-                    padding: '5px 10px',
-                    fontSize: '11px',
-                    fontWeight: invSubTab === 'retail' ? '700' : '500',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: invSubTab === 'retail' ? '#0F172A' : 'var(--black-hover)',
-                    color: invSubTab === 'retail' ? '#FFFFFF' : 'var(--text-secondary)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Menu & Retail ({allItems.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvSubTab('lowstock')}
-                  style={{
-                    padding: '5px 10px',
-                    fontSize: '11px',
-                    fontWeight: invSubTab === 'lowstock' ? '700' : '500',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: invSubTab === 'lowstock' ? '#DC2626' : 'var(--black-hover)',
-                    color: invSubTab === 'lowstock' ? '#FFFFFF' : (lowStockList.length > 0 ? '#DC2626' : 'var(--text-secondary)'),
-                    cursor: 'pointer'
-                  }}
-                >
-                  Low Stock ({lowStockList.length})
-                </button>
-              </div>
-
-              <div style={{ position: 'relative', width: '100%', maxWidth: '240px' }}>
-                <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="Filter stock..."
-                  value={invSearch}
-                  onChange={e => setInvSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '5px 10px 5px 26px',
-                    fontSize: '11px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--black-border)',
-                    outline: 'none',
-                    background: 'var(--black-hover)'
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="desktop-table-view" style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '12px', overflow: 'hidden' }}>
-              {invSubTab === 'ingredients' && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
-                      <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ingredient</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Unit</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cost / Unit</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Asset Value</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'center', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredIngs.map((ing, idx) => {
-                      const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
-                      return (
-                        <tr key={ing.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
-                          <td style={{ padding: '10px 16px', fontWeight: '600' }}>{ing.name}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: isLow ? '#DC2626' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{ing.quantity}</td>
-                          <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{ing.unit}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{ing.costPerUnit > 0 ? formatMoney(ing.costPerUnit) : '0.00'}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(ing.totalValue || 0)}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', background: isLow ? 'rgba(220,38,38,0.1)' : 'rgba(5,150,105,0.1)', color: isLow ? '#DC2626' : '#059669' }}>
-                              {isLow ? 'LOW' : 'OK'}
-                            </span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-
-              {invSubTab === 'retail' && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
-                      <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Article</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Store</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Bar</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cost</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredItems.map((item, idx) => (
-                      <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: idx % 2 === 0 ? '#FFFFFF' : 'rgba(248,250,252,0.5)' }}>
-                        <td style={{ padding: '10px 16px', fontWeight: '600' }}>{item.name}</td>
-                        <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{item.category?.name || 'Item'}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>{item.isRecipe ? '—' : item.stockQuantity}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{item.isRecipe ? '—' : (item.barQuantity ?? 0)}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.costPrice || 0)}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--gold-dark)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(item.price)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {invSubTab === 'lowstock' && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--black-hover)', borderBottom: '1px solid var(--black-border)' }}>
-                      <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Item Name</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Threshold</th>
-                      <th style={{ padding: '10px 16px', textAlign: 'center', fontWeight: '700', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Alert</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLowStock.length === 0 ? (
-                      <tr><td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>All items have sufficient stock.</td></tr>
-                    ) : filteredLowStock.map(item => (
-                      <tr key={item.id} style={{ borderBottom: '1px solid var(--black-border)', background: 'rgba(239,68,68,0.02)' }}>
-                        <td style={{ padding: '10px 16px', fontWeight: '600' }}>{item.name}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '800', color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{item.stockQuantity}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{item.lowStockThreshold}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#DC2626', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            REORDER
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Mobile Touch Cards View (< 768px) */}
-            <div className="mobile-card-view" style={{ display: 'none', flexDirection: 'column', gap: '8px' }}>
-              {invSubTab === 'ingredients' && filteredIngs.map(ing => {
-                const isLow = Number(ing.quantity) <= Number(ing.minAlert || 5)
-                return (
-                  <div key={ing.id} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: '700', fontSize: '13px' }}>{ing.name}</span>
-                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', background: isLow ? 'rgba(220,38,38,0.1)' : 'rgba(5,150,105,0.1)', color: isLow ? '#DC2626' : '#059669' }}>
-                        {isLow ? 'LOW' : 'OK'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      <span>In-Store: <b style={{ color: isLow ? '#DC2626' : 'var(--text-primary)' }}>{ing.quantity} {ing.unit}</b></span>
-                      <span>Value: <b style={{ color: 'var(--gold-dark)' }}>{formatMoney(ing.totalValue || 0)}</b></span>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {invSubTab === 'retail' && filteredItems.map(item => (
-                <div key={item.id} style={{ background: '#FFFFFF', border: '1px solid var(--black-border)', borderRadius: '10px', padding: '10px 12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px' }}>{item.name}</span>
-                    <b style={{ color: 'var(--gold-dark)', fontSize: '13px' }}>{formatMoney(item.price)}</b>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    <span>Store: <b>{item.isRecipe ? 'Recipe' : item.stockQuantity}</b></span>
-                    <span>Cost: <b>{formatMoney(item.costPrice || 0)}</b></span>
-                  </div>
-                </div>
-              ))}
-
-              {invSubTab === 'lowstock' && (filteredLowStock.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', background: '#FFFFFF', borderRadius: '10px' }}>
-                  All items have sufficient stock.
-                </div>
-              ) : filteredLowStock.map(item => (
-                <div key={item.id} style={{ background: '#FFFFFF', border: '1px solid rgba(220,38,38,0.25)', borderTop: '2px solid #DC2626', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ fontWeight: '700', fontSize: '13px' }}>{item.name}</span>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Threshold: {item.lowStockThreshold}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '800', color: '#DC2626' }}>{item.stockQuantity} left</div>
-                    <span style={{ fontSize: '10px', fontWeight: '700', color: '#DC2626' }}>REORDER</span>
-                  </div>
-                </div>
-              )))}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ============================================================ */}
-      {/* 14. TAB 9: INVENTORY AUDIT TRAIL                             */}
+      {/* 13. TAB 8: INVENTORY AUDIT TRAIL                             */}
       {/* ============================================================ */}
       {activeTab === 'inventory-logs' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
