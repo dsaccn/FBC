@@ -316,27 +316,51 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     const pg = getPool()
 
     // ── Pull static metadata (User, Category, Ingredient, MenuItem, Recipe, Table) ──
+    // 0. Users / Staff
     try {
-      // 0. Users / Staff
       const { rows: cloudUsers } = await pg.query(
         `SELECT id, username, "passwordHash", "fullName", role, phone, active, "createdAt" FROM "User"`
       )
 
       for (const u of cloudUsers) {
-        // Match existing users by username. The `update` branch intentionally
-        // does NOT change `id` — this preserves local ids embedded in active
-        // JWT session tokens. Only brand-new cloud-created staff get the cloud id.
-        await prisma.user.upsert({
-          where: { username: u.username },
-          update: {
-            passwordHash: u.passwordHash,
-            fullName: u.fullName,
-            role: u.role,
-            phone: u.phone,
-            active: Boolean(u.active),
-            createdAt: new Date(u.createdAt),
-          },
-          create: {
+        // First, check by ID to avoid unique constraint collisions
+        const localUserById = await prisma.user.findUnique({ where: { id: u.id } })
+        if (localUserById) {
+          await prisma.user.update({
+            where: { id: u.id },
+            data: {
+              username: u.username,
+              passwordHash: u.passwordHash,
+              fullName: u.fullName,
+              role: u.role,
+              phone: u.phone,
+              active: Boolean(u.active),
+              createdAt: new Date(u.createdAt),
+            },
+          }).catch(() => {})
+          continue
+        }
+
+        // Second, check by username
+        const localUserByUsername = await prisma.user.findUnique({ where: { username: u.username } })
+        if (localUserByUsername) {
+          await prisma.user.update({
+            where: { username: u.username },
+            data: {
+              passwordHash: u.passwordHash,
+              fullName: u.fullName,
+              role: u.role,
+              phone: u.phone,
+              active: Boolean(u.active),
+              createdAt: new Date(u.createdAt),
+            },
+          }).catch(() => {})
+          continue
+        }
+
+        // Neither exists: insert new cloud user
+        await prisma.user.create({
+          data: {
             id: u.id,
             username: u.username,
             passwordHash: u.passwordHash,
@@ -346,10 +370,15 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             active: Boolean(u.active),
             createdAt: new Date(u.createdAt),
           },
-        })
+        }).catch(() => {})
       }
+    } catch (userErr) {
+      console.warn('[Pull users warning]', String(userErr))
+      errors.push(`Users sync warning: ${String(userErr)}`)
+    }
 
-      // 1. Categories
+    // 1. Categories
+    try {
       const { rows: cloudCats } = await pg.query(
         `SELECT id, name, type, "createdAt" FROM "Category"`
       )
@@ -371,8 +400,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           await prisma.category.delete({ where: { id: lc.id } }).catch(() => {})
         }
       }
+    } catch (catErr) {
+      console.warn('[Pull categories warning]', String(catErr))
+      errors.push(`Categories sync warning: ${String(catErr)}`)
+    }
 
-      // 2. Ingredients
+    // 2. Ingredients
+    try {
       const { rows: cloudIngs } = await pg.query(
         `SELECT id, name, unit, quantity, "costPerUnit", "minThreshold", "createdAt" FROM "Ingredient"`
       )
@@ -441,8 +475,13 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           await prisma.ingredient.delete({ where: { id: li.id } }).catch(() => {})
         }
       }
+    } catch (ingErr) {
+      console.warn('[Pull ingredients warning]', String(ingErr))
+      errors.push(`Ingredients sync warning: ${String(ingErr)}`)
+    }
 
-      // 3. MenuItems
+    // 3. MenuItems
+    try {
       const { rows: cloudItems } = await pg.query(
         `SELECT id, "categoryId", name, description, price, available, "stockQuantity", "barQuantity", "costPrice", "lowStockThreshold", "parentItemId", "unitMultiplier", "createdAt" FROM "MenuItem"`
       )
@@ -515,6 +554,10 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           await prisma.menuItem.delete({ where: { id: lm.id } }).catch(() => {})
         }
       }
+    } catch (menuErr) {
+      console.warn('[Pull menu warning]', String(menuErr))
+      errors.push(`Menu sync warning: ${String(menuErr)}`)
+    }
 
       // 4. Recipes
       try {
@@ -557,8 +600,9 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       }
 
 
-      // 5. Tables
-      const { rows: cloudTables } = await pg.query(
+      // 5. Tables & Staff
+      try {
+        const { rows: cloudTables } = await pg.query(
         `SELECT id, number, status, "mergedWithId", "mergeGroupId", "mergeGroupLabel", "createdAt" FROM "Table"`
       )
 
