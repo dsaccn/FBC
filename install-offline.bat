@@ -7,6 +7,27 @@
 
 set "POS_DIR=%~dp0"
 cd /d "%POS_DIR%"
+
+:: Check if running directly inside a zip without extracting
+echo "%POS_DIR%" | findstr /i "AppData\Local\Temp" >nul
+if %errorlevel% equ 0 (
+    echo.
+    echo =========================================================
+    echo [ERROR] YOU ARE RUNNING THIS FROM INSIDE THE ZIP ARCHIVE!
+    echo =========================================================
+    echo.
+    echo You must EXTRACT the zip archive first before installing:
+    echo   1. Close this window.
+    echo   2. Right-click 'kogna-coffee-pos-offline.zip'.
+    echo   3. Click 'Extract All...'.
+    echo   4. Extract to a normal folder (e.g. C:\kogna-pos or Desktop).
+    echo   5. Open that extracted folder and run install-offline.bat.
+    echo.
+    echo =========================================================
+    pause
+    exit /b 1
+)
+
 set "TASK_NAME=Kogna Coffee POS Server"
 set "BAT_FILE=%POS_DIR%start-pos.bat"
 
@@ -19,14 +40,13 @@ echo       KOGNA COFFEE POS — OFFLINE INSTALLER
 echo =========================================================
 echo.
 
-:: ── Step 0: Admin check ─────────────────────────────────
+:: ── Step 0: Auto-Elevate to Administrator if not already elevated ───
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Administrator permissions required.
-    echo Please right-click install-offline.bat and choose "Run as administrator".
-    echo.
-    pause
-    exit /b 1
+    echo [INFO] Administrator permissions required.
+    echo Requesting Administrator elevation...
+    powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/k \"\"%~f0\"\"' -Verb RunAs"
+    exit /b 0
 )
 
 :: ── Step 1: Node.js check ────────────────────────────────
