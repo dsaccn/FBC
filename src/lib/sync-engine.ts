@@ -1298,15 +1298,18 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       }
 
       // Delete local InventoryLogs that were deleted on cloud
-      const { rows: allCloudInvLogs } = await pg.query(`SELECT id FROM "InventoryLog"`)
+      const { rows: allCloudInvLogs } = await pg.query(`SELECT id, "itemName", action FROM "InventoryLog"`)
       const cloudInvLogIds = new Set(allCloudInvLogs.map(l => l.id))
       const localSyncedInvLogs = await prisma.inventoryLog.findMany({
         where: { pendingSync: false },
-        select: { id: true }
+        select: { id: true, itemName: true, action: true }
       })
       for (const ll of localSyncedInvLogs) {
         if (!cloudInvLogIds.has(ll.id)) {
           await prisma.inventoryLog.delete({ where: { id: ll.id } }).catch(() => {})
+          if (ll.action && typeof ll.action === 'string' && ll.action.startsWith('WASTE')) {
+            await prisma.wasteLog.deleteMany({ where: { itemName: ll.itemName } }).catch(() => {})
+          }
         }
       }
     } catch (e) {
@@ -1360,11 +1363,16 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const cloudWasteIds = new Set(cloudWaste.map(w => w.id))
       const localSyncedWasteLogs = await prisma.wasteLog.findMany({
         where: { pendingSync: false },
-        select: { id: true }
+        select: { id: true, itemName: true }
       })
       for (const lw of localSyncedWasteLogs) {
         if (!cloudWasteIds.has(lw.id)) {
           await prisma.wasteLog.delete({ where: { id: lw.id } }).catch(() => {})
+          if (lw.itemName) {
+            await prisma.inventoryLog.deleteMany({
+              where: { itemName: lw.itemName, action: { startsWith: 'WASTE' } }
+            }).catch(() => {})
+          }
         }
       }
     } catch (e) {

@@ -425,12 +425,41 @@ export async function DELETE(req: NextRequest) {
         await deleteFromNeon(`DELETE FROM "StaffMealItem" WHERE "staffMealId" = ANY($1)`, [ids])
         await deleteFromNeon(`DELETE FROM "StaffMeal" WHERE id = ANY($1)`, [ids])
       }
-    } else if (model === 'WasteLog' || model === 'InventoryLog') {
+    } else if (model === 'WasteLog') {
+      const wasteLogs = await prisma.wasteLog.findMany({ where: { id: { in: ids } } }).catch(() => [])
+      const itemNames = wasteLogs.map((w: any) => w.itemName).filter(Boolean)
+
       await prisma.wasteLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
-      await prisma.inventoryLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+      if (itemNames.length > 0) {
+        await prisma.inventoryLog.deleteMany({
+          where: {
+            itemName: { in: itemNames },
+            action: { startsWith: 'WASTE' }
+          }
+        }).catch(() => {})
+      }
       if (!process.env.VERCEL) {
         await deleteFromNeon(`DELETE FROM "WasteLog" WHERE id = ANY($1)`, [ids])
+        if (itemNames.length > 0) {
+          await deleteFromNeon(`DELETE FROM "InventoryLog" WHERE "itemName" = ANY($1) AND action LIKE 'WASTE%'`, [itemNames])
+        }
+      }
+    } else if (model === 'InventoryLog') {
+      const invLogs = await prisma.inventoryLog.findMany({ where: { id: { in: ids } } }).catch(() => [])
+      const wasteItemNames = invLogs
+        .filter((l: any) => l.action && typeof l.action === 'string' && l.action.startsWith('WASTE'))
+        .map((l: any) => l.itemName)
+        .filter(Boolean)
+
+      await prisma.inventoryLog.deleteMany({ where: { id: { in: ids } } }).catch(() => {})
+      if (wasteItemNames.length > 0) {
+        await prisma.wasteLog.deleteMany({ where: { itemName: { in: wasteItemNames } } }).catch(() => {})
+      }
+      if (!process.env.VERCEL) {
         await deleteFromNeon(`DELETE FROM "InventoryLog" WHERE id = ANY($1)`, [ids])
+        if (wasteItemNames.length > 0) {
+          await deleteFromNeon(`DELETE FROM "WasteLog" WHERE "itemName" = ANY($1)`, [wasteItemNames])
+        }
       }
     } else {
       if (!process.env.VERCEL) {

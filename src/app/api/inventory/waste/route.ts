@@ -145,8 +145,18 @@ export async function DELETE(req: Request) {
     const id = searchParams.get('id')
 
     if (id) {
+      const targetWaste = await prisma.wasteLog.findUnique({ where: { id } }).catch(() => null)
+      const targetInv = await prisma.inventoryLog.findUnique({ where: { id } }).catch(() => null)
+      const itemName = targetWaste?.itemName || targetInv?.itemName
+
       await prisma.wasteLog.deleteMany({ where: { id } }).catch(() => {})
       await prisma.inventoryLog.deleteMany({ where: { id } }).catch(() => {})
+
+      if (itemName) {
+        await prisma.wasteLog.deleteMany({ where: { itemName } }).catch(() => {})
+        await prisma.inventoryLog.deleteMany({ where: { itemName, action: { startsWith: 'WASTE' } } }).catch(() => {})
+      }
+
       try {
         const url = process.env.NEON_DATABASE_URL
         if (url) {
@@ -154,6 +164,10 @@ export async function DELETE(req: Request) {
           const p = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
           await p.query('DELETE FROM "WasteLog" WHERE id = $1', [id]).catch(() => {})
           await p.query('DELETE FROM "InventoryLog" WHERE id = $1', [id]).catch(() => {})
+          if (itemName) {
+            await p.query('DELETE FROM "WasteLog" WHERE "itemName" = $1', [itemName]).catch(() => {})
+            await p.query("DELETE FROM \"InventoryLog\" WHERE \"itemName\" = $1 AND action LIKE 'WASTE%'", [itemName]).catch(() => {})
+          }
           await p.end().catch(() => {})
         }
       } catch {}
