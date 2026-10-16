@@ -22,10 +22,9 @@ if (-not $portTest.TcpTestSucceeded) {
 # 3. Check if cloudflared is running; if not, launch it
 $cfProcess = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
 if (-not $cfProcess) {
-  $cloudflaredExe = Join-Path $projectRoot "bin\cloudflared.exe"
-  if (Test-Path $cloudflaredExe) {
-    if (Test-Path $tunnelLog) { Remove-Item $tunnelLog -Force }
-    Start-Process -FilePath $cloudflaredExe -ArgumentList "tunnel --protocol http2 run --token eyJhIjoiM2UzNjljODU4YTllY2NhYTExNDkzZTIwNDhjODI0MmMiLCJ0IjoiZGM1ZTliYjYtNTU5Mi00YjgzLTlkMTMtYjA2MGExZmQyNzQzIiwicyI6Ik5tWmlNamMyWmpNdE5qVTBOQzAwWkRJNUxUZzBaVEl0T0dOak4ySTROemRpWlRrNSJ9 --logfile `"$tunnelLog`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
+  $batFile = Join-Path $projectRoot "scripts\run_tunnel.bat"
+  if (Test-Path $batFile) {
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$batFile`"" -WorkingDirectory $projectRoot -WindowStyle Hidden
   }
 }
 
