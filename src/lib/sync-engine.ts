@@ -377,6 +377,27 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       errors.push(`Users sync warning: ${String(userErr)}`)
     }
 
+    // 0b. Abebe Master Console Credentials
+    try {
+      const { rows: cloudCreds } = await pg.query(
+        `SELECT id, username, "passwordHash", "createdAt", "updatedAt" FROM "AbebeCredential" LIMIT 1`
+      )
+      if (cloudCreds.length > 0) {
+        const c = cloudCreds[0]
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "AbebeCredential" (id, username, "passwordHash", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (id) DO UPDATE SET
+             username = EXCLUDED.username,
+             "passwordHash" = EXCLUDED."passwordHash",
+             "updatedAt" = EXCLUDED."updatedAt"`,
+          c.id, c.username, c.passwordHash, c.createdAt, c.updatedAt
+        ).catch(() => {})
+      }
+    } catch (credErr) {
+      // Non-critical if table is not yet initialized
+    }
+
     // 1. Categories
     try {
       const { rows: cloudCats } = await pg.query(
