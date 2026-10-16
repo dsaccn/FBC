@@ -566,8 +566,8 @@ export default function StaffMealPanel({ from, to }: { from: string; to: string 
         <span>${i.quantity}</span>
       </div>`).join('')}
       <hr/>
-      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
-        MEBA TECH PRO
+      <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:8px;">
+        <b>MEBA TECH PRO</b>
       </div>
     </body></html>`;
     printTicketHtml(html);

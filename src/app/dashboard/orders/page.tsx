@@ -478,8 +478,8 @@ export default function OrdersPage() {
           <div class="row"><span>CANCELLED:</span><span>${reportStats.cancelledCount} orders</span></div>
           <hr/>
         ` : ''}
-        <div class="title" style="font-size: 10px; color: #555; letter-spacing: 1px; margin-top: 10px;">
-          KOGNA POS · SHIFT SUMMARY
+        <div class="title" style="font-size: 12px; font-weight: 900; color: #000; letter-spacing: 1.5px; margin-top: 10px;">
+          <b>MEBA TECH PRO · SHIFT SUMMARY</b>
         </div>
       </body>
     </html>`

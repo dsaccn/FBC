@@ -88,8 +88,8 @@ export default function OrderDetailPage() {
         <b>Date:</b> ${now}
       </div>
       <hr/>
-      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
-        MEBA TECH PRO
+      <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:8px;">
+        <b>MEBA TECH PRO</b>
       </div>
       </body></html>`
     printTicketHtml(html)
@@ -178,8 +178,8 @@ export default function OrderDetailPage() {
       </div>
       <div style="margin-top:8px;"><b>Payment:</b> ${order.payment?.method || '-'}</div>
       <hr/>
-      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
-        MEBA TECH PRO
+      <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:8px;">
+        <b>MEBA TECH PRO</b>
       </div>
     </body></html>`
     printTicketHtml(html)

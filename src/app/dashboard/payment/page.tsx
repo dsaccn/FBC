@@ -385,8 +385,8 @@ export default function PaymentPage() {
       </div>
       <div style="margin-top:8px;font-size:13px;"><b>Paid via:</b> ${method}</div>
       <hr/>
-      <div style="text-align:center;font-size:10px;color:#555;letter-spacing:1px;margin-top:8px;">
-        MEBA TECH PRO
+      <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:8px;">
+        <b>MEBA TECH PRO</b>
       </div>
     </body></html>`
     printTicketHtml(html)

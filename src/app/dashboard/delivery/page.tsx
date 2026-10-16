@@ -500,8 +500,8 @@ export default function DeliveryPage() {
         </div>
 
         <hr/>
-        <div class="center" style="font-size: 10px; margin-top: 8px; color: #555; letter-spacing: 1px;">
-          MEBA TECH PRO
+        <div class="center" style="font-size: 12px; font-weight: 900; margin-top: 8px; color: #000; letter-spacing: 1.5px;">
+          <b>MEBA TECH PRO</b>
         </div>
       </body>
       </html>
@@ -567,8 +567,8 @@ export default function DeliveryPage() {
           `
         }).join('')}
         <hr/>
-        <div class="center" style="font-size: 10px; margin-top: 8px; color: #555; letter-spacing: 1px;">
-          MEBA TECH PRO
+        <div class="center" style="font-size: 12px; font-weight: 900; margin-top: 8px; color: #000; letter-spacing: 1.5px;">
+          <b>MEBA TECH PRO</b>
         </div>
       </body>
       </html>
