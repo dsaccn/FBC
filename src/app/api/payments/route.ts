@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
+import { checkReceiptDuplicate } from '@/lib/receipt-dedup'
 
 export async function POST(req: Request) {
   try {
@@ -24,6 +25,19 @@ export async function POST(req: Request) {
     // 2. If order already has a payment, return it idempotently instead of throwing a unique constraint error
     if (order.payment) {
       return NextResponse.json(order.payment)
+    }
+
+    // 2b. 🚨 STRICT DUPLICATE RECEIPT CHECK:
+    // Check both order.verifiedRef and payment notes to ensure no transaction reference is reused
+    const refToCheck = order.verifiedRef || (typeof notes === 'string' ? notes : null)
+    if (refToCheck) {
+      const duplicateConflict = await checkReceiptDuplicate(refToCheck, orderId)
+      if (duplicateConflict) {
+        return NextResponse.json(
+          { error: duplicateConflict.errorMessage, duplicate: true, reference: duplicateConflict.ref },
+          { status: 400 }
+        )
+      }
     }
 
     // 3. Resolve cashierId to a valid user in the User table

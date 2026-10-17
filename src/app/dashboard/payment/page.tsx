@@ -234,7 +234,11 @@ export default function PaymentPage() {
         toast.success('Attached phone scan to order!')
         setRecentPhoneScan(null)
       } else {
-        toast.error('Failed to attach phone scan')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to attach phone scan')
+        if (data.duplicate) {
+          setRecentPhoneScan(null)
+        }
       }
     } catch {
       toast.error('Network error attaching scan')
@@ -345,6 +349,7 @@ export default function PaymentPage() {
       if (res.ok) {
         setLastPayment({ amount: total, method })
         setPaid(true)
+        setRecentPhoneScan(null)
         toast.success(`Payment of ${total.toFixed(2)} ETB (${method}) processed successfully!`)
         setTimeout(() => {
           printReceipt()

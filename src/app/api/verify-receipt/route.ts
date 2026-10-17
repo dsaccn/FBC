@@ -3,6 +3,7 @@ import { verifyEthioReceipt } from '@/lib/ethio-receipt-verifier'
 import { prisma } from '@/lib/prisma'
 import { Client as PgClient } from 'pg'
 import { broadcastVerificationEvent } from '@/lib/scanner-events'
+import { checkReceiptDuplicate } from '@/lib/receipt-dedup'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -41,51 +42,17 @@ export async function POST(req: Request) {
     if (receipt.success) {
       const cleanRef = String(receipt.reference || referenceOrUrl).trim().toUpperCase()
 
-      // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on a PAID order or delivery
-      const duplicatePaidOrder = await prisma.order.findFirst({
-        where: {
-          verifiedRef: cleanRef,
-          status: 'PAID',
-          ...(orderId ? { id: { not: orderId } } : {})
-        },
-        include: {
-          table: true,
-          payment: true,
-        }
-      })
-
-      const duplicatePaidPayment = !duplicatePaidOrder ? await prisma.payment.findFirst({
-        where: {
-          notes: { contains: cleanRef },
-          order: {
-            status: 'PAID',
-            ...(orderId ? { id: { not: orderId } } : {})
-          }
-        },
-        include: {
-          order: { include: { table: true } }
-        }
-      }) : null
-
-      const conflictOrder = duplicatePaidOrder || duplicatePaidPayment?.order
-      if (conflictOrder) {
-        const rawTable = conflictOrder.table?.number || '?'
-        const isDeliv = rawTable.startsWith('DELIV') || rawTable.startsWith('Delivery')
-        const isTake = rawTable.startsWith('TAKE') || rawTable.startsWith('Takeaway')
-        const tableLabel = isDeliv 
-          ? `Delivery #${rawTable.replace(/^[A-Za-z-]+/, '')}`
-          : (isTake ? `Takeaway #${rawTable.replace(/^[A-Za-z-]+/, '')}` : `Table ${rawTable}`)
-        const paidAtStr = duplicatePaidOrder?.payment?.createdAt || duplicatePaidPayment?.createdAt || conflictOrder.updatedAt
-        const dateStr = paidAtStr ? new Date(paidAtStr).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
-
+      // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on another order or payment
+      const duplicateConflict = await checkReceiptDuplicate(cleanRef, orderId)
+      if (duplicateConflict) {
         return NextResponse.json({
           success: false,
           duplicate: true,
-          error: `DUPLICATE RECEIPT: Transaction code ${cleanRef} was ALREADY paid & closed for ${tableLabel} on ${dateStr}! It cannot be reused.`,
+          error: duplicateConflict.errorMessage,
           receipt: {
             ...receipt,
             success: false,
-            errorMessage: `Duplicate Receipt: Already used for ${tableLabel} (${dateStr})`
+            errorMessage: duplicateConflict.errorMessage,
           }
         }, { status: 400 })
       }
