@@ -1,3 +1,7 @@
+param(
+    [string]$TargetUrl = "http://localhost:3000"
+)
+
 # Creates a Desktop shortcut that launches Chrome / Edge in Silent Kiosk Printing mode
 $ws = New-Object -ComObject WScript.Shell
 $desktop = [Environment]::GetFolderPath('Desktop')
@@ -16,12 +20,12 @@ $browser = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($browser) {
     $shortcut = $ws.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $browser
-    $shortcut.Arguments = "--kiosk-printing --app=http://localhost:3000"
+    $shortcut.Arguments = "--kiosk-printing --app=$TargetUrl"
     $shortcut.Description = "Kogna Coffee POS with Silent Printing (No print popup)"
     $shortcut.Save()
     Write-Host "[OK] Desktop shortcut created successfully!" -ForegroundColor Green
     Write-Host "     Path: $shortcutPath" -ForegroundColor White
-    Write-Host "     Target: $browser --kiosk-printing --app=http://localhost:3000" -ForegroundColor Cyan
+    Write-Host "     Target: $browser --kiosk-printing --app=$TargetUrl" -ForegroundColor Cyan
 } else {
     Write-Host "[ERROR] Neither Chrome nor Edge was found on this system." -ForegroundColor Red
 }
