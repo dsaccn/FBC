@@ -101,24 +101,18 @@ export async function POST(req: Request) {
           }
 
           // Full payment or tip -> safely link to order
-          await prisma.$executeRawUnsafe(
-            `UPDATE "Order" 
-             SET "verifiedRef" = ?, 
-                 "verifiedProvider" = ?, 
-                 "verifiedAmount" = ?, 
-                 "verifiedPayer" = ?, 
-                 "verifiedReceiver" = ?, 
-                 "verifiedAt" = ?, 
-                 "pendingSync" = 1 
-             WHERE id = ?`,
-            cleanRef,
-            receipt.provider || provider || 'AUTO',
-            isNaN(parsedAmount) ? null : parsedAmount,
-            receipt.payerName || null,
-            receipt.receiverName || null,
-            verifiedDate.toISOString(),
-            orderId
-          )
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              verifiedRef: cleanRef,
+              verifiedProvider: receipt.provider || provider || 'AUTO',
+              verifiedAmount: isNaN(parsedAmount) ? null : parsedAmount,
+              verifiedPayer: receipt.payerName || null,
+              verifiedReceiver: receipt.receiverName || null,
+              verifiedAt: verifiedDate,
+              pendingSync: true,
+            }
+          })
 
           linkedOrder = {
             id: targetOrder?.id || orderId,

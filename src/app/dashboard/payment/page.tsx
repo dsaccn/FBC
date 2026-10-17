@@ -311,16 +311,43 @@ export default function PaymentPage() {
 
   async function handleClearVerification(id: string) {
     if (!confirm('Clear mobile phone payment verification for this order?')) return
+    // 1. Optimistic update for 0ms response
+    setSelectedOrder(prev => prev && prev.id === id ? {
+      ...prev,
+      verifiedRef: null,
+      verifiedProvider: null,
+      verifiedAmount: null,
+      verifiedPayer: null,
+      verifiedReceiver: null,
+      verifiedAt: null
+    } : prev)
+    setOrders(prev => prev.map(o => o.id === id ? {
+      ...o,
+      verifiedRef: null,
+      verifiedProvider: null,
+      verifiedAmount: null,
+      verifiedPayer: null,
+      verifiedReceiver: null,
+      verifiedAt: null
+    } : o))
+
     try {
-      const res = await fetch(`/api/scanner/verify-order?orderId=${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/scanner/verify-order?orderId=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: id })
+      })
       if (res.ok) {
         toast.success('Mobile verification cleared')
         load()
       } else {
-        toast.error('Failed to clear verification')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to clear verification')
+        load()
       }
     } catch {
       toast.error('Network error clearing verification')
+      load()
     }
   }
 

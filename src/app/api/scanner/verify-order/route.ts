@@ -49,28 +49,18 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    // 1. Update local database
-    await prisma.$executeRawUnsafe(
-      `UPDATE "Order" 
-       SET "verifiedRef" = ?, 
-           "verifiedProvider" = ?, 
-           "verifiedAmount" = ?, 
-           "verifiedPayer" = ?, 
-           "verifiedReceiver" = ?, 
-           "verifiedAt" = ?, 
-           "pendingSync" = 1 
-       WHERE id = ?`,
-      cleanRef,
-      provider || 'AUTO',
-      isNaN(parsedAmount) ? null : parsedAmount,
-      payerName || null,
-      receiverName || null,
-      verifiedDate.toISOString(),
-      orderId
-    )
-
-    const updated = await prisma.order.findUnique({
+    // 1. Update database
+    const updated = await prisma.order.update({
       where: { id: orderId },
+      data: {
+        verifiedRef: cleanRef,
+        verifiedProvider: provider || 'AUTO',
+        verifiedAmount: isNaN(parsedAmount) ? null : parsedAmount,
+        verifiedPayer: payerName || null,
+        verifiedReceiver: receiverName || null,
+        verifiedAt: verifiedDate,
+        pendingSync: true,
+      },
       include: {
         table: true,
         waiter: { select: { fullName: true } }
@@ -141,23 +131,34 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
-    const orderId = searchParams.get('orderId')
+    let orderId = searchParams.get('orderId')
+    if (!orderId) {
+      try {
+        const body = await req.json()
+        orderId = body?.orderId
+      } catch {}
+    }
+
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'Missing orderId' }, { status: 400 })
     }
 
-    await prisma.$executeRawUnsafe(
-      `UPDATE "Order" 
-       SET "verifiedRef" = NULL, 
-           "verifiedProvider" = NULL, 
-           "verifiedAmount" = NULL, 
-           "verifiedPayer" = NULL, 
-           "verifiedReceiver" = NULL, 
-           "verifiedAt" = NULL, 
-           "pendingSync" = 1 
-       WHERE id = ?`,
-      orderId
-    )
+    try {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          verifiedRef: null,
+          verifiedProvider: null,
+          verifiedAmount: null,
+          verifiedPayer: null,
+          verifiedReceiver: null,
+          verifiedAt: null,
+          pendingSync: true,
+        }
+      })
+    } catch (orderErr: any) {
+      console.warn('[DELETE /api/scanner/verify-order] Prisma update warning:', orderErr?.message)
+    }
 
     if (process.env.NEON_DATABASE_URL) {
       const pg = new PgClient({
