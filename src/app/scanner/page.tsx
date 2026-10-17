@@ -33,6 +33,10 @@ interface VerifiedReceipt {
   receiverName?: string
   receiverAccount?: string
   isReceiverMatched?: boolean
+  isDuplicate?: boolean
+  isUnderpaid?: boolean
+  shortAmount?: number
+  orderTotal?: number
   amount?: number
   currency: string
   dateTime?: string
@@ -153,6 +157,12 @@ export default function QRScannerPage() {
 
   const handleLinkToOrder = async (targetOrderId: string) => {
     if (!verifiedResult || !verifiedResult.reference) return
+    const targetOrder = openOrders.find(o => o.id === targetOrderId)
+    const targetBill = targetOrder?.total || 0
+    if (typeof verifiedResult.amount === 'number' && targetBill > 0 && verifiedResult.amount < targetBill - 0.5) {
+      alert(`⚠️ CANNOT ATTACH: The verified amount (${verifiedResult.amount.toFixed(2)} ETB) is less than ${targetOrder?.displayTitle || 'Order'}'s bill (${targetBill.toFixed(2)} ETB). Receipt was NOT attached! Please collect the full amount.`)
+      return
+    }
     setIsLinkingOrder(true)
     setLinkedSuccessMessage(null)
     try {
@@ -298,8 +308,32 @@ export default function QRScannerPage() {
 
       const data = await res.json()
 
-      if (res.ok && data.receipt) {
-        const receipt: VerifiedReceipt = data.receipt
+      const receiptPayload = data.receipt || null
+      const isDup = Boolean(
+        data.duplicate ||
+        data.error?.toLowerCase().includes('duplicate') ||
+        data.error?.toLowerCase().includes('already used') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('already used')
+      )
+      const isRecvMismatch = Boolean(
+        receiptPayload?.isReceiverMatched === false ||
+        data.error?.toLowerCase().includes('receiver mismatch') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('receiver mismatch')
+      )
+      const isUnder = Boolean(
+        data.underpaid ||
+        receiptPayload?.isUnderpaid ||
+        data.error?.toLowerCase().includes('amount too low') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('amount too low')
+      )
+
+      if (res.ok && receiptPayload && receiptPayload.success && !isRecvMismatch && !isUnder && !isDup) {
+        const receipt: VerifiedReceipt = {
+          ...receiptPayload,
+          isDuplicate: false,
+          isReceiverMatched: true,
+          isUnderpaid: false,
+        }
         setVerifiedResult(receipt)
         setAmountMatches(data.amountMatches ?? null)
 
@@ -309,8 +343,8 @@ export default function QRScannerPage() {
           fetchOpenOrders()
         }
 
-        playChime(receipt.success)
-        triggerHaptic(receipt.success)
+        playChime(true)
+        triggerHaptic(true)
 
         // Append to session history
         const historyEntry: ScanHistoryItem = {
@@ -320,22 +354,36 @@ export default function QRScannerPage() {
           amount: receipt.amount,
           payerName: receipt.payerName,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          success: receipt.success,
+          success: true,
         }
         setHistory(prev => [historyEntry, ...prev.slice(0, 19)])
       } else {
         const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
           ? 'CBE'
           : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : (prov === 'AUTO' ? 'UNKNOWN' : prov))
+
         const failReceipt: VerifiedReceipt = {
           success: false,
-          provider: detectedProv,
-          reference: clean,
-          currency: 'ETB',
+          provider: receiptPayload?.provider || detectedProv,
+          reference: receiptPayload?.reference || clean,
+          currency: receiptPayload?.currency || 'ETB',
           status: 'FAILED',
-          errorMessage: data.error || 'Receipt verification server could not validate this transaction.',
+          isDuplicate: isDup,
+          isReceiverMatched: isRecvMismatch ? false : (receiptPayload?.isReceiverMatched ?? true),
+          isUnderpaid: isUnder,
+          shortAmount: data.shortAmount || (data.orderTotal && receiptPayload?.amount ? data.orderTotal - receiptPayload.amount : undefined),
+          orderTotal: data.orderTotal,
+          receiverName: receiptPayload?.receiverName,
+          receiverAccount: receiptPayload?.receiverAccount,
+          payerName: receiptPayload?.payerName,
+          payerAccountOrPhone: receiptPayload?.payerAccountOrPhone,
+          amount: typeof receiptPayload?.amount === 'number' ? receiptPayload.amount : undefined,
+          dateTime: receiptPayload?.dateTime,
+          errorMessage: data.error || receiptPayload?.errorMessage || 'Receipt verification server could not validate this transaction.',
         }
+
         setVerifiedResult(failReceipt)
+        setAmountMatches(false)
         playChime(false)
         triggerHaptic(false)
       }
@@ -939,103 +987,265 @@ export default function QRScannerPage() {
             justifyContent: 'space-between',
             gap: '16px'
           }}>
-            <div style={{
-              background: '#131B2E',
-              border: `2px solid ${verifiedResult.success ? '#059669' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#F59E0B' : '#DC2626'}`,
-              borderRadius: '16px',
-              padding: '24px 20px',
-              boxShadow: verifiedResult.success
-                ? '0 10px 30px rgba(5,150,105,0.15)'
-                : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                  ? '0 10px 30px rgba(245,158,11,0.15)'
-                  : '0 10px 30px rgba(220,38,38,0.15)',
-              position: 'relative'
-            }}>
-              {/* Result Status Banner */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                <div style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '50%',
-                  background: verifiedResult.success
-                    ? 'rgba(5,150,105,0.15)'
-                    : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                      ? 'rgba(245,158,11,0.15)'
-                      : 'rgba(220,38,38,0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  {verifiedResult.success ? (
-                    <CheckCircle2 size={26} color="#059669" />
-                  ) : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? (
-                    <AlertTriangle size={26} color="#F59E0B" />
-                  ) : (
-                    <XCircle size={26} color="#DC2626" />
-                  )}
-                </div>
-                <div>
-                  <div style={{
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    color: verifiedResult.success ? '#10B981' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#F59E0B' : '#EF4444'
-                  }}>
-                    {verifiedResult.success ? 'Official Bank Verified' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Gateway Delay / Check Direct Slip' : 'Verification Unsuccessful'}
-                  </div>
-                  <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#FFFFFF', margin: '2px 0 0 0' }}>
-                    {verifiedResult.success ? 'Legitimate Payment' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Ref Decoded — Tap Official Slip' : 'Unconfirmed / Invalid'}
-                  </h2>
-                </div>
-              </div>
+          {(() => {
+            const isDup = Boolean(
+              verifiedResult.isDuplicate ||
+              verifiedResult.errorMessage?.toLowerCase().includes('duplicate') ||
+              verifiedResult.errorMessage?.toLowerCase().includes('already used')
+            )
 
-              {/* Amount Display */}
-              {verifiedResult.success && typeof verifiedResult.amount === 'number' && (
-                <div style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  textAlign: 'center',
-                  marginBottom: '20px'
-                }}>
-                  <div style={{ fontSize: '11px', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>
-                    Verified Amount Paid
+            const isRecvMismatch = Boolean(
+              verifiedResult.isReceiverMatched === false ||
+              verifiedResult.errorMessage?.toLowerCase().includes('receiver mismatch')
+            )
+
+            const selectedOrderObj = openOrders.find(o => o.id === selectedOrderId)
+            const targetBill = selectedOrderObj?.total ?? (expectedAmount ? parseFloat(expectedAmount) : null)
+            const isUnderpaid = Boolean(
+              verifiedResult.isUnderpaid ||
+              (typeof verifiedResult.amount === 'number' && targetBill !== null && !isNaN(targetBill) && targetBill > 0 && verifiedResult.amount < targetBill - 0.5)
+            )
+            const shortAmt = isUnderpaid && targetBill !== null && typeof verifiedResult.amount === 'number'
+              ? Math.max(0, targetBill - verifiedResult.amount)
+              : (verifiedResult.shortAmount || 0)
+
+            const borderColor = (isDup || isRecvMismatch || isUnderpaid)
+              ? '#DC2626'
+              : verifiedResult.success
+                ? '#059669'
+                : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                  ? '#F59E0B'
+                  : '#DC2626'
+
+            return (
+              <div style={{
+                background: '#131B2E',
+                border: `3px solid ${borderColor}`,
+                borderRadius: '16px',
+                padding: '24px 20px',
+                boxShadow: (isDup || isRecvMismatch || isUnderpaid)
+                  ? '0 10px 30px rgba(220,38,38,0.35)'
+                  : verifiedResult.success
+                    ? '0 10px 30px rgba(5,150,105,0.15)'
+                    : '0 10px 30px rgba(220,38,38,0.15)',
+                position: 'relative'
+              }}>
+                {/* Result Status Banner */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                  <div style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '50%',
+                    background: (isDup || isRecvMismatch || isUnderpaid || !verifiedResult.success)
+                      ? 'rgba(220,38,38,0.2)'
+                      : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                        ? 'rgba(245,158,11,0.2)'
+                        : 'rgba(5,150,105,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {isUnderpaid ? (
+                      <AlertTriangle size={28} color="#EF4444" />
+                    ) : (isDup || isRecvMismatch || !verifiedResult.success) ? (
+                      <XCircle size={28} color="#DC2626" />
+                    ) : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? (
+                      <AlertTriangle size={28} color="#F59E0B" />
+                    ) : (
+                      <CheckCircle2 size={28} color="#059669" />
+                    )}
                   </div>
-                  <div style={{ fontSize: '32px', fontWeight: '900', color: '#10B981', fontVariantNumeric: 'tabular-nums', marginTop: '4px' }}>
-                    {formatMoney(verifiedResult.amount)}
+                  <div>
+                    <div style={{
+                      fontSize: '11px',
+                      fontWeight: '900',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      color: (isDup || isRecvMismatch || isUnderpaid)
+                        ? '#EF4444'
+                        : verifiedResult.success
+                          ? '#10B981'
+                          : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                            ? '#F59E0B'
+                            : '#EF4444'
+                    }}>
+                      {isUnderpaid
+                        ? '⚠️ SHORT PAYMENT — AMOUNT TOO LOW'
+                        : isDup
+                          ? '🚨 DUPLICATE / REUSE DETECTED'
+                          : isRecvMismatch
+                            ? '🚨 WRONG RECEIVER ACCOUNT'
+                            : verifiedResult.success
+                              ? 'Official Bank Verified'
+                              : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                                ? 'Gateway Delay / Check Direct Slip'
+                                : 'Verification Unsuccessful'}
+                    </div>
+                    <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF', margin: '2px 0 0 0' }}>
+                      {isUnderpaid
+                        ? 'Amount Too Low — Not Attached'
+                        : isDup
+                          ? 'Already Used Receipt!'
+                          : isRecvMismatch
+                            ? 'Not Credited to Your Account!'
+                            : verifiedResult.success
+                              ? 'Legitimate Payment'
+                              : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                                ? 'Ref Decoded — Tap Official Slip'
+                                : 'Unconfirmed / Invalid'}
+                    </h2>
                   </div>
-                  {amountMatches === false && (
-                    <div style={{ fontSize: '11px', color: '#F59E0B', marginTop: '6px', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                      <AlertTriangle size={13} />
-                      Warning: Amount differs from expected order total
+                </div>
+
+                {/* --- BIG HIGH-VISIBILITY WARNING BOXES --- */}
+                {/* 1. DUPLICATE ERROR WARNING */}
+                {isDup && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
+                    border: '2px solid #EF4444',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '20px',
+                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
+                      <AlertTriangle size={22} color="#EF4444" />
+                      <span>DO NOT ACCEPT — RECEIPT ALREADY USED!</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                      {verifiedResult.errorMessage || `This reference code (${verifiedResult.reference}) has ALREADY been used for another order or payment. One receipt cannot be used twice!`}
+                    </div>
+                    <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', borderRadius: '6px', fontSize: '12px', color: '#FECACA', fontWeight: '700' }}>
+                      🛑 <b>Action:</b> Ask customer for today's new transfer confirmation.
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. RECEIVER MISMATCH WARNING */}
+                {isRecvMismatch && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
+                    border: '2px solid #EF4444',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '20px',
+                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
+                      <AlertTriangle size={22} color="#EF4444" />
+                      <span>MONEY SENT TO WRONG PERSON / ACCOUNT!</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                      {verifiedResult.errorMessage || 'Payment was credited to someone else, NOT your official business account!'}
+                    </div>
+                    {verifiedResult.receiverName && (
+                      <div style={{ marginTop: '8px', fontSize: '13px', color: '#FECACA' }}>
+                        Money was credited to: <b style={{ color: '#FFFFFF', textDecoration: 'underline' }}>{verifiedResult.receiverName}</b> ({verifiedResult.receiverAccount || 'other account'})
+                      </div>
+                    )}
+                    <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', borderRadius: '6px', fontSize: '12px', color: '#FECACA', fontWeight: '700' }}>
+                      🛑 <b>Do NOT serve order:</b> The business did NOT receive the money.
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. UNDERPAID WARNING (AMOUNT IS TOO LOW) */}
+                {isUnderpaid && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
+                    border: '2px solid #EF4444',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '20px',
+                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
+                      <AlertTriangle size={22} color="#EF4444" />
+                      <span>⚠️ AMOUNT IS TOO LOW — RECEIPT NOT ATTACHED!</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                      Customer only paid <b>{formatMoney(verifiedResult.amount || 0)}</b>, but the order bill is <b>{formatMoney(targetBill || 0)}</b>.
+                    </div>
+                    <div style={{
+                      marginTop: '10px',
+                      padding: '10px 12px',
+                      background: '#DC2626',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      color: '#FFFFFF',
+                      fontWeight: '900',
+                      textAlign: 'center'
+                    }}>
+                      🚨 SHORT BY {formatMoney(shortAmt)}! RECEIPT NOT ATTACHED.
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#FEE2E2', textAlign: 'center', fontWeight: '600' }}>
+                      Customer must pay full balance before order can be attached or closed.
+                    </div>
+                  </div>
+                )}
+
+                {/* Amount Display (RED if underpaid, GREEN if paid in full/tip) */}
+                {typeof verifiedResult.amount === 'number' && (
+                  <div style={{
+                    background: isUnderpaid ? 'rgba(220,38,38,0.15)' : 'rgba(255,255,255,0.04)',
+                    border: `1.5px solid ${isUnderpaid ? '#EF4444' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: '12px',
+                    padding: '16px',
+                    textAlign: 'center',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ fontSize: '11px', color: isUnderpaid ? '#FCA5A5' : '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '800' }}>
+                      {isUnderpaid ? '⚠️ Verified Amount Paid (SHORT PAYMENT)' : 'Verified Amount Paid'}
+                    </div>
+                    <div style={{
+                      fontSize: '34px',
+                      fontWeight: '900',
+                      color: isUnderpaid ? '#EF4444' : '#10B981',
+                      fontVariantNumeric: 'tabular-nums',
+                      marginTop: '4px'
+                    }}>
+                      {formatMoney(verifiedResult.amount)}
+                    </div>
+                    {isUnderpaid && targetBill !== null && (
+                      <div style={{ fontSize: '12px', color: '#FCA5A5', marginTop: '6px', fontWeight: '800' }}>
+                        Bill Total: {formatMoney(targetBill)} (Short: -{formatMoney(shortAmt)})
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Details List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                    <span style={{ color: '#94A3B8' }}>Provider:</span>
+                    <b style={{ color: '#FFFFFF' }}>{verifiedResult.provider}</b>
+                  </div>
+
+                  {verifiedResult.receiverName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                      <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
+                      <b style={{
+                        color: isRecvMismatch ? '#EF4444' : '#34D399',
+                        fontSize: '14px',
+                        background: isRecvMismatch ? 'rgba(220,38,38,0.2)' : 'transparent',
+                        padding: isRecvMismatch ? '2px 8px' : 0,
+                        borderRadius: isRecvMismatch ? '4px' : 0,
+                        border: isRecvMismatch ? '1px solid #DC2626' : 'none'
+                      }}>
+                        {isRecvMismatch ? `❌ ${verifiedResult.receiverName} (WRONG ACCOUNT)` : verifiedResult.receiverName}
+                      </b>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* Details List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                  <span style={{ color: '#94A3B8' }}>Provider:</span>
-                  <b style={{ color: '#FFFFFF' }}>{verifiedResult.provider}</b>
-                </div>
-
-                {verifiedResult.receiverName && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
-                    <b style={{ color: '#34D399', fontSize: '14px' }}>{verifiedResult.receiverName}</b>
-                  </div>
-                )}
-
-                {verifiedResult.receiverAccount && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Receiver Account/Phone:</span>
-                    <span style={{ color: '#E2E8F0', fontFamily: 'monospace' }}>{verifiedResult.receiverAccount}</span>
-                  </div>
-                )}
+                  {verifiedResult.receiverAccount && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                      <span style={{ color: '#94A3B8' }}>Receiver Account/Phone:</span>
+                      <span style={{ color: isRecvMismatch ? '#EF4444' : '#E2E8F0', fontFamily: 'monospace', fontWeight: isRecvMismatch ? '700' : 'normal' }}>
+                        {isRecvMismatch ? `❌ ${verifiedResult.receiverAccount}` : verifiedResult.receiverAccount}
+                      </span>
+                    </div>
+                  )}
 
                 {verifiedResult.payerName && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
@@ -1128,8 +1338,10 @@ export default function QRScannerPage() {
                     Open Official {verifiedResult.provider} Slip in Browser ({verifiedResult.reference})
                   </a>
                 )}
+                </div>
               </div>
-            </div>
+            )
+          })()}
 
             {/* Cashier Link Action */}
             {verifiedResult.success && (
@@ -1239,17 +1451,36 @@ export default function QRScannerPage() {
                           {/* 2. Amount analysis for the selected table */}
                           {target && isPartial && (
                             <div style={{
-                              background: 'rgba(245,158,11,0.12)',
-                              border: '1px solid rgba(245,158,11,0.3)',
-                              borderRadius: '8px',
-                              padding: '10px 12px',
-                              marginBottom: '12px',
-                              color: '#FDE68A',
-                              fontSize: '12px'
+                              background: 'linear-gradient(135deg, rgba(220,38,38,0.25) 0%, rgba(185,28,28,0.4) 100%)',
+                              border: '2px solid #EF4444',
+                              borderRadius: '10px',
+                              padding: '14px',
+                              marginBottom: '14px',
+                              color: '#FFFFFF',
+                              fontSize: '13px',
+                              boxShadow: '0 4px 14px rgba(220,38,38,0.3)'
                             }}>
-                              <b>🟡 Partial Payment:</b> Customer paid {formatMoney(scannedAmt)} of {formatMoney(targetAmt)}.
-                              <div style={{ marginTop: '3px', fontWeight: '700', color: '#FCD34D' }}>
-                                Remaining balance to collect: {formatMoney(Math.abs(diff))} (e.g. in Cash)
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontWeight: '900', fontSize: '15px' }}>
+                                <AlertTriangle size={20} color="#EF4444" />
+                                <span>⚠️ AMOUNT IS TOO LOW — CANNOT ATTACH!</span>
+                              </div>
+                              <div style={{ marginTop: '6px', fontWeight: '700' }}>
+                                Customer only sent {formatMoney(scannedAmt)} for {target?.displayTitle}'s bill of {formatMoney(targetAmt)}.
+                              </div>
+                              <div style={{
+                                marginTop: '8px',
+                                padding: '8px 10px',
+                                background: '#DC2626',
+                                borderRadius: '6px',
+                                fontWeight: '900',
+                                color: '#FFFFFF',
+                                textAlign: 'center',
+                                fontSize: '13px'
+                              }}>
+                                🚨 SHORT BY {formatMoney(Math.abs(diff))}! RECEIPT NOT ATTACHED.
+                              </div>
+                              <div style={{ marginTop: '6px', fontSize: '12px', color: '#FECACA', textAlign: 'center', fontWeight: '600' }}>
+                                Customer must pay the full remaining amount.
                               </div>
                             </div>
                           )}
@@ -1323,36 +1554,56 @@ export default function QRScannerPage() {
 
                           {/* 4. Action Button */}
                           {selectedOrderId ? (
-                            <button
-                              type="button"
-                              disabled={isLinkingOrder}
-                              onClick={() => handleLinkToOrder(selectedOrderId)}
-                              style={{
+                            isPartial ? (
+                              <div style={{
                                 width: '100%',
-                                padding: '12px',
+                                padding: '14px',
                                 borderRadius: '10px',
-                                border: 'none',
-                                background: '#10B981',
-                                color: '#FFFFFF',
-                                fontWeight: '700',
-                                fontSize: '14px',
-                                cursor: 'pointer',
+                                background: 'rgba(220,38,38,0.2)',
+                                border: '2px solid #EF4444',
+                                color: '#FCA5A5',
+                                textAlign: 'center',
+                                fontWeight: '900',
+                                fontSize: '13px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '8px',
-                                boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
-                              }}
-                            >
-                              {isLinkingOrder ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                              <span>
-                                {isPartial
-                                  ? `Attach Partial Payment to ${target?.displayTitle || 'Table'}`
-                                  : isOverpaid
+                                boxShadow: '0 4px 14px rgba(220,38,38,0.25)'
+                              }}>
+                                <AlertTriangle size={18} color="#EF4444" />
+                                <span>⛔ ATTACHMENT BLOCKED: Amount is low (-{formatMoney(Math.abs(diff))})</span>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isLinkingOrder}
+                                onClick={() => handleLinkToOrder(selectedOrderId)}
+                                style={{
+                                  width: '100%',
+                                  padding: '12px',
+                                  borderRadius: '10px',
+                                  border: 'none',
+                                  background: '#10B981',
+                                  color: '#FFFFFF',
+                                  fontWeight: '700',
+                                  fontSize: '14px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '8px',
+                                  boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
+                                }}
+                              >
+                                {isLinkingOrder ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                                <span>
+                                  {isOverpaid
                                     ? `Attach Payment (+Tip) to ${target?.displayTitle || 'Table'}`
                                     : `Confirm & Send to Cashier for ${target?.displayTitle || 'Table'}`}
-                              </span>
-                            </button>
+                                </span>
+                              </button>
+                            )
                           ) : (
                             <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center', padding: '6px 0', fontStyle: 'italic' }}>
                               Select a table above to send this payment to the Cashier POS screen.

@@ -27,6 +27,28 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
+    // 🚨 AMOUNT CHECK: Do NOT attach if scanned amount is less than order's bill!
+    const targetOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderItems: { include: { menuItem: true } },
+        table: true,
+        waiter: { select: { fullName: true } }
+      }
+    })
+
+    const orderTotal = targetOrder?.orderItems?.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
+    if (!isNaN(parsedAmount) && orderTotal > 0 && parsedAmount < orderTotal - 0.5) {
+      const shortAmt = orderTotal - parsedAmount
+      return NextResponse.json({
+        success: false,
+        underpaid: true,
+        orderTotal,
+        shortAmount: shortAmt,
+        error: `AMOUNT TOO LOW: Scanned amount (${parsedAmount.toFixed(2)} ETB) is less than order bill (${orderTotal.toFixed(2)} ETB). Short by ${shortAmt.toFixed(2)} ETB! Receipt was NOT attached.`
+      }, { status: 400 })
+    }
+
     // 1. Update local database
     await prisma.$executeRawUnsafe(
       `UPDATE "Order" 

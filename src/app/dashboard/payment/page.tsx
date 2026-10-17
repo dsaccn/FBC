@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Printer, CheckCircle, Bike, ShoppingBag, Zap, HeartHandshake } from 'lucide-react'
+import { Printer, CheckCircle, Bike, ShoppingBag, Zap, HeartHandshake, AlertTriangle } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
@@ -516,25 +516,31 @@ export default function PaymentPage() {
                           {info.phone ? <span style={{ color: 'var(--gold)', marginRight: '6px' }}>📞 {info.phone} ·</span> : null}
                           {o.waiter.fullName} · {o.orderItems.length} items
                         </div>
-                        {o.verifiedRef && (
-                          <div style={{ marginTop: '5px' }}>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '11px',
-                              padding: '2px 8px',
-                              borderRadius: '999px',
-                              background: 'rgba(16,185,129,0.15)',
-                              color: '#10B981',
-                              border: '1px solid rgba(16,185,129,0.3)',
-                              fontWeight: '700',
-                            }}>
-                              <CheckCircle size={11} />
-                              {o.verifiedProvider || 'Digital'} Verified ({o.verifiedAmount ? `${o.verifiedAmount.toFixed(2)} ETB` : 'Slip'})
-                            </span>
-                          </div>
-                        )}
+                        {o.verifiedRef && (() => {
+                          const isOrderUnderpaid = Boolean(o.verifiedAmount !== null && o.verifiedAmount !== undefined && o.verifiedAmount < t)
+                          return (
+                            <div style={{ marginTop: '5px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                background: isOrderUnderpaid ? '#FEE2E2' : '#ECFDF5',
+                                color: isOrderUnderpaid ? '#DC2626' : '#047857',
+                                border: `1px solid ${isOrderUnderpaid ? '#FCA5A5' : '#6EE7B7'}`,
+                                fontWeight: '700',
+                              }}>
+                                {isOrderUnderpaid ? <AlertTriangle size={11} color="#DC2626" /> : <CheckCircle size={11} color="#059669" />}
+                                {isOrderUnderpaid
+                                  ? `⚠️ Underpaid (${(o.verifiedAmount || 0).toFixed(2)} / ${t.toFixed(2)} ETB)`
+                                  : `${o.verifiedProvider || 'Digital'} Verified (${o.verifiedAmount ? `${o.verifiedAmount.toFixed(2)} ETB` : 'Slip'})`
+                                }
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </div>
                     </div>
 
@@ -631,164 +637,222 @@ export default function PaymentPage() {
         <div className="mobile-full-w" style={{ width: '340px', maxWidth: '100%', flexShrink: 0 }}>
           <div className="card">
             {/* Live Floating Phone Scan Alert */}
-            {recentPhoneScan && (!selectedOrder.verifiedRef || selectedOrder.verifiedRef !== recentPhoneScan.reference) && (
-              <div style={{
-                marginBottom: '16px',
-                background: 'linear-gradient(135deg, rgba(201,168,76,0.18) 0%, rgba(180,138,30,0.08) 100%)',
-                border: '1px solid rgba(201,168,76,0.45)',
-                borderRadius: '10px',
-                padding: '12px 14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                boxShadow: '0 4px 12px rgba(201,168,76,0.15)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--gold)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <Zap size={14} />
-                    <span>Live Phone Scan Detected</span>
+            {recentPhoneScan && (!selectedOrder.verifiedRef || selectedOrder.verifiedRef !== recentPhoneScan.reference) && (() => {
+              const isRecentUnderpaid = Boolean(recentPhoneScan.amount && recentPhoneScan.amount < subtotal)
+              const recentShort = isRecentUnderpaid && recentPhoneScan.amount ? Math.max(0, subtotal - recentPhoneScan.amount) : 0
+              return (
+                <div style={{
+                  marginBottom: '16px',
+                  background: isRecentUnderpaid 
+                    ? 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)' 
+                    : 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 35%, #FEF9C3 100%)',
+                  border: isRecentUnderpaid ? '2px solid #EF4444' : '1.5px solid #F59E0B',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  boxShadow: isRecentUnderpaid ? '0 4px 14px rgba(239, 68, 68, 0.2)' : '0 4px 12px rgba(245, 158, 11, 0.2)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: isRecentUnderpaid ? '#DC2626' : '#92400E', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {isRecentUnderpaid ? <AlertTriangle size={14} color="#DC2626" /> : <Zap size={14} color="#B45309" />}
+                      <span>{isRecentUnderpaid ? 'Live Scan Detected — ⚠️ UNDERPAID' : 'Live Phone Scan Detected'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRecentPhoneScan(null)}
+                      style={{ background: 'none', border: 'none', color: isRecentUnderpaid ? '#991B1B' : '#78350F', fontSize: '11px', cursor: 'pointer', padding: 0, fontWeight: '700' }}
+                    >
+                      Dismiss ✕
+                    </button>
                   </div>
+                  <div style={{ fontSize: '13px', color: '#0F172A', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span><b>{recentPhoneScan.provider}</b>: <code style={{ color: '#92400E', background: '#FFFFFF', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>{recentPhoneScan.reference}</code></span>
+                    <b style={{ color: isRecentUnderpaid ? '#DC2626' : '#047857', fontSize: '14px', fontWeight: '800' }}>
+                      {recentPhoneScan.amount ? `${recentPhoneScan.amount.toFixed(2)} ETB` : ''}
+                      {isRecentUnderpaid ? ` (SHORT -${recentShort.toFixed(2)})` : ''}
+                    </b>
+                  </div>
+                  {recentPhoneScan.receiverName && (
+                    <div style={{ fontSize: '11px', color: '#475569' }}>
+                      Credited: <b style={{ color: '#047857' }}>{recentPhoneScan.receiverName}</b>
+                      {recentPhoneScan.payerName && ` · Payer: ${recentPhoneScan.payerName}`}
+                    </div>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setRecentPhoneScan(null)}
-                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                    onClick={() => handleLinkRecentScan(selectedOrder.id)}
+                    style={{
+                      marginTop: '2px',
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: isRecentUnderpaid ? '#DC2626' : '#059669',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#FFFFFF',
+                      fontWeight: '700',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      boxShadow: isRecentUnderpaid ? '0 2px 8px rgba(220,38,38,0.35)' : '0 2px 8px rgba(5,150,105,0.3)'
+                    }}
                   >
-                    Dismiss ✕
+                    {isRecentUnderpaid ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}
+                    <span>{isRecentUnderpaid ? `Attach Short Scan (${(recentPhoneScan.amount || 0).toFixed(2)} ETB)` : `Attach This Scan to ${selectedInfo?.title || 'This Order'}`}</span>
                   </button>
                 </div>
-                <div style={{ fontSize: '13px', color: '#FFFFFF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span><b>{recentPhoneScan.provider}</b>: <code style={{ color: 'var(--gold-light)' }}>{recentPhoneScan.reference}</code></span>
-                  <b style={{ color: '#34D399', fontSize: '14px' }}>
-                    {recentPhoneScan.amount ? `${recentPhoneScan.amount.toFixed(2)} ETB` : ''}
-                  </b>
-                </div>
-                {recentPhoneScan.receiverName && (
-                  <div style={{ fontSize: '11px', color: '#CBD5E1' }}>
-                    Credited: <b style={{ color: '#34D399' }}>{recentPhoneScan.receiverName}</b>
-                    {recentPhoneScan.payerName && ` · Payer: ${recentPhoneScan.payerName}`}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleLinkRecentScan(selectedOrder.id)}
-                  style={{
-                    marginTop: '2px',
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: '#10B981',
-                    border: 'none',
-                    borderRadius: '6px',
-                    color: '#FFFFFF',
-                    fontWeight: '700',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 8px rgba(16,185,129,0.3)'
-                  }}
-                >
-                  <CheckCircle size={14} />
-                  <span>Attach This Scan to {selectedInfo?.title || 'This Order'}</span>
-                </button>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Phone Verified Slip Details Card */}
-            {selectedOrder.verifiedRef && (
-              <div style={{
-                marginBottom: '16px',
-                background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(5,150,105,0.06) 100%)',
-                border: '1px solid rgba(16,185,129,0.35)',
-                borderRadius: '10px',
-                padding: '12px 14px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10B981', fontWeight: '700', fontSize: '13px' }}>
-                    <CheckCircle size={16} />
-                    <span>Verified by Phone Scanner</span>
-                  </div>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    background: '#10B981',
-                    color: '#FFFFFF'
-                  }}>
-                    {selectedOrder.verifiedProvider || 'DIGITAL'}
-                  </span>
-                </div>
+            {selectedOrder.verifiedRef && (() => {
+              const verifiedAmt = selectedOrder.verifiedAmount !== null && selectedOrder.verifiedAmount !== undefined ? Number(selectedOrder.verifiedAmount) : null
+              const isUnderpaid = Boolean(verifiedAmt !== null && verifiedAmt < subtotal)
+              const isOverpaid = Boolean(verifiedAmt !== null && verifiedAmt > subtotal)
+              const shortAmt = isUnderpaid && verifiedAmt !== null ? Math.max(0, subtotal - verifiedAmt) : 0
+              const extraAmt = isOverpaid && verifiedAmt !== null ? Math.max(0, verifiedAmt - subtotal) : 0
 
-                <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '5px', color: '#E2E8F0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
-                    <b style={{ color: '#34D399' }}>{selectedOrder.verifiedReceiver || 'Kogna Coffee'}</b>
+              return (
+                <div style={{
+                  marginBottom: '16px',
+                  background: isUnderpaid 
+                    ? 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)' 
+                    : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                  border: isUnderpaid ? '2px solid #EF4444' : '1.5px solid #10B981',
+                  borderRadius: '10px',
+                  padding: '14px 16px',
+                  boxShadow: isUnderpaid ? '0 4px 14px rgba(239, 68, 68, 0.18)' : '0 4px 12px rgba(16, 185, 129, 0.12)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isUnderpaid ? '#DC2626' : '#047857', fontWeight: '800', fontSize: '13px' }}>
+                      {isUnderpaid ? <AlertTriangle size={17} color="#DC2626" /> : <CheckCircle size={17} color="#059669" />}
+                      <span>{isUnderpaid ? '⚠️ UNDERPAID — SHORT PAYMENT' : 'Verified by Phone Scanner'}</span>
+                    </div>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: isUnderpaid ? '#DC2626' : '#059669',
+                      color: '#FFFFFF',
+                      letterSpacing: '0.03em'
+                    }}>
+                      {isUnderpaid ? `SHORT BY ${shortAmt.toFixed(2)} ETB` : (selectedOrder.verifiedProvider || 'DIGITAL')}
+                    </span>
                   </div>
-                  {selectedOrder.verifiedPayer && (
+
+                  <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '6px', color: '#0F172A' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#94A3B8' }}>Payer:</span>
-                      <b>{selectedOrder.verifiedPayer}</b>
+                      <span style={{ color: '#475569', fontWeight: '600' }}>Credited Party (Receiver):</span>
+                      <b style={{ color: '#047857', fontWeight: '700' }}>{selectedOrder.verifiedReceiver || 'Kogna Coffee'}</b>
                     </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94A3B8' }}>Verified Amount:</span>
-                    <b style={{ color: '#F1F5F9' }}>{(selectedOrder.verifiedAmount ?? subtotal).toFixed(2)} ETB</b>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94A3B8' }}>Transaction Ref:</span>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--gold-light)', fontWeight: '700' }}>{selectedOrder.verifiedRef}</span>
+                    {selectedOrder.verifiedPayer && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#475569', fontWeight: '600' }}>Payer:</span>
+                        <b style={{ color: '#0F172A', fontWeight: '700' }}>{selectedOrder.verifiedPayer}</b>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#475569', fontWeight: '600' }}>Verified Paid:</span>
+                      <b style={{
+                        color: isUnderpaid ? '#DC2626' : '#047857',
+                        fontSize: isUnderpaid ? '14px' : '13px',
+                        fontWeight: '800',
+                        background: isUnderpaid ? '#FEE2E2' : '#E6F4EA',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${isUnderpaid ? '#FCA5A5' : '#A7F3D0'}`
+                      }}>
+                        {(verifiedAmt ?? subtotal).toFixed(2)} ETB
+                        {isUnderpaid ? ` (SHORT -${shortAmt.toFixed(2)})` : ''}
+                      </b>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#475569', fontWeight: '600' }}>Transaction Ref:</span>
+                      <span style={{
+                        fontFamily: 'monospace',
+                        color: '#92400E',
+                        background: '#FEF3C7',
+                        border: '1px solid #FCD34D',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: '800',
+                        fontSize: '12px'
+                      }}>
+                        {selectedOrder.verifiedRef}
+                      </span>
+                    </div>
+
+                    {/* RED ALERT BOX: Underpaid / Short payment */}
+                    {isUnderpaid && verifiedAmt !== null && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '10px 12px',
+                        background: '#FFFFFF',
+                        border: '2px solid #EF4444',
+                        borderRadius: '8px',
+                        color: '#991B1B',
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                        boxShadow: '0 2px 6px rgba(220,38,38,0.1)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800', color: '#DC2626', fontSize: '13px' }}>
+                          <AlertTriangle size={15} color="#DC2626" />
+                          <span>🚨 Customer Underpaid by {shortAmt.toFixed(2)} ETB</span>
+                        </div>
+                        <div style={{ marginTop: '4px', color: '#7F1D1D' }}>
+                          Customer only transferred <b>{verifiedAmt.toFixed(2)} ETB</b> for a <b>{subtotal.toFixed(2)} ETB</b> bill.
+                        </div>
+                        <div style={{
+                          marginTop: '6px',
+                          padding: '6px 8px',
+                          background: '#FEF2F2',
+                          border: '1px solid #FECACA',
+                          borderRadius: '6px',
+                          fontWeight: '800',
+                          color: '#B91C1C'
+                        }}>
+                          👉 Must collect remaining: {shortAmt.toFixed(2)} ETB (e.g. in Cash)
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tip Analysis Banner */}
+                    {isOverpaid && verifiedAmt !== null && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '10px 12px',
+                        background: '#FFFFFF',
+                        border: '1px solid #10B981',
+                        borderRadius: '8px',
+                        color: '#065F46',
+                        fontSize: '12px',
+                        lineHeight: 1.4
+                      }}>
+                        <b style={{ color: '#047857' }}>🟢 Extra Payment (Tip):</b> Scanned {verifiedAmt.toFixed(2)} ETB for a {subtotal.toFixed(2)} ETB bill.
+                        <div style={{ marginTop: '2px', fontWeight: '700', color: '#059669' }}>
+                          Extra +{extraAmt.toFixed(2)} ETB recorded as Waiter Tip.
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Partial or Tip Analysis Banner */}
-                  {selectedOrder.verifiedAmount && selectedOrder.verifiedAmount < subtotal && (
-                    <div style={{
-                      marginTop: '6px',
-                      padding: '8px 10px',
-                      background: 'rgba(245,158,11,0.12)',
-                      border: '1px solid rgba(245,158,11,0.3)',
-                      borderRadius: '6px',
-                      color: '#FDE68A',
-                      fontSize: '11px',
-                      lineHeight: 1.4
-                    }}>
-                      <b>🟡 Partial Payment:</b> Scanned {(selectedOrder.verifiedAmount).toFixed(2)} ETB of {subtotal.toFixed(2)} ETB bill.
-                      <div style={{ marginTop: '2px', fontWeight: '700', color: '#FCD34D' }}>
-                        Remaining to collect: {(subtotal - selectedOrder.verifiedAmount).toFixed(2)} ETB (e.g. in Cash)
-                      </div>
-                    </div>
-                  )}
-                  {selectedOrder.verifiedAmount && selectedOrder.verifiedAmount > subtotal && (
-                    <div style={{
-                      marginTop: '6px',
-                      padding: '8px 10px',
-                      background: 'rgba(16,185,129,0.12)',
-                      border: '1px solid rgba(16,185,129,0.3)',
-                      borderRadius: '6px',
-                      color: '#A7F3D0',
-                      fontSize: '11px',
-                      lineHeight: 1.4
-                    }}>
-                      <b>🟢 Extra Payment (Tip):</b> Scanned {(selectedOrder.verifiedAmount).toFixed(2)} ETB for a {subtotal.toFixed(2)} ETB bill.
-                      <div style={{ marginTop: '2px', fontWeight: '700', color: '#34D399' }}>
-                        Extra +{(selectedOrder.verifiedAmount - subtotal).toFixed(2)} ETB recorded as Tip.
-                      </div>
-                    </div>
-                  )}
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleClearVerification(selectedOrder.id)}
+                      style={{ background: 'none', border: 'none', color: '#64748B', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', fontWeight: '600' }}
+                    >
+                      Clear phone verification
+                    </button>
+                  </div>
                 </div>
-
-                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleClearVerification(selectedOrder.id)}
-                    style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
-                  >
-                    Clear phone verification
-                  </button>
-                </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Method */}
             <label className="input-label">Payment Method</label>

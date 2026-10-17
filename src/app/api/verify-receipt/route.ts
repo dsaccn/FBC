@@ -29,11 +29,15 @@ export async function POST(req: Request) {
 
     let amountMatches = true
     let amountDifference = 0
+    let isUnderpaid = false
 
     if (receipt.success && typeof receipt.amount === 'number' && typeof expectedAmount === 'number' && expectedAmount > 0) {
       // Allow +/- 0.50 margin for rounding
       amountMatches = Math.abs(receipt.amount - expectedAmount) < 0.5 || receipt.amount >= expectedAmount
       amountDifference = receipt.amount - expectedAmount
+      if (receipt.amount < expectedAmount - 0.5) {
+        isUnderpaid = true
+      }
     }
 
     let linkedOrder: any = null
@@ -60,9 +64,43 @@ export async function POST(req: Request) {
       const parsedAmount = typeof receipt.amount === 'number' ? receipt.amount : parseFloat(String(receipt.amount || '0'))
       const verifiedDate = new Date()
 
-      // Case 1: An order was selected -> INSTANTLY link it and broadcast to Cashier POS in 0ms!
+      // Case 1: An order was selected -> Check bill total! DO NOT ATTACH IF LESS!
       if (orderId) {
         try {
+          const targetOrder = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+              orderItems: { include: { menuItem: true } },
+              table: true,
+              waiter: { select: { fullName: true } }
+            }
+          })
+
+          const orderTotal = targetOrder?.orderItems?.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
+          const orderUnderpaid = Boolean(orderTotal > 0 && !isNaN(parsedAmount) && parsedAmount < orderTotal - 0.5)
+
+          if (orderUnderpaid) {
+            const shortAmt = orderTotal - parsedAmount
+            // 🚨 DO NOT ATTACH THE RECEIPT TO THE ORDER!
+            return NextResponse.json({
+              success: false,
+              underpaid: true,
+              orderTotal,
+              shortAmount: shortAmt,
+              error: `AMOUNT TOO LOW: Scanned amount (${parsedAmount.toFixed(2)} ETB) is less than the order bill (${orderTotal.toFixed(2)} ETB). Receipt was NOT attached!`,
+              receipt: {
+                ...receipt,
+                success: false,
+                isUnderpaid: true,
+                errorMessage: `AMOUNT TOO LOW: Scanned amount (${parsedAmount.toFixed(2)} ETB) is less than the bill of ${orderTotal.toFixed(2)} ETB. Short by ${shortAmt.toFixed(2)} ETB! Receipt was NOT attached. Customer must pay full amount.`,
+              },
+              amountMatches: false,
+              amountDifference: parsedAmount - orderTotal,
+              linkedOrder: null,
+            }, { status: 400 })
+          }
+
+          // Full payment or tip -> safely link to order
           await prisma.$executeRawUnsafe(
             `UPDATE "Order" 
              SET "verifiedRef" = ?, 
@@ -82,17 +120,9 @@ export async function POST(req: Request) {
             orderId
           )
 
-          const updated = await prisma.order.findUnique({
-            where: { id: orderId },
-            include: {
-              table: true,
-              waiter: { select: { fullName: true } }
-            }
-          })
-
           linkedOrder = {
-            id: updated?.id || orderId,
-            tableNumber: updated?.table?.number || '?',
+            id: targetOrder?.id || orderId,
+            tableNumber: targetOrder?.table?.number || '?',
             verifiedRef: cleanRef,
             verifiedProvider: receipt.provider || provider || 'AUTO',
             verifiedAmount: parsedAmount,
@@ -133,7 +163,7 @@ export async function POST(req: Request) {
           broadcastVerificationEvent({
             type: 'ORDER_VERIFIED',
             orderId,
-            tableNumber: updated?.table?.number,
+            tableNumber: targetOrder?.table?.number,
             reference: cleanRef,
             provider: receipt.provider || provider || 'AUTO',
             amount: parsedAmount,
