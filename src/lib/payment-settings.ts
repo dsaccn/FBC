@@ -58,6 +58,36 @@ export async function getPaymentSettings(): Promise<PaymentVerificationSettings>
   try {
     await ensureSystemSettingTable()
 
+    // 0. If running locally with remote Neon configured, check Neon for cloud-saved settings
+    const neonUrl = process.env.NEON_DATABASE_URL
+    if (!process.env.VERCEL && neonUrl) {
+      try {
+        const { Pool } = await import('pg')
+        const pool = new Pool({ connectionString: neonUrl, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 3000 })
+        const cloudRes = await pool.query(
+          `SELECT "key", "value" FROM "SystemSetting" WHERE "key" = $1 LIMIT 1`,
+          [SETTINGS_KEY]
+        )
+        await pool.end().catch(() => {})
+        if (cloudRes.rows.length > 0 && cloudRes.rows[0]?.value) {
+          const parsed = JSON.parse(cloudRes.rows[0].value)
+          await prisma.$executeRaw`
+            INSERT INTO "SystemSetting" ("key", "value", "updatedAt")
+            VALUES (${SETTINGS_KEY}, ${cloudRes.rows[0].value}, CURRENT_TIMESTAMP)
+            ON CONFLICT ("key") DO UPDATE SET "value" = ${cloudRes.rows[0].value}, "updatedAt" = CURRENT_TIMESTAMP
+          `.catch(() => {})
+
+          cachedSettings = {
+            telebirrReceiverPhone: parsed.telebirrReceiverPhone || '',
+            cbeReceiverAccount: parsed.cbeReceiverAccount || process.env.DEFAULT_CBE_ACCOUNT || '',
+            merchantName: parsed.merchantName || 'Kogna Coffee',
+            lastUpdated: parsed.lastUpdated,
+          }
+          return cachedSettings
+        }
+      } catch {}
+    }
+
     // 1. Try reading from Database
     const rows = await prisma.$queryRawUnsafe<{ key: string; value: string }[]>(
       `SELECT "key", "value" FROM "SystemSetting" WHERE "key" = '${SETTINGS_KEY}' LIMIT 1`

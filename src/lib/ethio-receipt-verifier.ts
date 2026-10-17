@@ -34,6 +34,75 @@ export interface VerifyReceiptParams {
 }
 
 /**
+ * Safely verify if a received account or phone number matches the target account/phone,
+ * handling masked digits (e.g. "1****7722", "1*********7722", "09****2484", "1000****7818")
+ */
+export function matchMaskedAccountOrPhone(
+  target: string | undefined | null,
+  received: string | undefined | null
+): boolean {
+  if (!target || !target.trim()) return true // No restriction configured
+  if (!received || !received.trim()) return true // No account number returned by receipt
+
+  const cleanTarget = target.trim().replace(/\D/g, '')
+  if (cleanTarget.length < 4) return true
+
+  const rawReceived = received.trim()
+
+  // 1. If received contains masking characters (*, X, x, #, .)
+  if (/[*Xx#.]/.test(rawReceived)) {
+    // Extract trailing unmasked digits (at least 3-4 digits at the end)
+    const suffixMatch = rawReceived.match(/(\d{3,})$/)
+    // Extract leading unmasked digits (before the mask)
+    const prefixMatch = rawReceived.match(/^(\d+)/)
+
+    const suffix = suffixMatch ? suffixMatch[1] : ''
+    const prefix = prefixMatch ? prefixMatch[1] : ''
+
+    // Suffix verification: Target must end with the suffix digits
+    if (suffix && suffix.length >= 3) {
+      if (!cleanTarget.endsWith(suffix)) {
+        return false // Suffix does not match!
+      }
+    }
+
+    // Prefix verification: Target (or normalized target) must start with prefix
+    if (prefix && prefix.length >= 1) {
+      const targetWithoutCountryCode = cleanTarget.replace(/^251/, '0')
+      const targetInternational = cleanTarget.startsWith('0') ? '251' + cleanTarget.slice(1) : cleanTarget
+      const matchesPrefix =
+        cleanTarget.startsWith(prefix) ||
+        targetWithoutCountryCode.startsWith(prefix) ||
+        targetInternational.startsWith(prefix)
+
+      if (!matchesPrefix) {
+        return false // Prefix does not match!
+      }
+    }
+
+    return true
+  }
+
+  // 2. If received is not masked (full or partial digits)
+  const cleanReceived = rawReceived.replace(/\D/g, '')
+  if (!cleanReceived) return true
+
+  if (cleanReceived.length >= 4) {
+    if (cleanTarget.endsWith(cleanReceived) || cleanReceived.endsWith(cleanTarget)) {
+      return true
+    }
+    const checkLen = Math.min(cleanTarget.length, cleanReceived.length, 8)
+    if (checkLen >= 4) {
+      if (cleanTarget.slice(-checkLen) === cleanReceived.slice(-checkLen)) {
+        return true
+      }
+    }
+  }
+
+  return cleanTarget.includes(cleanReceived) || cleanReceived.includes(cleanTarget)
+}
+
+/**
  * Clean and normalize transaction ID / reference string
  */
 export function cleanReference(raw: string): string {
@@ -161,11 +230,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
     const settings = await getPaymentSettings()
     let isReceiverMatched = true
     if (settings.telebirrReceiverPhone && settings.telebirrReceiverPhone.trim()) {
-      const cleanTarget = settings.telebirrReceiverPhone.replace(/\D/g, '').slice(-9)
-      const cleanReceived = (receiverPhone || '').replace(/\D/g, '').slice(-9)
-      if (cleanTarget && cleanReceived && cleanTarget !== cleanReceived) {
-        isReceiverMatched = false
-      }
+      isReceiverMatched = matchMaskedAccountOrPhone(settings.telebirrReceiverPhone, receiverPhone)
     }
 
     if (isSuccess && !isReceiverMatched) {
@@ -256,11 +321,7 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
     const settings = await getPaymentSettings()
     let isReceiverMatched = true
     if (settings.cbeReceiverAccount && settings.cbeReceiverAccount.trim()) {
-      const cleanTarget = settings.cbeReceiverAccount.replace(/\D/g, '').slice(-8)
-      const cleanReceived = (data.creditAccountNo || '').replace(/\D/g, '').slice(-8)
-      if (cleanTarget && cleanReceived && !cleanReceived.includes(cleanTarget)) {
-        isReceiverMatched = false
-      }
+      isReceiverMatched = matchMaskedAccountOrPhone(settings.cbeReceiverAccount, data.creditAccountNo)
     }
 
     if (isSuccess && !isReceiverMatched) {
@@ -429,12 +490,8 @@ export async function verifyCbeReceipt(
 
     const parsedReceiverAcc = receiverAccMatch ? receiverAccMatch[1].trim() : ''
     let isReceiverMatched = true
-    if (targetAcc && targetAcc.length >= 8) {
-      const cleanTarget = targetAcc.replace(/\D/g, '').slice(-8)
-      const cleanReceived = parsedReceiverAcc.replace(/\D/g, '').slice(-8)
-      if (cleanTarget && cleanReceived && !cleanReceived.includes(cleanTarget)) {
-        isReceiverMatched = false
-      }
+    if (targetAcc && targetAcc.trim()) {
+      isReceiverMatched = matchMaskedAccountOrPhone(targetAcc, parsedReceiverAcc)
     }
 
     if (!isReceiverMatched) {
