@@ -50,44 +50,7 @@ export default function PaymentPage() {
     timestamp: string
   } | null>(null)
 
-  // Receipt auto-print mode per device: 'digital_only' (default: skip Cash, print Telebirr/CBE), 'never' (no popup at all), 'always' (popup for all)
-  const [receiptMode, setReceiptMode] = useState<'digital_only' | 'never' | 'always'>('digital_only')
-  const [fastCheckout, setFastCheckout] = useState(false)
-  const [completedPaymentBanner, setCompletedPaymentBanner] = useState<{
-    orderTitle: string
-    amount: number
-    method: string
-    orderSnapshot: Order
-  } | null>(null)
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedMode = localStorage.getItem('kogna_receipt_mode') as 'digital_only' | 'never' | 'always' | null
-      if (savedMode && ['digital_only', 'never', 'always'].includes(savedMode)) {
-        setReceiptMode(savedMode)
-      } else {
-        setReceiptMode('digital_only')
-      }
-      const savedFast = localStorage.getItem('kogna_fast_checkout')
-      if (savedFast !== null) {
-        setFastCheckout(savedFast === 'true')
-      }
-    }
-  }, [])
-
-  const updateReceiptMode = (mode: 'digital_only' | 'never' | 'always') => {
-    setReceiptMode(mode)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('kogna_receipt_mode', mode)
-    }
-  }
-
-  const updateFastCheckout = (fast: boolean) => {
-    setFastCheckout(fast)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('kogna_fast_checkout', String(fast))
-    }
-  }
 
   const load = useCallback(async () => {
     try {
@@ -415,39 +378,10 @@ export default function PaymentPage() {
         body: JSON.stringify({ orderId: selectedOrder.id, cashierId: session.id, amount: total, method, discount: discountAmt, discountType, notes: finalNotes }),
       })
       if (res.ok) {
-        const paidOrderSnapshot = selectedOrder
-        const paidAmount = total
-        const paidMethod = method
-        setLastPayment({ amount: paidAmount, method: paidMethod })
+        setLastPayment({ amount: total, method })
+        setPaid(true)
         setRecentPhoneScan(null)
-        toast.success(`Payment of ${paidAmount.toFixed(2)} ETB (${paidMethod}) processed successfully!`)
-
-        // Only auto-print if mode is 'always' or if 'digital_only' and NOT Cash
-        const shouldAutoPrint =
-          receiptMode === 'always' ||
-          (receiptMode === 'digital_only' && paidMethod !== 'Cash')
-
-        if (shouldAutoPrint) {
-          setTimeout(() => {
-            printReceipt(paidOrderSnapshot, paidAmount, paidMethod)
-          }, 200)
-        }
-
-        if (fastCheckout) {
-          setSelectedOrder(null)
-          setTipAmount('')
-          setNotes('')
-          setDiscountValue('')
-          setCompletedPaymentBanner({
-            orderTitle: selectedInfo?.title || 'Order',
-            amount: paidAmount,
-            method: paidMethod,
-            orderSnapshot: paidOrderSnapshot
-          })
-          load()
-        } else {
-          setPaid(true)
-        }
+        toast.success(`Payment of ${total.toFixed(2)} ETB (${method}) processed successfully!`)
       } else {
         const data = await res.json().catch(() => ({}))
         toast.error(data.error || 'Failed to process payment')
@@ -553,140 +487,9 @@ export default function PaymentPage() {
     <div className="animate-fade-in mobile-col" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
       {/* Order Selection */}
       <div style={{ flex: 1, minWidth: '280px', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
-          <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
-            <span className="gold-text">Process Payment</span>
-          </h1>
-
-          {/* Receipt Auto-Print Setting for this Device */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'rgba(255,255,255,0.04)',
-            padding: '6px 12px',
-            borderRadius: '10px',
-            border: '1px solid var(--black-border)',
-            fontSize: '12px',
-            flexWrap: 'wrap'
-          }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Printer size={14} /> Receipt on Pay:
-            </span>
-            <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '6px' }}>
-              <button
-                type="button"
-                onClick={() => updateReceiptMode('never')}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: receiptMode === 'never' ? '#DC2626' : 'transparent',
-                  color: receiptMode === 'never' ? '#FFFFFF' : 'var(--text-muted)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Never pop up receipt automatically on this PC"
-              >
-                ✕ Off (No Popup)
-              </button>
-              <button
-                type="button"
-                onClick={() => updateReceiptMode('digital_only')}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: receiptMode === 'digital_only' ? '#0284C7' : 'transparent',
-                  color: receiptMode === 'digital_only' ? '#FFFFFF' : 'var(--text-muted)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Auto-print for Telebirr / CBE only; NEVER pop up receipt for Cash"
-              >
-                📱 Digital Only (Skip Cash)
-              </button>
-              <button
-                type="button"
-                onClick={() => updateReceiptMode('always')}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: receiptMode === 'always' ? 'var(--gold)' : 'transparent',
-                  color: receiptMode === 'always' ? '#000000' : 'var(--text-muted)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Always pop up receipt for all payments on this PC"
-              >
-                🖨️ Always Print
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Fast Checkout Confirmation Notification */}
-        {completedPaymentBanner && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '10px 14px',
-            background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.2) 100%)',
-            border: '1.5px solid #10B981',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '10px',
-            flexWrap: 'wrap'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10B981', fontWeight: '700', fontSize: '13px' }}>
-              <CheckCircle size={16} />
-              <span>Paid: <b>{completedPaymentBanner.orderTitle}</b> · {completedPaymentBanner.amount.toFixed(2)} ETB ({completedPaymentBanner.method})</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => printReceipt(completedPaymentBanner.orderSnapshot, completedPaymentBanner.amount, completedPaymentBanner.method)}
-                style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#FFFFFF',
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <Printer size={13} /> Print Receipt
-              </button>
-              <button
-                type="button"
-                onClick={() => setCompletedPaymentBanner(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  padding: '4px'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
+        <h1 className="font-cinzel" style={{ fontSize: '22px', fontWeight: '700', marginBottom: '24px' }}>
+          <span className="gold-text">Process Payment</span>
+        </h1>
 
         {!selectedOrder ? (
           <div>
@@ -1219,37 +1022,7 @@ export default function PaymentPage() {
               <span style={{ fontWeight: '700', fontSize: '24px', color: 'var(--gold)' }}>{total.toFixed(2)} ETB</span>
             </div>
 
-            {/* Real-time Receipt & Fast POS Status */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '14px',
-              padding: '8px 10px',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid var(--black-border)',
-              borderRadius: '6px',
-              fontSize: '12px'
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                <input
-                  type="checkbox"
-                  checked={fastCheckout}
-                  onChange={e => updateFastCheckout(e.target.checked)}
-                  style={{ accentColor: 'var(--gold)', width: '15px', height: '15px' }}
-                />
-                <span>⚡ Fast Mode (Stay on list)</span>
-              </label>
-              {receiptMode === 'never' ? (
-                <span style={{ fontSize: '11px', color: '#EF4444', fontWeight: '700' }}>✕ No Receipt Popup</span>
-              ) : receiptMode === 'digital_only' ? (
-                <span style={{ fontSize: '11px', color: method === 'Cash' ? '#94A3B8' : '#0284C7', fontWeight: '700' }}>
-                  {method === 'Cash' ? '✕ Cash: No Popup' : '🖨️ Digital: Auto-Print'}
-                </span>
-              ) : (
-                <span style={{ fontSize: '11px', color: '#10B981', fontWeight: '700' }}>🖨️ Auto-Print ON</span>
-              )}
-            </div>
+
 
             <button className="btn btn-gold btn-lg" style={{ width: '100%' }} onClick={handlePay} disabled={loading}>
               <CheckCircle size={18} />
