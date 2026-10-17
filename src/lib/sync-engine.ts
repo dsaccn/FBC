@@ -398,6 +398,25 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       // Non-critical if table is not yet initialized
     }
 
+    // 0c. System Settings (Payment Verification Accounts, etc.)
+    try {
+      const { rows: cloudSettings } = await pg.query(
+        `SELECT "key", "value", "updatedAt" FROM "SystemSetting"`
+      )
+      for (const s of cloudSettings) {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "SystemSetting" ("key", "value", "updatedAt")
+           VALUES ($1, $2, $3)
+           ON CONFLICT ("key") DO UPDATE SET
+             "value" = EXCLUDED."value",
+             "updatedAt" = EXCLUDED."updatedAt"`,
+          s.key, s.value, s.updatedAt
+        ).catch(() => {})
+      }
+    } catch (setErr) {
+      // Non-critical if table not yet initialized
+    }
+
     // 1. Categories
     try {
       const { rows: cloudCats } = await pg.query(

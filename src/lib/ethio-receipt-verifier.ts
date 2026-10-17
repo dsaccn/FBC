@@ -158,7 +158,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
     const isSuccess = /completed|success|approved/i.test(rawStatus)
 
     // Check receiver phone/account against configured settings
-    const settings = getPaymentSettings()
+    const settings = await getPaymentSettings()
     let isReceiverMatched = true
     if (settings.telebirrReceiverPhone && settings.telebirrReceiverPhone.trim()) {
       const cleanTarget = settings.telebirrReceiverPhone.replace(/\D/g, '').slice(-9)
@@ -253,7 +253,7 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
     const isSuccess = data.status === 'COMPLETED' || data.status === 'SUCCESS' || /complete|success/i.test(data.status || '')
 
     // Check receiver account against configured settings
-    const settings = getPaymentSettings()
+    const settings = await getPaymentSettings()
     let isReceiverMatched = true
     if (settings.cbeReceiverAccount && settings.cbeReceiverAccount.trim()) {
       const cleanTarget = settings.cbeReceiverAccount.replace(/\D/g, '').slice(-8)
@@ -341,7 +341,7 @@ export async function verifyCbeReceipt(
   let ftCode = clean.toUpperCase()
 
   // Use provided account digits or default configured account from settings
-  const settings = getPaymentSettings()
+  const settings = await getPaymentSettings()
   const targetAcc = (accountDigits && accountDigits.trim().length > 0)
     ? accountDigits.trim()
     : (settings.cbeReceiverAccount || DEFAULT_CBE_ACCOUNT || '')

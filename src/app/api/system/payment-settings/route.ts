@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const settings = getPaymentSettings()
+    const settings = await getPaymentSettings()
     return NextResponse.json({ success: true, settings })
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 })
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { telebirrReceiverPhone, cbeReceiverAccount, merchantName } = body
 
-    const updated = savePaymentSettings({
+    const updated = await savePaymentSettings({
       telebirrReceiverPhone: typeof telebirrReceiverPhone === 'string' ? telebirrReceiverPhone.trim() : undefined,
       cbeReceiverAccount: typeof cbeReceiverAccount === 'string' ? cbeReceiverAccount.trim() : undefined,
       merchantName: typeof merchantName === 'string' ? merchantName.trim() : undefined,

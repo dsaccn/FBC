@@ -353,5 +353,12 @@ model AbebeCredential {
   updatedAt    DateTime @updatedAt
 }
 
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @default(now())
+}
+
+
 
 
