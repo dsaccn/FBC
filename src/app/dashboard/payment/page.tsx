@@ -217,6 +217,10 @@ export default function PaymentPage() {
 
   async function handleLinkRecentScan(orderId: string) {
     if (!recentPhoneScan) return
+    if (recentPhoneScan.amount && recentPhoneScan.amount < (subtotal - 0.5)) {
+      toast.error(`Cannot attach: Scanned amount (${recentPhoneScan.amount.toFixed(2)} ETB) is less than the bill (${subtotal.toFixed(2)} ETB). Underpaid receipts cannot be attached.`)
+      return
+    }
     try {
       const res = await fetch('/api/scanner/verify-order', {
         method: 'POST',
@@ -333,9 +337,7 @@ export default function PaymentPage() {
 
     try {
       const res = await fetch(`/api/scanner/verify-order?orderId=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: id })
+        method: 'DELETE'
       })
       if (res.ok) {
         toast.success('Mobile verification cleared')
@@ -707,30 +709,51 @@ export default function PaymentPage() {
                       {recentPhoneScan.payerName && ` · Payer: ${recentPhoneScan.payerName}`}
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => handleLinkRecentScan(selectedOrder.id)}
-                    style={{
-                      marginTop: '2px',
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: isRecentUnderpaid ? '#DC2626' : '#059669',
-                      border: 'none',
+                  {isRecentUnderpaid ? (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px 10px',
+                      background: '#FEF2F2',
+                      border: '1.5px solid #FCA5A5',
                       borderRadius: '6px',
-                      color: '#FFFFFF',
-                      fontWeight: '700',
-                      fontSize: '12px',
-                      cursor: 'pointer',
+                      color: '#B91C1C',
+                      fontWeight: '800',
+                      fontSize: '11px',
+                      textAlign: 'center',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '6px',
-                      boxShadow: isRecentUnderpaid ? '0 2px 8px rgba(220,38,38,0.35)' : '0 2px 8px rgba(5,150,105,0.3)'
-                    }}
-                  >
-                    {isRecentUnderpaid ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}
-                    <span>{isRecentUnderpaid ? `Attach Short Scan (${(recentPhoneScan.amount || 0).toFixed(2)} ETB)` : `Attach This Scan to ${selectedInfo?.title || 'This Order'}`}</span>
-                  </button>
+                      gap: '6px'
+                    }}>
+                      <AlertTriangle size={14} color="#DC2626" />
+                      <span>⛔ ATTACHMENT BLOCKED: Amount is low ({recentShort.toFixed(2)} ETB short)</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleLinkRecentScan(selectedOrder.id)}
+                      style={{
+                        marginTop: '2px',
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: '#059669',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: '#FFFFFF',
+                        fontWeight: '700',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 8px rgba(5,150,105,0.3)'
+                      }}
+                    >
+                      <CheckCircle size={14} />
+                      <span>Attach This Scan to {selectedInfo?.title || 'This Order'}</span>
+                    </button>
+                  )}
                 </div>
               )
             })()}

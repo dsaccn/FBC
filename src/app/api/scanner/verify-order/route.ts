@@ -134,8 +134,11 @@ export async function DELETE(req: Request) {
     let orderId = searchParams.get('orderId')
     if (!orderId) {
       try {
-        const body = await req.json()
-        orderId = body?.orderId
+        const text = await req.text()
+        if (text && text.trim()) {
+          const body = JSON.parse(text)
+          orderId = body?.orderId
+        }
       } catch {}
     }
 
