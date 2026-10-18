@@ -56,6 +56,21 @@ export function isUserDeleted(id: string, username?: string): boolean {
   return list.some(e => e.id === id || (Boolean(username) && Boolean(e.username) && e.username === username))
 }
 
+export function clearDeletedUser(id?: string, username?: string): void {
+  try {
+    const list = getDeletedUsers()
+    const updated = list.filter(e => {
+      if (id && e.id === id) return false
+      if (username && e.username === username) return false
+      return true
+    })
+    fs.writeFileSync(TOMBSTONES_FILE, JSON.stringify(updated, null, 2), 'utf8')
+  } catch (err) {
+    console.warn('[SyncEngine] Error clearing deleted user tombstone:', err)
+  }
+}
+
+
 // Crucial: In PostgreSQL, createdAt/updatedAt are 'timestamp without time zone' (OID 1114).
 // By default, node-postgres parses OID 1114 into local machine time, which offsets
 // timestamps by +03:00 on Windows/Addis Ababa and corrupts sync between local & cloud.
@@ -86,7 +101,8 @@ export interface SyncResult {
 let _pool: PgPool | null = null
 
 function getPool(): PgPool {
-  if (!_pool || (_pool as any).ending) {
+  if (!_pool || (_pool as any).ending || (_pool as any).ended) {
+    _pool = null
     const url = process.env.NEON_DATABASE_URL
     if (!url) throw new Error('NEON_DATABASE_URL is not set in .env')
     _pool = new PgPool({
@@ -146,14 +162,17 @@ export async function pushUserToCloud(u: {
   createdAt?: Date
 }): Promise<void> {
   if (process.env.VERCEL) return
+  // Ensure user is removed from deletion tombstones
+  clearDeletedUser(u.id, u.username)
+
   try {
     const pg = getPool()
     if (u.passwordHash) {
       await pg.query(
         `INSERT INTO "User" (id, username, "passwordHash", "fullName", role, phone, active, "createdAt")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (id) DO UPDATE SET
-           username       = EXCLUDED.username,
+         ON CONFLICT (username) DO UPDATE SET
+           id             = EXCLUDED.id,
            "passwordHash" = EXCLUDED."passwordHash",
            "fullName"     = EXCLUDED."fullName",
            role           = EXCLUDED.role,
@@ -491,24 +510,39 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         }).catch(() => {})
       }
 
-      // Reconcile deleted users: if a user was deleted on cloud, remove them locally
+      // Reconcile users: push missing local users to cloud, or remove if marked deleted in tombstones
       const cloudUsernames = new Set(cloudUsers.map(c => c.username))
       const cloudIds = new Set(cloudUsers.map(c => c.id))
       const localUsers = await prisma.user.findMany()
       for (const lu of localUsers) {
-        if (!cloudUsernames.has(lu.username) && !cloudIds.has(lu.id) && lu.username !== 'master' && lu.username !== 'admin') {
-          await prisma.shiftLog.deleteMany({ where: { userId: lu.id } }).catch(() => {})
-          await prisma.cancellation.deleteMany({ where: { managerId: lu.id } }).catch(() => {})
-          await prisma.payment.deleteMany({ where: { cashierId: lu.id } }).catch(() => {})
-          const luOrders = await prisma.order.findMany({ where: { waiterId: lu.id }, select: { id: true } })
-          if (luOrders.length > 0) {
-            const oIds = luOrders.map(o => o.id)
-            await prisma.cancellation.deleteMany({ where: { orderItem: { orderId: { in: oIds } } } }).catch(() => {})
-            await prisma.orderItem.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
-            await prisma.payment.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
-            await prisma.order.deleteMany({ where: { id: { in: oIds } } }).catch(() => {})
+        if (!cloudUsernames.has(lu.username) && !cloudIds.has(lu.id)) {
+          if (isUserDeleted(lu.id, lu.username)) {
+            // User was explicitly marked for deletion in tombstones! Clean up locally.
+            await prisma.shiftLog.deleteMany({ where: { userId: lu.id } }).catch(() => {})
+            await prisma.cancellation.deleteMany({ where: { managerId: lu.id } }).catch(() => {})
+            await prisma.payment.deleteMany({ where: { cashierId: lu.id } }).catch(() => {})
+            const luOrders = await prisma.order.findMany({ where: { waiterId: lu.id }, select: { id: true } })
+            if (luOrders.length > 0) {
+              const oIds = luOrders.map(o => o.id)
+              await prisma.cancellation.deleteMany({ where: { orderItem: { orderId: { in: oIds } } } }).catch(() => {})
+              await prisma.orderItem.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
+              await prisma.payment.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
+              await prisma.order.deleteMany({ where: { id: { in: oIds } } }).catch(() => {})
+            }
+            await prisma.user.delete({ where: { id: lu.id } }).catch(() => {})
+          } else {
+            // User was newly created locally! Push them to Cloud Neon so they stay synced.
+            await pushUserToCloud({
+              id: lu.id,
+              username: lu.username,
+              passwordHash: lu.passwordHash,
+              fullName: lu.fullName,
+              role: lu.role,
+              phone: lu.phone,
+              active: lu.active,
+              createdAt: lu.createdAt,
+            }).catch(() => {})
           }
-          await prisma.user.delete({ where: { id: lu.id } }).catch(() => {})
         }
       }
     } catch (userErr) {
