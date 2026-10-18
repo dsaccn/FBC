@@ -149,8 +149,8 @@ export async function checkReceiptDuplicate(
     try {
       const pool = getSharedNeonPool(neonUrl)
       if (pool) {
-        // Run queries concurrently for Order and Payment
-        const [orderRes, payRes] = await Promise.all([
+        // Run queries concurrently for Order and Payment with an 800ms strict bound
+        const checkPromise = Promise.all([
           pool.query(
             `SELECT o.id, o.status, o."verifiedRef", o."createdAt", t.number as "tableNumber"
              FROM "Order" o
@@ -173,6 +173,12 @@ export async function checkReceiptDuplicate(
             excludeOrderId ? [`%${cleanRef}%`, excludeOrderId] : [`%${cleanRef}%`]
           )
         ])
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('NEON_QUERY_TIMEOUT')), 800)
+        )
+
+        const [orderRes, payRes] = await Promise.race([checkPromise, timeoutPromise])
 
         if (orderRes.rows.length > 0) {
           const row = orderRes.rows[0]

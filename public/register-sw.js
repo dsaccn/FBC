@@ -1,6 +1,7 @@
 if ('serviceWorker' in navigator) {
   var isTunnelOrScanner =
     window.location.pathname.startsWith('/scanner') ||
+    window.location.hostname.startsWith('scanner.') ||
     window.location.hostname.indexOf('trycloudflare.com') !== -1;
 
   if (isTunnelOrScanner) {

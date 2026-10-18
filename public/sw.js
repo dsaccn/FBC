@@ -8,7 +8,7 @@
  * - Static assets (/icons, /manifest): Cache-first, long TTL
  */
 
-const CACHE_NAME = 'nexora-pos-v6';
+const CACHE_NAME = 'nexora-pos-v8';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to pre-cache on install (app shell)
@@ -59,8 +59,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Scanner & Tunnels: Always network only, NEVER cache
-  if (url.pathname.startsWith('/scanner') || url.hostname.includes('trycloudflare.com')) {
+  // Scanner & Tunnels: Always network only, NEVER cache anything (chunks or HTML)
+  if (
+    url.pathname.startsWith('/scanner') ||
+    url.hostname.startsWith('scanner.') ||
+    url.hostname.includes('trycloudflare.com')
+  ) {
     event.respondWith(networkOnly(request));
     return;
   }
