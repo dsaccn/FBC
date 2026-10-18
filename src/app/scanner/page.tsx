@@ -518,16 +518,22 @@ export default function QRScannerPage() {
         return
       }
 
-      const html5QrCode = new Html5Qrcode(scannerContainerId)
+      const html5QrCode = new Html5Qrcode(scannerContainerId, {
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+        verbose: false,
+      })
       html5QrCodeRef.current = html5QrCode
 
       const config = {
-        fps: 12,
+        fps: 24, // 24 FPS for 2x faster frame capture
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-          const edge = Math.max(180, Math.floor(minEdge * 0.75))
+          const edge = Math.max(200, Math.floor(minEdge * 0.8))
           return { width: edge, height: edge }
         },
+        aspectRatio: 1.0,
       }
 
       const onScanSuccess = async (decodedText: string) => {
@@ -553,7 +559,13 @@ export default function QRScannerPage() {
       }
 
       const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-      const primaryTarget: any = isMobile ? { facingMode: facing } : { facingMode: facing === 'environment' ? 'user' : facing }
+      const primaryTarget: any = isMobile
+        ? {
+            facingMode: facing,
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+          }
+        : { facingMode: facing === 'environment' ? 'user' : facing }
 
       const startWithTimeout = (target: any, timeoutMs = 25000) => {
         return Promise.race([

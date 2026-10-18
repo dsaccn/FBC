@@ -1,5 +1,22 @@
 import { prisma } from '@/lib/prisma'
 
+let sharedNeonPool: any = null
+function getSharedNeonPool(neonUrl: string) {
+  if (!sharedNeonPool) {
+    try {
+      const { Pool } = require('pg')
+      sharedNeonPool = new Pool({
+        connectionString: neonUrl,
+        ssl: { rejectUnauthorized: false },
+        max: 3,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2500,
+      })
+    } catch {}
+  }
+  return sharedNeonPool
+}
+
 export interface DuplicateReceiptConflict {
   isDuplicate: true
   ref: string
@@ -130,65 +147,62 @@ export async function checkReceiptDuplicate(
   const neonUrl = process.env.NEON_DATABASE_URL
   if (!process.env.VERCEL && neonUrl) {
     try {
-      const { Pool } = await import('pg')
-      const pool = new Pool({ connectionString: neonUrl, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 4000 })
+      const pool = getSharedNeonPool(neonUrl)
+      if (pool) {
+        // Run queries concurrently for Order and Payment
+        const [orderRes, payRes] = await Promise.all([
+          pool.query(
+            `SELECT o.id, o.status, o."verifiedRef", o."createdAt", t.number as "tableNumber"
+             FROM "Order" o
+             LEFT JOIN "Table" t ON t.id = o."tableId"
+             WHERE UPPER(o."verifiedRef") = $1
+               AND o.status != 'CANCELLED'
+               ${excludeOrderId ? 'AND o.id != $2' : ''}
+             LIMIT 1`,
+            excludeOrderId ? [cleanRef, excludeOrderId] : [cleanRef]
+          ),
+          pool.query(
+            `SELECT p.id, p."orderId", p.amount, p.method, p.notes, p."createdAt", o.status as "orderStatus", t.number as "tableNumber"
+             FROM "Payment" p
+             JOIN "Order" o ON o.id = p."orderId"
+             LEFT JOIN "Table" t ON t.id = o."tableId"
+             WHERE p.notes ILIKE $1
+               AND o.status != 'CANCELLED'
+               ${excludeOrderId ? 'AND p."orderId" != $2' : ''}
+             LIMIT 1`,
+            excludeOrderId ? [`%${cleanRef}%`, excludeOrderId] : [`%${cleanRef}%`]
+          )
+        ])
 
-      // Check Neon Order
-      const orderRes = await pool.query(
-        `SELECT o.id, o.status, o."verifiedRef", o."createdAt", t.number as "tableNumber"
-         FROM "Order" o
-         LEFT JOIN "Table" t ON t.id = o."tableId"
-         WHERE UPPER(o."verifiedRef") = $1
-           AND o.status != 'CANCELLED'
-           ${excludeOrderId ? 'AND o.id != $2' : ''}
-         LIMIT 1`,
-        excludeOrderId ? [cleanRef, excludeOrderId] : [cleanRef]
-      )
-
-      if (orderRes.rows.length > 0) {
-        const row = orderRes.rows[0]
-        await pool.end().catch(() => {})
-        const tableLabel = formatTable(row.tableNumber)
-        const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
-        const statusText = row.status === 'PAID' ? 'ALREADY PAID & CLOSED' : 'ALREADY ATTACHED'
-        return {
-          isDuplicate: true,
-          ref: cleanRef,
-          conflictOrderId: row.id,
-          conflictTable: tableLabel,
-          conflictStatus: row.status,
-          conflictDate: row.createdAt,
-          errorMessage: `DUPLICATE TRANSACTION CODE: Reference ${cleanRef} was ${statusText} in cloud records for ${tableLabel} on ${dateStr}! Each payment slip can only be used once.`,
+        if (orderRes.rows.length > 0) {
+          const row = orderRes.rows[0]
+          const tableLabel = formatTable(row.tableNumber)
+          const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
+          const statusText = row.status === 'PAID' ? 'ALREADY PAID & CLOSED' : 'ALREADY ATTACHED'
+          return {
+            isDuplicate: true,
+            ref: cleanRef,
+            conflictOrderId: row.id,
+            conflictTable: tableLabel,
+            conflictStatus: row.status,
+            conflictDate: row.createdAt,
+            errorMessage: `DUPLICATE TRANSACTION CODE: Reference ${cleanRef} was ${statusText} in cloud records for ${tableLabel} on ${dateStr}! Each payment slip can only be used once.`,
+          }
         }
-      }
 
-      // Check Neon Payment
-      const payRes = await pool.query(
-        `SELECT p.id, p."orderId", p.amount, p.method, p.notes, p."createdAt", o.status as "orderStatus", t.number as "tableNumber"
-         FROM "Payment" p
-         JOIN "Order" o ON o.id = p."orderId"
-         LEFT JOIN "Table" t ON t.id = o."tableId"
-         WHERE p.notes ILIKE $1
-           AND o.status != 'CANCELLED'
-           ${excludeOrderId ? 'AND p."orderId" != $2' : ''}
-         LIMIT 1`,
-        excludeOrderId ? [`%${cleanRef}%`, excludeOrderId] : [`%${cleanRef}%`]
-      )
-
-      await pool.end().catch(() => {})
-
-      if (payRes.rows.length > 0) {
-        const row = payRes.rows[0]
-        const tableLabel = formatTable(row.tableNumber)
-        const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
-        return {
-          isDuplicate: true,
-          ref: cleanRef,
-          conflictOrderId: row.orderId,
-          conflictTable: tableLabel,
-          conflictStatus: row.orderStatus,
-          conflictDate: row.createdAt,
-          errorMessage: `DUPLICATE TRANSACTION CODE: Reference ${cleanRef} was ALREADY PAID & CLOSED for ${tableLabel} on ${dateStr}! Each payment slip can only be used once.`,
+        if (payRes.rows.length > 0) {
+          const row = payRes.rows[0]
+          const tableLabel = formatTable(row.tableNumber)
+          const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }) : 'earlier'
+          return {
+            isDuplicate: true,
+            ref: cleanRef,
+            conflictOrderId: row.orderId,
+            conflictTable: tableLabel,
+            conflictStatus: row.orderStatus,
+            conflictDate: row.createdAt,
+            errorMessage: `DUPLICATE TRANSACTION CODE: Reference ${cleanRef} was ALREADY PAID & CLOSED for ${tableLabel} on ${dateStr}! Each payment slip can only be used once.`,
+          }
         }
       }
     } catch (neonErr: any) {
