@@ -226,7 +226,10 @@ export default function PaymentPage() {
     try {
       const res = await fetch('/api/scanner/verify-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-scanner-token': 'kogna_scanner_secure_2026'
+        },
         body: JSON.stringify({
           orderId,
           reference: recentPhoneScan.reference,
@@ -339,7 +342,10 @@ export default function PaymentPage() {
 
     try {
       const res = await fetch(`/api/scanner/verify-order?orderId=${encodeURIComponent(id)}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'x-scanner-token': 'kogna_scanner_secure_2026'
+        }
       })
       if (res.ok) {
         toast.success('Mobile verification cleared')

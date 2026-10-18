@@ -198,6 +198,29 @@ export default function QRScannerPage() {
     }
   }
 
+  const handleClearOrderVerification = async (targetOrderId: string) => {
+    if (!confirm('Clear verified payment for this table/order?')) return
+    try {
+      const savedToken = typeof window !== 'undefined' ? (localStorage.getItem('scanner_token') || 'kogna_scanner_secure_2026') : ''
+      const headers: Record<string, string> = {}
+      if (savedToken) headers['x-scanner-token'] = savedToken
+
+      const res = await fetch(`/api/scanner/verify-order?orderId=${encodeURIComponent(targetOrderId)}`, {
+        method: 'DELETE',
+        headers,
+      })
+      const data = await res.json()
+      if (data.success) {
+        setLinkedSuccessMessage('Payment verification cleared for this order.')
+        fetchOpenOrders()
+      } else {
+        alert(data.error || 'Failed to clear verification')
+      }
+    } catch {
+      alert('Network error clearing verification')
+    }
+  }
+
   useEffect(() => {
     expectedAmountRef.current = expectedAmount
   }, [expectedAmount])
@@ -925,23 +948,44 @@ export default function QRScannerPage() {
                     Expected Bill: <b style={{ color: '#92400E' }}>{selected?.total.toFixed(2)} ETB</b> · {selected?.waiterName} ({selected?.itemsCount} items)
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleSelectOrder(null)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #FCD34D',
-                    background: '#FFFFFF',
-                    color: '#92400E',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-                  }}
-                >
-                  Change
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {selected?.isVerified && (
+                    <button
+                      type="button"
+                      onClick={() => handleClearOrderVerification(selected.id)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #FECACA',
+                        background: '#FEF2F2',
+                        color: '#DC2626',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(220,38,38,0.06)'
+                      }}
+                    >
+                      Clear Slip
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectOrder(null)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #FCD34D',
+                      background: '#FFFFFF',
+                      color: '#92400E',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                    }}
+                  >
+                    Change
+                  </button>
+                </div>
               </div>
             )
           })()
