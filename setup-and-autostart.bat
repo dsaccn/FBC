@@ -77,7 +77,7 @@ if exist "%DESKTOP%" (
 
 :: Configure Cloudflare Tunnel service if cloudflared is present
 if exist "%POS_DIR%bin\cloudflared.exe" (
-    "%POS_DIR%bin\cloudflared.exe" service install eyJhIjoiM2UzNjljODU4YTllY2NhYTExNDkzZTIwNDhjODI0MmMiLCJ0IjoiZGM1ZTliYjYtNTU5Mi00YjgzLTlkMTMtYjA2MGExZmQyNzQzIiwicyI6Ik5tWmlNamMyWmpNdE5qVTBOQzAwWkRJNUxUZzBaVEl0T0dOak4ySTROemRpWlRrNSJ9 >nul 2>&1
+    "%POS_DIR%bin\cloudflared.exe" service install eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9 >nul 2>&1
     sc start cloudflared >nul 2>&1
     echo    Cloudflare Mobile Scanner Service: Installed ^& Started: OK
 )
