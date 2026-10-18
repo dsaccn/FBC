@@ -1,0 +1,75 @@
+name: Build Kogna Verifier APK
+
+on:
+  push:
+    paths:
+      - 'android-scanner/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x android-scanner/gradlew
+
+      - name: Build Release APK
+        working-directory: android-scanner
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare APK Output
+        run: |
+          mkdir -p build-output
+          cp android-scanner/app/build/outputs/apk/release/app-release.apk build-output/KognaVerifier.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KognaVerifier-APK
+          path: build-output/KognaVerifier.apk
+          retention-days: 30
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0-scanner
+          name: "Kogna Verifier Scanner App v1.0.0"
+          draft: false
+          prerelease: false
+          body: |
+            ## 📱 Kogna Verifier Mobile Android App
+            
+            Dedicated Android application for Kogna Coffee waitstaff and cashiers.
+            
+            ### ✨ Features:
+            - **Direct Launcher**: Opens directly into the Kogna Verifier Scanner with staff credentials.
+            - **Auto-Camera Grant**: Pre-configured camera permissions for instant QR receipt scanning.
+            - **100% Fullscreen**: No browser URL bar, search box, or navigation buttons.
+            - **Real-Time Sync**: Synchronized in 0 ms with the cashier payment console.
+            
+            ### 📥 Download & Install:
+            1. Download **`KognaVerifier.apk`** below to your Android phone.
+            2. Tap to install (enable *"Install unknown apps"* if prompted).
+            3. Open the app to start scanning Telebirr and CBE receipts!
+          files: build-output/KognaVerifier.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

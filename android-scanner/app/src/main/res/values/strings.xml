@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Kogna Verifier</string>
+    <string name="camera_permission_required">Camera permission is required to scan Telebirr and CBE QR codes.</string>
+    <string name="offline_title">Connection Unavailable</string>
+    <string name="offline_message">Unable to connect to the POS server. Please check your WiFi connection and ensure the POS machine is running.</string>
+    <string name="retry">Retry Connection</string>
+</resources>
