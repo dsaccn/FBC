@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
     if (!newUsername || typeof newUsername !== 'string' || newUsername.trim().length < 2) {
       return NextResponse.json({ error: 'New username must be at least 2 characters long' }, { status: 400 })
     }
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 3) {
-      return NextResponse.json({ error: 'New password must be at least 3 characters long' }, { status: 400 })
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return NextResponse.json({ error: 'New password must be at least 8 characters long for security' }, { status: 400 })
     }
+
     if (newPassword !== confirmPassword) {
       return NextResponse.json({ error: 'New passwords do not match' }, { status: 400 })
     }

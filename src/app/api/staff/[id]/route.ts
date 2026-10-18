@@ -1,36 +1,59 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { backgroundSync, pushUserToCloud, deleteUserFromCloud } from '@/lib/sync-engine'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const { password, ...rest } = await req.json()
-  const data: Record<string, unknown> = { ...rest }
-  if (password) data.passwordHash = await bcrypt.hash(password, 10)
-  const user = await prisma.user.update({
-    where: { id },
-    data,
-    select: { id: true, username: true, fullName: true, role: true, phone: true, active: true },
-  })
-  return NextResponse.json(user)
-}
+  try {
+    const { id } = await params
+    const { password, ...rest } = await req.json()
+    const data: Record<string, unknown> = { ...rest }
+    if (password) data.passwordHash = await bcrypt.hash(password, 10)
+    
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, username: true, fullName: true, role: true, phone: true, active: true },
+    })
 
-import { backgroundSync, deleteFromCloud } from '@/lib/sync-engine'
+    // Immediately push update (including active status toggle) to Cloud
+    await pushUserToCloud({
+      id: user.id,
+      username: user.username,
+      passwordHash: data.passwordHash as string | undefined,
+      fullName: user.fullName,
+      role: user.role,
+      phone: user.phone,
+      active: user.active,
+    })
+
+    backgroundSync()
+
+    return NextResponse.json(user)
+  } catch (err) {
+    console.error('[PATCH /api/staff/[id]]', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
 
-    // 1. Delete ShiftLogs for this user
+    // 0. Find existing user to get username for precise cross-database deletion
+    const existingUser = await prisma.user.findUnique({ where: { id } })
+    const username = existingUser?.username
+
+    // 1. Delete ShiftLogs for this user locally
     await prisma.shiftLog.deleteMany({ where: { userId: id } })
 
-    // 2. Delete Cancellations where this user was the manager
+    // 2. Delete Cancellations where this user was the manager locally
     await prisma.cancellation.deleteMany({ where: { managerId: id } })
 
-    // 3. Delete Payments where this user was cashier
+    // 3. Delete Payments where this user was cashier locally
     await prisma.payment.deleteMany({ where: { cashierId: id } })
 
-    // 4. Delete all orders (and their items/cancellations/payments) where this user was the waiter
+    // 4. Delete all orders (and their items/cancellations/payments) where this user was the waiter locally
     const userOrders = await prisma.order.findMany({ where: { waiterId: id }, select: { id: true } })
     if (userOrders.length > 0) {
       const orderIds = userOrders.map(o => o.id)
@@ -40,18 +63,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       await prisma.order.deleteMany({ where: { id: { in: orderIds } } })
     }
 
-    // 5. Finally delete the user
+    // 5. Delete the user from SQLite
     await prisma.user.delete({ where: { id } })
 
-    // Cloud deletion
-    await deleteFromCloud(`DELETE FROM "ShiftLog" WHERE "userId" = $1`, [id])
-    await deleteFromCloud(`DELETE FROM "Cancellation" WHERE "managerId" = $1`, [id])
-    await deleteFromCloud(`DELETE FROM "Payment" WHERE "cashierId" = $1`, [id])
-    await deleteFromCloud(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1))`, [id])
-    await deleteFromCloud(`DELETE FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1)`, [id])
-    await deleteFromCloud(`DELETE FROM "Payment" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1)`, [id])
-    await deleteFromCloud(`DELETE FROM "Order" WHERE "waiterId" = $1`, [id])
-    await deleteFromCloud(`DELETE FROM "User" WHERE id = $1`, [id])
+    // 6. Delete the user and cascading relations from Cloud (Neon) by ID AND username
+    await deleteUserFromCloud(id, username)
 
     backgroundSync()
 

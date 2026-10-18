@@ -15,7 +15,11 @@ export async function POST(req: Request) {
     // 1. Verify order exists in the database
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { table: true, payment: true },
+      include: {
+        table: true,
+        payment: true,
+        orderItems: { include: { menuItem: true } },
+      },
     })
 
     if (!order) {
@@ -40,9 +44,36 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Resolve cashierId to a valid user in the User table
-    // (Prevents foreign key constraint violations when logged in via standalone AbebeCredential / master_root)
-    let validCashierId = cashierId
+    // 2c. 🚨 SERVER-SIDE BILL TOTAL VALIDATION:
+    // Compute total from database items to prevent client tampering
+    const activeItems = (order.orderItems || []).filter(i => i.status !== 'CANCELLED')
+    const calculatedOrderTotal = activeItems.reduce(
+      (acc, i) => acc + (i.menuItem?.price || 0) * i.quantity,
+      0
+    )
+
+    const rawDiscount = Number(discount) || 0
+    let calculatedDiscount = 0
+    if (discountType === 'percentage') {
+      calculatedDiscount = (calculatedOrderTotal * Math.min(100, Math.max(0, rawDiscount))) / 100
+    } else {
+      calculatedDiscount = Math.min(calculatedOrderTotal, Math.max(0, rawDiscount))
+    }
+
+    const expectedPayable = isComplimentary ? 0 : Math.max(0, calculatedOrderTotal - calculatedDiscount)
+    const submittedAmount = Number(amount) || 0
+
+    // Prevent underpayment tampering (allow 1 ETB tolerance for rounding)
+    if (calculatedOrderTotal > 0 && !isComplimentary && submittedAmount < expectedPayable - 1) {
+      return NextResponse.json({
+        error: `Payment amount (${submittedAmount.toFixed(2)} ETB) is less than the calculated order bill (${expectedPayable.toFixed(2)} ETB). Underpayments are rejected.`,
+      }, { status: 400 })
+    }
+
+    // 3. Resolve cashierId from authoritative session
+    const { getSession } = await import('@/lib/session')
+    const session = await getSession()
+    let validCashierId = session?.id || cashierId
     const existingCashier = validCashierId
       ? await prisma.user.findUnique({ where: { id: validCashierId } }).catch(() => null)
       : null
@@ -78,7 +109,7 @@ export async function POST(req: Request) {
       data: {
         orderId,
         cashierId: validCashierId,
-        amount: Number(amount) || 0,
+        amount: isComplimentary ? 0 : submittedAmount,
         method: method || 'Cash',
         discount: Number(discount) || 0,
         discountType: discountType || 'fixed',
@@ -88,6 +119,7 @@ export async function POST(req: Request) {
       },
       include: { order: { include: { table: true } } },
     })
+
 
     // 5. Mark order as PAID
     await prisma.order.update({

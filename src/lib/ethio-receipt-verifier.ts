@@ -372,6 +372,48 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
 }
 
 /**
+ * Validate that an external URL strictly belongs to approved Ethiopian banking domains
+ * Prevents Server-Side Request Forgery (SSRF) into local network or unauthorized hosts
+ */
+export function isValidBankUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+    const hostname = parsed.hostname.toLowerCase()
+
+    // Explicitly block loopback, link-local, and private RFC-1918 networks
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname.startsWith('127.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal')
+    ) {
+      return false
+    }
+
+    // Permitted official bank domains
+    const allowed = [
+      'cbe.com.et',
+      'apps.cbe.com.et',
+      'mb.cbe.com.et',
+      'mbreciept.cbe.com.et',
+      'ethiotelecom.et',
+      'transactioninfo.ethiotelecom.et',
+    ]
+
+    return allowed.some(domain => hostname === domain || hostname.endsWith('.' + domain))
+  } catch {
+    return false
+  }
+}
+
+/**
  * Verify Commercial Bank of Ethiopia (CBE) receipt
  * Supports both modern mbreciept.cbe.com.et QR links and legacy apps.cbe.com.et:100 FT references
  */
@@ -408,10 +450,21 @@ export async function verifyCbeReceipt(
     : (settings.cbeReceiverAccount || DEFAULT_CBE_ACCOUNT || '')
 
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    if (!isValidBankUrl(clean)) {
+      return {
+        success: false,
+        provider: 'CBE',
+        reference: clean,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: 'Invalid receipt URL domain. Only official CBE and Telebirr verification domains are permitted.',
+      }
+    }
     fetchUrl = clean
     const match = clean.match(/[?&]id=([A-Za-z0-9]+)/i)
     if (match) ftCode = match[1].slice(0, 12).toUpperCase()
   } else {
+
     // Construct CBE URL: FT code + last 8 digits of account if available
     const cleanFt = clean.toUpperCase()
     const cleanAcc = targetAcc.replace(/\D/g, '')

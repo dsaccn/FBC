@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isScannerAuthorized } from '@/lib/scanner-auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Check if the device is an authorized scanner device or active POS session
+    const authorized = await isScannerAuthorized(req)
+    if (!authorized) {
+      // Return empty list to internet strangers without exposing error details
+      return NextResponse.json({ success: true, orders: [], restricted: true })
+    }
+
     const orders = await prisma.order.findMany({
       where: { status: 'OPEN' },
       include: {
         table: true,
-        waiter: { select: { id: true, fullName: true, username: true } },
         orderItems: {
-          include: { menuItem: { select: { id: true, name: true, price: true } } },
+          select: { id: true, quantity: true, status: true, menuItem: { select: { price: true } } },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -29,26 +36,22 @@ export async function GET() {
       if (isDelivery) displayTitle = `Delivery #${rawNumber.replace(/^(DELIV|DELIVERY)-/, '')}`
       if (isTakeaway) displayTitle = `Takeaway #${rawNumber.replace(/^(TAKE|TAKEAWAY)-/, '')}`
 
-      const itemsSummary = activeItems.map(i => `${i.quantity}x ${i.menuItem?.name || 'Item'}`).join(', ')
-
+      // Data Minimization: Strictly anonymous table and bill data only.
+      // Customer payer names, phone numbers, waiter names, and specific food items are NOT exposed.
       return {
         id: order.id,
         tableId: order.tableId,
         displayTitle,
         isDelivery,
         isTakeaway,
-        waiterName: order.waiter?.fullName || 'Waiter',
         createdAt: order.createdAt,
         subtotal,
         total: subtotal,
         itemsCount: activeItems.reduce((acc, i) => acc + i.quantity, 0),
-        itemsSummary: itemsSummary || 'No items',
         isVerified: Boolean(order.verifiedRef),
         verifiedRef: order.verifiedRef || null,
         verifiedProvider: order.verifiedProvider || null,
         verifiedAmount: order.verifiedAmount || null,
-        verifiedPayer: order.verifiedPayer || null,
-        verifiedReceiver: order.verifiedReceiver || null,
         verifiedAt: order.verifiedAt || null,
       }
     })
@@ -59,3 +62,4 @@ export async function GET() {
     return NextResponse.json({ success: false, error: String(err?.message || err) }, { status: 500 })
   }
 }
+

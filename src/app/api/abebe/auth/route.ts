@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createAbebeSession, deleteAbebeSession, getSession } from '@/lib/session'
 import { getAbebeCredential, verifyAbebePassword } from '@/lib/abebe-auth'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+
+// 7 failed attempts per 15-minute window per IP
+const abebeLimiter = rateLimit({ interval: 15 * 60_000, limit: 7 })
 
 // GET: Check standalone session status for /abebe
 export async function GET() {
@@ -33,10 +37,28 @@ export async function GET() {
 
 // POST: Standalone login to /abebe console (completely independent of POS user accounts)
 export async function POST(req: NextRequest) {
-  const forwardedFor = req.headers.get('x-forwarded-for')
-  const realIp = req.headers.get('x-real-ip')
+  const ip = getClientIp(req)
   const userAgent = req.headers.get('user-agent') || 'unknown'
-  const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
+
+  // Enforce 7-attempt rate limit per 15 minutes
+  const { success: allowed, remaining } = abebeLimiter.check(ip)
+  if (!allowed) {
+    await prisma.loginAttempt.create({
+      data: {
+        username: 'locked_out',
+        success: false,
+        ipAddress: ip,
+        userAgent,
+        reason: 'RATE_LIMITED_7_ATTEMPTS',
+        portal: 'ABEBE_CONSOLE',
+      },
+    }).catch(() => {})
+
+    return NextResponse.json(
+      { error: 'Too many failed login attempts. Management console locked for 15 minutes.' },
+      { status: 429 }
+    )
+  }
 
   try {
     const body = await req.json().catch(() => null)
@@ -53,6 +75,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
+
 
     const { username, password } = body
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
@@ -118,6 +141,10 @@ export async function POST(req: NextRequest) {
       fullName: 'Management Console',
       role: 'ADMIN',
     })
+
+    // Reset rate limiter on valid login
+    abebeLimiter.reset(ip)
+
 
     // Record successful login attempt
     await prisma.loginAttempt.create({

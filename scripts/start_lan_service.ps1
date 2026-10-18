@@ -33,8 +33,9 @@ if (-not $cfProcess) {
   }
 }
 
-# 4. Permanent custom domain URL
-$scannerUrl = "https://scanner.kogna.coffee/scanner"
+# 4. Permanent custom domain URL with silent staff token
+$scannerUrl = "https://www.kogna.coffee/scanner?key=kogna_scanner_secure_2026"
+
 
 # 5. Save the URL to Desktop for easy access (both OneDrive Desktop and local Desktop)
 $destFolders = @(

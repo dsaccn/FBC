@@ -42,8 +42,11 @@ xcopy /E /I /Y "src" "%DIST_DIR%\src" >nul
 xcopy /E /I /Y "prisma" "%DIST_DIR%\prisma" >nul
 xcopy /E /I /Y "scripts" "%DIST_DIR%\scripts" >nul
 
-copy ".env" "%DIST_DIR%\" >nul
+:: Copy sanitized config template (protects production secrets)
+copy ".env.example" "%DIST_DIR%\.env" >nul
+copy ".env.example" "%DIST_DIR%\" >nul
 copy "package.json" "%DIST_DIR%\" >nul
+
 copy "package-lock.json" "%DIST_DIR%\" >nul
 copy "next.config.ts" "%DIST_DIR%\" >nul
 copy "postcss.config.mjs" "%DIST_DIR%\" >nul

@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { Client as PgClient } from 'pg'
 import { broadcastVerificationEvent } from '@/lib/scanner-events'
 import { checkReceiptDuplicate } from '@/lib/receipt-dedup'
+import { verifyEthioReceipt } from '@/lib/ethio-receipt-verifier'
+import { isScannerAuthorized } from '@/lib/scanner-auth'
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +16,6 @@ export async function POST(req: Request) {
     }
 
     const cleanRef = String(reference).trim().toUpperCase()
-    const parsedAmount = typeof amount === 'number' ? amount : parseFloat(amount || '0')
     const verifiedDate = new Date()
 
     // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on another order or payment
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    // 🚨 AMOUNT CHECK: Do NOT attach if scanned amount is less than order's bill!
+    // 🚨 FETCH TARGET ORDER & BILL TOTAL
     const targetOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -37,27 +38,56 @@ export async function POST(req: Request) {
       }
     })
 
-    const orderTotal = targetOrder?.orderItems?.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
-    if (!isNaN(parsedAmount) && orderTotal > 0 && parsedAmount < orderTotal - 0.5) {
-      const shortAmt = orderTotal - parsedAmount
+    if (!targetOrder) {
+      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 })
+    }
+
+    const orderTotal = targetOrder.orderItems.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
+
+    // 🚨 OFFICIAL BANK VERIFICATION: Validate with Telebirr / CBE directly so fake codes are rejected
+    const bankVerification = await verifyEthioReceipt({
+      referenceOrUrl: cleanRef,
+      provider: provider || 'AUTO',
+      expectedAmount: orderTotal > 0 ? orderTotal : undefined,
+    })
+
+    if (!bankVerification.success) {
+      return NextResponse.json({
+        success: false,
+        error: bankVerification.errorMessage || 'Invalid transaction: Bank verification failed. Please verify with official slip.',
+      }, { status: 400 })
+    }
+
+    // Use authoritative values returned by the bank
+    const finalAmount = typeof bankVerification.amount === 'number'
+      ? bankVerification.amount
+      : (typeof amount === 'number' ? amount : parseFloat(amount || '0'))
+
+    // 🚨 AMOUNT CHECK: Do NOT attach if bank amount is less than order's bill!
+    if (!isNaN(finalAmount) && orderTotal > 0 && finalAmount < orderTotal - 0.5) {
+      const shortAmt = orderTotal - finalAmount
       return NextResponse.json({
         success: false,
         underpaid: true,
         orderTotal,
         shortAmount: shortAmt,
-        error: `AMOUNT TOO LOW: Scanned amount (${parsedAmount.toFixed(2)} ETB) is less than order bill (${orderTotal.toFixed(2)} ETB). Short by ${shortAmt.toFixed(2)} ETB! Receipt was NOT attached.`
+        error: `AMOUNT TOO LOW: Bank verified amount (${finalAmount.toFixed(2)} ETB) is less than order bill (${orderTotal.toFixed(2)} ETB). Short by ${shortAmt.toFixed(2)} ETB! Receipt was NOT attached.`
       }, { status: 400 })
     }
+
+    const finalPayer = bankVerification.payerName || payerName || null
+    const finalReceiver = bankVerification.receiverName || receiverName || null
+    const finalProvider = bankVerification.provider || provider || 'AUTO'
 
     // 1. Update database
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: {
         verifiedRef: cleanRef,
-        verifiedProvider: provider || 'AUTO',
-        verifiedAmount: isNaN(parsedAmount) ? null : parsedAmount,
-        verifiedPayer: payerName || null,
-        verifiedReceiver: receiverName || null,
+        verifiedProvider: finalProvider,
+        verifiedAmount: isNaN(finalAmount) ? null : finalAmount,
+        verifiedPayer: finalPayer,
+        verifiedReceiver: finalReceiver,
         verifiedAt: verifiedDate,
         pendingSync: true,
       },
@@ -85,7 +115,7 @@ export async function POST(req: Request) {
                  "verifiedReceiver" = $5, 
                  "verifiedAt" = $6 
              WHERE id = $7`,
-            [cleanRef, provider || 'AUTO', isNaN(parsedAmount) ? null : parsedAmount, payerName || null, receiverName || null, verifiedDate, orderId]
+            [cleanRef, finalProvider, isNaN(finalAmount) ? null : finalAmount, finalPayer, finalReceiver, verifiedDate, orderId]
           )
         )
         .then(() => pg.end())
@@ -101,10 +131,10 @@ export async function POST(req: Request) {
       orderId,
       tableNumber: updated?.table?.number,
       reference: cleanRef,
-      provider: provider || 'AUTO',
-      amount: parsedAmount,
-      payerName: payerName || undefined,
-      receiverName: receiverName || undefined,
+      provider: finalProvider,
+      amount: finalAmount,
+      payerName: finalPayer || undefined,
+      receiverName: finalReceiver || undefined,
       timestamp: verifiedDate.toISOString(),
     })
 
@@ -115,10 +145,10 @@ export async function POST(req: Request) {
         id: updated?.id || orderId,
         tableNumber: updated?.table?.number || '?',
         verifiedRef: cleanRef,
-        verifiedProvider: provider,
-        verifiedAmount: parsedAmount,
-        verifiedPayer: payerName,
-        verifiedReceiver: receiverName,
+        verifiedProvider: finalProvider,
+        verifiedAmount: finalAmount,
+        verifiedPayer: finalPayer,
+        verifiedReceiver: finalReceiver,
         verifiedAt: verifiedDate,
       }
     })
@@ -130,6 +160,10 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const authorized = await isScannerAuthorized(req)
+    if (!authorized) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Action restricted to authorized staff' }, { status: 401 })
+    }
     const { searchParams } = new URL(req.url)
     let orderId = searchParams.get('orderId')
     if (!orderId) {

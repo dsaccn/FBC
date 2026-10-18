@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { rateLimit } from '@/lib/rate-limit'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { signToken } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
@@ -7,12 +7,11 @@ import bcrypt from 'bcryptjs'
 const limiter = rateLimit({ interval: 60_000, limit: 5 })
 
 export async function POST(req: NextRequest) {
-  // Rate limit by IP
-  const forwardedFor = req.headers.get('x-forwarded-for')
-  const realIp = req.headers.get('x-real-ip')
+  // Rate limit by authoritative IP (prioritizes cf-connecting-ip)
+  const ip = getClientIp(req)
   const userAgent = req.headers.get('user-agent') || 'unknown'
-  const ip = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ?? realIp ?? 'unknown'
   const { success } = limiter.check(ip)
+
 
   if (!success) {
     await prisma.loginAttempt.create({

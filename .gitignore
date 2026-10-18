@@ -45,6 +45,7 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 prisma/payment-settings.json
+.deleted_users.json
 
 # Distribution archives and installers
 *.zip

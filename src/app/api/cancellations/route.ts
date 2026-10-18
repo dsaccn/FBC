@@ -8,12 +8,36 @@ export async function POST(req: Request) {
   const { orderItemId, managerId, reason, cancelQuantity } = await req.json()
   const isOfflineLocal = !process.env.VERCEL
 
+  // Verify Manager / Admin Authorization
+  const { getSession } = await import('@/lib/session')
+  const session = await getSession()
+
+  const targetManagerId = (session?.role === 'ADMIN' || session?.role === 'MANAGER') ? session.id : managerId
+  if (!targetManagerId) {
+    return NextResponse.json({ error: 'Manager authorization is required to cancel items' }, { status: 403 })
+  }
+
+  const managerUser = await prisma.user.findFirst({
+    where: {
+      id: targetManagerId,
+      active: true,
+      role: { in: ['ADMIN', 'MANAGER'] },
+    },
+  })
+
+  if (!managerUser) {
+    return NextResponse.json({ error: 'Unauthorized: Cancellation requires an active manager or administrator account' }, { status: 403 })
+  }
+
+  const authorizedManagerId = managerUser.id
+
   const orderItem = await prisma.orderItem.findUnique({ where: { id: orderItemId } })
   if (!orderItem) {
     return NextResponse.json({ error: 'Order item not found' }, { status: 404 })
   }
 
   let cancelledItemId = orderItemId
+
 
   const qtyToCancel = cancelQuantity && cancelQuantity > 0 ? Number(cancelQuantity) : orderItem.quantity
 
@@ -47,7 +71,8 @@ export async function POST(req: Request) {
 
   // Log cancellation
   const cancellation = await prisma.cancellation.create({
-    data: { orderItemId: cancelledItemId, managerId, reason, pendingSync: isOfflineLocal },
+    data: { orderItemId: cancelledItemId, managerId: authorizedManagerId, reason: reason || 'Cancelled by manager', pendingSync: isOfflineLocal },
+
     include: {
       orderItem: { include: { menuItem: true } },
       manager: { select: { fullName: true } },

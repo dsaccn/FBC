@@ -21,7 +21,8 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Zap
+  Zap,
+  X
 } from 'lucide-react'
 
 interface VerifiedReceipt {
@@ -61,12 +62,12 @@ export interface OpenOrder {
   displayTitle: string
   isDelivery: boolean
   isTakeaway: boolean
-  waiterName: string
+  waiterName?: string
   createdAt: string
   subtotal: number
   total: number
   itemsCount: number
-  itemsSummary: string
+  itemsSummary?: string
   isVerified: boolean
   verifiedRef?: string | null
   verifiedProvider?: string | null
@@ -90,6 +91,7 @@ export default function QRScannerPage() {
   const [linkedSuccessMessage, setLinkedSuccessMessage] = useState<string | null>(null)
 
   // Scanner status
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -128,7 +130,11 @@ export default function QRScannerPage() {
   // Fetch open orders from API
   const fetchOpenOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/scanner/orders')
+      const savedToken = typeof window !== 'undefined' ? (localStorage.getItem('scanner_token') || 'kogna_scanner_secure_2026') : ''
+      const headers: Record<string, string> = {}
+      if (savedToken) headers['x-scanner-token'] = savedToken
+
+      const res = await fetch('/api/scanner/orders', { headers })
       if (res.ok) {
         const data = await res.json()
         if (data.success && Array.isArray(data.orders)) {
@@ -215,10 +221,20 @@ export default function QRScannerPage() {
     }
   }, [])
 
-  // Read URL query params on mount (?amount=450&provider=TELEBIRR)
+  // Read URL query params on mount (?amount=450&provider=TELEBIRR&key=...)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
+      const key = params.get('key') || params.get('scanner_token')
+      if (key) {
+        localStorage.setItem('scanner_token', key)
+        document.cookie = `scanner_token=${key}; path=/; max-age=31536000; SameSite=Lax`
+      } else {
+        const existing = localStorage.getItem('scanner_token') || 'kogna_scanner_secure_2026'
+        localStorage.setItem('scanner_token', existing)
+        document.cookie = `scanner_token=${existing}; path=/; max-age=31536000; SameSite=Lax`
+      }
+
       const amt = params.get('amount')
       const prov = params.get('provider')
       if (amt) {
@@ -231,7 +247,7 @@ export default function QRScannerPage() {
     }
   }, [])
 
-  // Play a pleasant digital verification chime via Web Audio API
+  // Play digital verification chime via Web Audio API
   const playChime = useCallback((success: boolean) => {
     if (!soundEnabled) return
     try {
@@ -245,7 +261,6 @@ export default function QRScannerPage() {
 
       const now = ctx.currentTime
       if (success) {
-        // High dual-tone success chime
         osc.frequency.setValueAtTime(587.33, now) // D5
         osc.frequency.setValueAtTime(880, now + 0.1) // A5
         gain.gain.setValueAtTime(0.15, now)
@@ -253,16 +268,13 @@ export default function QRScannerPage() {
         osc.start(now)
         osc.stop(now + 0.35)
       } else {
-        // Low error buzz
         osc.frequency.setValueAtTime(220, now)
         gain.gain.setValueAtTime(0.2, now)
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
         osc.start(now)
         osc.stop(now + 0.3)
       }
-    } catch {
-      // Audio autoplay restrictions fallback safely
-    }
+    } catch {}
   }, [soundEnabled])
 
   // Trigger haptic vibration feedback
@@ -307,7 +319,6 @@ export default function QRScannerPage() {
       })
 
       const data = await res.json()
-
       const receiptPayload = data.receipt || null
       const isDup = Boolean(
         data.duplicate ||
@@ -346,7 +357,6 @@ export default function QRScannerPage() {
         playChime(true)
         triggerHaptic(true)
 
-        // Append to session history
         const historyEntry: ScanHistoryItem = {
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           reference: receipt.reference || clean,
@@ -406,9 +416,9 @@ export default function QRScannerPage() {
       setVerifying(false)
       isVerifyingRef.current = false
     }
-  }, [playChime, triggerHaptic])
+  }, [playChime, triggerHaptic, openOrders, fetchOpenOrders])
 
-  // Stop camera stream safely with concurrency lock
+  // Stop camera stream safely
   const stopScanner = useCallback(async () => {
     if (isStoppingRef.current) return
     isStoppingRef.current = true
@@ -426,7 +436,6 @@ export default function QRScannerPage() {
         html5QrCodeRef.current = null
       }
 
-      // Hard stop any active media stream tracks so the camera hardware turns off immediately
       try {
         const container = document.getElementById(scannerContainerId)
         const video = container?.querySelector('video') as HTMLVideoElement | null
@@ -456,6 +465,7 @@ export default function QRScannerPage() {
     try {
       const { Html5Qrcode } = await import('html5-qrcode')
       await stopScanner()
+      setIsCameraOpen(false)
       
       const scanner = new Html5Qrcode(scannerContainerId)
       const decodedText = await scanner.scanFile(file, true)
@@ -481,10 +491,9 @@ export default function QRScannerPage() {
     setCameraError(null)
     setFileError(null)
 
-    // Check secure context requirement (Chrome blocks getUserMedia on plain HTTP)
     if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       if (mountedRef.current) {
-        setCameraError('Live camera requires HTTPS or localhost. Please access via https://kogna.coffee/scanner or use "Snap / Upload Photo" below.')
+        setCameraError('Live camera requires HTTPS or localhost. Please access via https://kogna.coffee/scanner or use "Upload / Snap Photo" below.')
         setCameraActive(false)
         setCameraStarting(false)
       }
@@ -493,10 +502,8 @@ export default function QRScannerPage() {
     }
 
     try {
-      // Dynamic import to prevent SSR issues
       const { Html5Qrcode } = await import('html5-qrcode')
 
-      // Stop any existing instance safely first
       if (html5QrCodeRef.current) {
         try {
           if (html5QrCodeRef.current.isScanning) {
@@ -516,7 +523,6 @@ export default function QRScannerPage() {
       const html5QrCode = new Html5Qrcode(scannerContainerId)
       html5QrCodeRef.current = html5QrCode
 
-      // Safe, fluid 12 FPS configuration without heavy experimental threads
       const config = {
         fps: 12,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
@@ -528,7 +534,6 @@ export default function QRScannerPage() {
 
       const onScanSuccess = async (decodedText: string) => {
         const now = Date.now()
-        // Lock immediate duplicate frames (html5-qrcode processes at 12 FPS)
         if (scanLockRef.current) return
         if (lastScannedTextRef.current === decodedText && now - lastScannedTimeRef.current < 4000) return
 
@@ -536,24 +541,20 @@ export default function QRScannerPage() {
         lastScannedTextRef.current = decodedText
         lastScannedTimeRef.current = now
 
-        // 1. Freeze html5-qrcode video feed instantly
         try {
           if (html5QrCodeRef.current) {
             try { html5QrCodeRef.current.pause(true) } catch {}
           }
         } catch {}
 
-        // 2. Stop camera stream completely so hardware turns off
         await stopScanner()
+        setIsCameraOpen(false)
 
-        // 3. Trigger verification once
         const expAmt = expectedAmountRef.current ? parseFloat(expectedAmountRef.current) : undefined
         verifyReference(decodedText, 'AUTO', undefined, expAmt)
       }
 
       const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-      
-      // On mobile phones, prefer back camera (environment). On PC/laptop webcams (e.g. HP webcam), prefer user-facing.
       const primaryTarget: any = isMobile ? { facingMode: facing } : { facingMode: facing === 'environment' ? 'user' : facing }
 
       const startWithTimeout = (target: any, timeoutMs = 25000) => {
@@ -575,7 +576,6 @@ export default function QRScannerPage() {
               : (cameras.find((c: any) => /front|user|integrated|wide vision/i.test(c.label)) || cameras[0])
             await startWithTimeout(chosen.id, 15000)
           } else {
-            // Last resort: try opposite facingMode
             const opposite = facing === 'environment' ? 'user' : 'environment'
             await startWithTimeout({ facingMode: opposite }, 10000)
           }
@@ -592,9 +592,9 @@ export default function QRScannerPage() {
       const msg = err?.message || ''
       if (mountedRef.current) {
         if (msg === 'CAMERA_TIMEOUT' || msg.includes('CAMERA_TIMEOUT')) {
-          setCameraError('Camera took too long to respond. If using Brave Browser, please tap the Lion icon in the URL bar and toggle Shields OFF for this site, or tap "Snap / Upload Photo" below.')
+          setCameraError('Camera took too long to respond. Please tap "Retry Camera" or tap "Upload / Snap Photo" below.')
         } else if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-          setCameraError('Camera permission is blocked. Please tap the lock 🔒 or Lion icon in the URL bar, allow Camera access, and tap "Retry Camera".')
+          setCameraError('Camera permission is blocked. Please tap the lock 🔒 or shield in your browser URL bar, allow Camera access, and tap "Retry Camera".')
         } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError') || msg.includes('Overconstrained')) {
           setCameraError('No suitable camera detected on this device. You can snap a photo with your native camera or enter the reference code manually.')
         } else {
@@ -610,29 +610,41 @@ export default function QRScannerPage() {
     }
   }, [stopScanner, verifyReference])
 
-  // Switch camera between front and back
+  const handleStartScan = () => {
+    setIsCameraOpen(true)
+    setCameraError(null)
+    setFileError(null)
+    setTimeout(() => {
+      startScanner(facingMode)
+    }, 50)
+  }
+
+  const handleStopScan = () => {
+    stopScanner()
+    setIsCameraOpen(false)
+    setCameraError(null)
+  }
+
   const toggleFacingMode = () => {
     const next = facingMode === 'environment' ? 'user' : 'environment'
     setFacingMode(next)
-    if (cameraActive) {
+    if (cameraActive || isCameraOpen) {
       startScanner(next)
     }
   }
 
-  // Handle mode switches
+  // Cleanup on unmount or manual mode
   useEffect(() => {
     mountedRef.current = true
-    if (mode === 'camera' && !verifiedResult && !verifying) {
-      startScanner(facingMode)
-    } else {
+    if (mode === 'manual') {
       stopScanner()
+      setIsCameraOpen(false)
     }
-
     return () => {
       mountedRef.current = false
       stopScanner()
     }
-  }, [mode, facingMode, verifiedResult, verifying])
+  }, [mode, stopScanner])
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -658,7 +670,10 @@ export default function QRScannerPage() {
     setAmountMatches(null)
     setManualCode('')
     if (mode === 'camera') {
-      startScanner(facingMode)
+      setIsCameraOpen(true)
+      setTimeout(() => {
+        startScanner(facingMode)
+      }, 50)
     }
   }
 
@@ -670,9 +685,9 @@ export default function QRScannerPage() {
   return (
     <div style={{
       minHeight: '100dvh',
-      background: '#0B0F19',
-      color: '#FFFFFF',
-      fontFamily: 'Inter, system-ui, sans-serif',
+      background: '#F8FAFC',
+      color: '#0F172A',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       display: 'flex',
       flexDirection: 'column',
       width: '100%',
@@ -682,21 +697,41 @@ export default function QRScannerPage() {
       boxSizing: 'border-box',
       overflowX: 'hidden'
     }}>
+      {/* Laser line CSS animation */}
+      <style>{`
+        @keyframes kLineScan {
+          0% { top: 6%; opacity: 0.85; }
+          50% { top: 92%; opacity: 1; }
+          100% { top: 6%; opacity: 0.85; }
+        }
+        .kogna-laser-line {
+          position: absolute;
+          left: 6%;
+          right: 6%;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 0%, #D4AF37 50%, transparent 100%);
+          box-shadow: 0 0 14px #D4AF37;
+          border-radius: 2px;
+          animation: kLineScan 2.4s ease-in-out infinite;
+          pointer-events: none;
+        }
+      `}</style>
       
-      {/* 1. App Header */}
+      {/* 1. App Header (Clean Light Theme) */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 'max(14px, env(safe-area-inset-top)) 16px 14px 16px',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(15,23,42,0.92)',
+        padding: 'max(14px, env(safe-area-inset-top)) 18px 14px 18px',
+        borderBottom: '1px solid #E2E8F0',
+        background: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(12px)',
         position: 'sticky',
         top: 0,
         zIndex: 40,
         width: '100%',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link
@@ -705,28 +740,40 @@ export default function QRScannerPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              background: 'rgba(255,255,255,0.06)',
-              color: '#FFFFFF',
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              background: '#F1F5F9',
+              border: '1px solid #E2E8F0',
+              color: '#0F172A',
               textDecoration: 'none',
-              touchAction: 'manipulation'
+              touchAction: 'manipulation',
+              transition: 'background 0.15s ease'
             }}
             title="Back to POS Payment"
           >
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontWeight: '700', fontSize: '15px', letterSpacing: '0.02em', color: '#FFFFFF' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontWeight: '800', fontSize: '16px', letterSpacing: '-0.01em', color: '#0F172A' }}>
                 Kogna Verifier
               </span>
-              <span style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', padding: '1px 6px', borderRadius: '4px', background: 'rgba(180,138,30,0.2)', color: 'var(--gold-light)', border: '1px solid rgba(180,138,30,0.4)' }}>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '800',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                padding: '2px 7px',
+                borderRadius: '6px',
+                background: '#FEF3C7',
+                color: '#B45309',
+                border: '1px solid #FCD34D'
+              }}>
                 Anti-Fraud
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: '#64748B', fontWeight: '500' }}>
               Telebirr & CBE Payment Verification
             </p>
           </div>
@@ -737,34 +784,41 @@ export default function QRScannerPage() {
             type="button"
             onClick={() => setSoundEnabled(!soundEnabled)}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: 'none',
-              color: soundEnabled ? 'var(--gold)' : '#64748B',
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
+              background: '#F1F5F9',
+              border: '1px solid #E2E8F0',
+              color: soundEnabled ? '#B48A1E' : '#94A3B8',
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              touchAction: 'manipulation'
+              touchAction: 'manipulation',
+              transition: 'all 0.15s ease'
             }}
-            title={soundEnabled ? 'Mute sound chime' : 'Enable sound chime'}
+            title={soundEnabled ? 'Mute audio chime' : 'Enable audio chime'}
           >
-            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {soundEnabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
           </button>
         </div>
       </header>
 
       {/* 2. Mode Selector Pill Bar */}
-      <div style={{ padding: '12px 16px', background: 'rgba(15,23,42,0.5)', position: 'relative', zIndex: 30 }}>
+      <div style={{
+        padding: '12px 16px',
+        background: '#FFFFFF',
+        borderBottom: '1px solid #E2E8F0',
+        position: 'relative',
+        zIndex: 30
+      }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          background: 'rgba(255,255,255,0.05)',
-          padding: '3px',
-          borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.08)'
+          background: '#F1F5F9',
+          padding: '4px',
+          borderRadius: '12px',
+          border: '1px solid #E2E8F0'
         }}>
           <button
             type="button"
@@ -777,100 +831,108 @@ export default function QRScannerPage() {
               setVerifiedResult(null)
             }}
             style={{
-              padding: '11px 12px',
+              padding: '10px 12px',
               fontSize: '13px',
-              fontWeight: mode === 'camera' ? '700' : '500',
-              borderRadius: '8px',
-              border: 'none',
-              background: mode === 'camera' ? 'var(--gold)' : 'transparent',
-              color: mode === 'camera' ? '#FFFFFF' : '#94A3B8',
+              fontWeight: mode === 'camera' ? '700' : '600',
+              borderRadius: '9px',
+              border: mode === 'camera' ? '1px solid rgba(0,0,0,0.06)' : 'none',
+              background: mode === 'camera' ? '#FFFFFF' : 'transparent',
+              color: mode === 'camera' ? '#0F172A' : '#64748B',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              gap: '7px',
+              boxShadow: mode === 'camera' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
-              touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent'
+              touchAction: 'manipulation'
             }}
           >
-            <Camera size={15} />
+            <Camera size={15} color={mode === 'camera' ? '#B48A1E' : '#64748B'} />
             <span>Scan QR Code</span>
           </button>
 
           <button
             type="button"
-            onClick={() => { setMode('manual'); stopScanner(); }}
+            onClick={() => { setMode('manual'); stopScanner(); setIsCameraOpen(false); }}
             style={{
-              padding: '11px 12px',
+              padding: '10px 12px',
               fontSize: '13px',
-              fontWeight: mode === 'manual' ? '700' : '500',
-              borderRadius: '8px',
-              border: 'none',
-              background: mode === 'manual' ? 'var(--gold)' : 'transparent',
-              color: mode === 'manual' ? '#FFFFFF' : '#94A3B8',
+              fontWeight: mode === 'manual' ? '700' : '600',
+              borderRadius: '9px',
+              border: mode === 'manual' ? '1px solid rgba(0,0,0,0.06)' : 'none',
+              background: mode === 'manual' ? '#FFFFFF' : 'transparent',
+              color: mode === 'manual' ? '#0F172A' : '#64748B',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              gap: '7px',
+              boxShadow: mode === 'manual' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
-              touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent'
+              touchAction: 'manipulation'
             }}
           >
-            <Keyboard size={15} />
+            <Keyboard size={15} color={mode === 'manual' ? '#B48A1E' : '#64748B'} />
             <span>Enter Reference</span>
           </button>
         </div>
       </div>
 
-      {/* 2.5 Active Open Orders Bar */}
-      <div style={{ padding: '0 16px 12px', background: 'rgba(15,23,42,0.5)', position: 'relative', zIndex: 30 }}>
+      {/* 2.5 Active Open Orders Bar (Light theme) */}
+      <div style={{
+        padding: '10px 16px 14px',
+        background: '#FFFFFF',
+        borderBottom: '1px solid #E2E8F0',
+        position: 'relative',
+        zIndex: 30
+      }}>
         {selectedOrderId ? (
           (() => {
             const selected = openOrders.find(o => o.id === selectedOrderId)
             return (
               <div style={{
-                background: 'linear-gradient(135deg, rgba(201,168,76,0.15) 0%, rgba(180,138,30,0.08) 100%)',
-                border: '1px solid rgba(201,168,76,0.35)',
-                borderRadius: '10px',
-                padding: '10px 12px',
+                background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                border: '1.5px solid #FCD34D',
+                borderRadius: '12px',
+                padding: '11px 14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '10px'
+                gap: '10px',
+                boxShadow: '0 2px 8px rgba(180,138,30,0.08)'
               }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: '800', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: '11px', color: '#B45309', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Target Order:
                     </span>
-                    <span style={{ fontSize: '14px', color: '#FFFFFF', fontWeight: '800' }}>
+                    <span style={{ fontSize: '14px', color: '#0F172A', fontWeight: '800' }}>
                       {selected?.displayTitle || 'Order'}
                     </span>
                     {selected?.isVerified && (
-                      <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#10B981', color: '#FFFFFF', fontWeight: '700' }}>
+                      <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0', fontWeight: '800' }}>
                         Verified
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#CBD5E1', marginTop: '2px' }}>
-                    Expected: <b style={{ color: 'var(--gold-light)' }}>{selected?.total.toFixed(2)} ETB</b> · {selected?.waiterName} ({selected?.itemsCount} items)
+                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
+                    Expected Bill: <b style={{ color: '#92400E' }}>{selected?.total.toFixed(2)} ETB</b> · {selected?.waiterName} ({selected?.itemsCount} items)
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleSelectOrder(null)}
                   style={{
-                    padding: '6px 10px',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: '#E2E8F0',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #FCD34D',
+                    background: '#FFFFFF',
+                    color: '#92400E',
                     fontSize: '11px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                   }}
                 >
                   Change
@@ -880,11 +942,11 @@ export default function QRScannerPage() {
           })()
         ) : (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Open Orders ({openOrders.length}):
               </span>
-              <span style={{ fontSize: '11px', color: 'var(--gold-light)' }}>
+              <span style={{ fontSize: '11px', color: '#B45309', fontWeight: '600' }}>
                 Tap a table to link payment
               </span>
             </div>
@@ -904,37 +966,41 @@ export default function QRScannerPage() {
                     style={{
                       flexShrink: 0,
                       padding: '8px 12px',
-                      borderRadius: '8px',
+                      borderRadius: '10px',
                       border: order.isVerified
-                        ? '1px solid rgba(16,185,129,0.4)'
-                        : '1px solid rgba(255,255,255,0.12)',
+                        ? '1px solid #A7F3D0'
+                        : '1px solid #E2E8F0',
                       background: order.isVerified
-                        ? 'rgba(16,185,129,0.12)'
-                        : 'rgba(255,255,255,0.04)',
-                      color: '#FFFFFF',
+                        ? '#ECFDF5'
+                        : '#F8FAFC',
+                      color: '#0F172A',
                       textAlign: 'left',
                       cursor: 'pointer',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '2px'
+                      gap: '2px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: '700', fontSize: '12px' }}>{order.displayTitle}</span>
+                      <span style={{ fontWeight: '700', fontSize: '12px', color: order.isVerified ? '#065F46' : '#0F172A' }}>
+                        {order.displayTitle}
+                      </span>
                       {order.isVerified && (
-                        <span style={{ fontSize: '9px', background: '#10B981', color: '#FFFFFF', padding: '1px 4px', borderRadius: '3px', fontWeight: '800' }}>
+                        <span style={{ fontSize: '9px', background: '#059669', color: '#FFFFFF', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>
                           ✓
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '700' }}>
+                    <span style={{ fontSize: '12px', color: '#B45309', fontWeight: '800' }}>
                       {order.total.toFixed(2)} ETB
                     </span>
                   </button>
                 ))}
               </div>
             ) : (
-              <div style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic', padding: '4px 0' }}>
+              <div style={{ fontSize: '12px', color: '#94A3B8', fontStyle: 'italic', padding: '4px 0' }}>
                 No active open orders currently. You can still scan any slip directly.
               </div>
             )}
@@ -943,7 +1009,7 @@ export default function QRScannerPage() {
       </div>
 
       {/* 3. Main Scanning / Verification Area */}
-      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, padding: '20px 16px', display: 'flex', flexDirection: 'column' }}>
 
         {/* --- STATE A: VERIFYING IN PROGRESS --- */}
         {verifying && (
@@ -953,27 +1019,32 @@ export default function QRScannerPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '40px 20px',
-            textAlign: 'center'
+            padding: '48px 20px',
+            textAlign: 'center',
+            background: '#FFFFFF',
+            borderRadius: '20px',
+            border: '1px solid #E2E8F0',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
           }}>
             <div style={{
-              width: '72px',
-              height: '72px',
+              width: '76px',
+              height: '76px',
               borderRadius: '50%',
-              background: 'rgba(180,138,30,0.12)',
-              border: '2px solid var(--gold)',
+              background: '#FFFBEB',
+              border: '2px solid #FCD34D',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: '20px'
+              marginBottom: '20px',
+              boxShadow: '0 4px 16px rgba(180,138,30,0.15)'
             }}>
-              <RefreshCw size={32} className="animate-spin" style={{ color: 'var(--gold)' }} />
+              <RefreshCw size={34} className="animate-spin" style={{ color: '#B48A1E' }} />
             </div>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 6px 0', color: '#FFFFFF' }}>
+            <h3 style={{ fontSize: '19px', fontWeight: '800', margin: '0 0 8px 0', color: '#0F172A' }}>
               Querying Bank Server...
             </h3>
-            <p style={{ fontSize: '13px', color: '#94A3B8', maxWidth: '300px', margin: 0, lineHeight: 1.5 }}>
-              Connecting directly to Ethio Telecom / Commercial Bank of Ethiopia to validate transaction slip.
+            <p style={{ fontSize: '13px', color: '#64748B', maxWidth: '320px', margin: 0, lineHeight: 1.5 }}>
+              Connecting directly to Ethio Telecom / Commercial Bank of Ethiopia to validate transaction slip authenticity.
             </p>
           </div>
         )}
@@ -1014,44 +1085,45 @@ export default function QRScannerPage() {
               : verifiedResult.success
                 ? '#059669'
                 : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                  ? '#F59E0B'
+                  ? '#D97706'
                   : '#DC2626'
 
             return (
               <div style={{
-                background: '#131B2E',
-                border: `3px solid ${borderColor}`,
-                borderRadius: '16px',
+                background: '#FFFFFF',
+                border: `2px solid ${borderColor}`,
+                borderRadius: '20px',
                 padding: '24px 20px',
                 boxShadow: (isDup || isRecvMismatch || isUnderpaid)
-                  ? '0 10px 30px rgba(220,38,38,0.35)'
+                  ? '0 10px 30px rgba(220,38,38,0.12)'
                   : verifiedResult.success
-                    ? '0 10px 30px rgba(5,150,105,0.15)'
-                    : '0 10px 30px rgba(220,38,38,0.15)',
+                    ? '0 10px 30px rgba(5,150,105,0.12)'
+                    : '0 10px 30px rgba(220,38,38,0.08)',
                 position: 'relative'
               }}>
                 {/* Result Status Banner */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
                   <div style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '50%',
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '14px',
                     background: (isDup || isRecvMismatch || isUnderpaid || !verifiedResult.success)
-                      ? 'rgba(220,38,38,0.2)'
+                      ? '#FEF2F2'
                       : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                        ? 'rgba(245,158,11,0.2)'
-                        : 'rgba(5,150,105,0.2)',
+                        ? '#FFFBEB'
+                        : '#ECFDF5',
+                    border: `1.5px solid ${(isDup || isRecvMismatch || isUnderpaid || !verifiedResult.success) ? '#FECACA' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#FDE68A' : '#A7F3D0'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
                     {isUnderpaid ? (
-                      <AlertTriangle size={28} color="#EF4444" />
+                      <AlertTriangle size={28} color="#DC2626" />
                     ) : (isDup || isRecvMismatch || !verifiedResult.success) ? (
                       <XCircle size={28} color="#DC2626" />
                     ) : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? (
-                      <AlertTriangle size={28} color="#F59E0B" />
+                      <AlertTriangle size={28} color="#D97706" />
                     ) : (
                       <CheckCircle2 size={28} color="#059669" />
                     )}
@@ -1059,16 +1131,16 @@ export default function QRScannerPage() {
                   <div>
                     <div style={{
                       fontSize: '11px',
-                      fontWeight: '900',
+                      fontWeight: '800',
                       textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
+                      letterSpacing: '0.06em',
                       color: (isDup || isRecvMismatch || isUnderpaid)
-                        ? '#EF4444'
+                        ? '#DC2626'
                         : verifiedResult.success
-                          ? '#10B981'
+                          ? '#059669'
                           : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                            ? '#F59E0B'
-                            : '#EF4444'
+                            ? '#D97706'
+                            : '#DC2626'
                     }}>
                       {isUnderpaid
                         ? '⚠️ SHORT PAYMENT — AMOUNT TOO LOW'
@@ -1082,7 +1154,7 @@ export default function QRScannerPage() {
                                 ? 'Gateway Delay / Check Direct Slip'
                                 : 'Verification Unsuccessful'}
                     </div>
-                    <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF', margin: '2px 0 0 0' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#0F172A', margin: '3px 0 0 0', letterSpacing: '-0.02em' }}>
                       {isUnderpaid
                         ? 'Amount Too Low — Not Attached'
                         : isDup
@@ -1098,25 +1170,23 @@ export default function QRScannerPage() {
                   </div>
                 </div>
 
-                {/* --- BIG HIGH-VISIBILITY WARNING BOXES --- */}
                 {/* 1. DUPLICATE ERROR WARNING */}
                 {isDup && (
                   <div style={{
-                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
-                    border: '2px solid #EF4444',
+                    background: '#FEF2F2',
+                    border: '1.5px solid #F87171',
                     borderRadius: '12px',
                     padding: '16px',
-                    marginBottom: '20px',
-                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                    marginBottom: '18px'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
-                      <AlertTriangle size={22} color="#EF4444" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: '800', fontSize: '14px' }}>
+                      <AlertTriangle size={20} color="#DC2626" />
                       <span>DO NOT ACCEPT — RECEIPT ALREADY USED!</span>
                     </div>
-                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                    <div style={{ fontSize: '13px', color: '#7F1D1D', marginTop: '6px', lineHeight: 1.5 }}>
                       {verifiedResult.errorMessage || `This reference code (${verifiedResult.reference}) has ALREADY been used for another order or payment. One receipt cannot be used twice!`}
                     </div>
-                    <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', borderRadius: '6px', fontSize: '12px', color: '#FECACA', fontWeight: '700' }}>
+                    <div style={{ marginTop: '8px', padding: '8px 10px', background: '#FEE2E2', borderRadius: '6px', fontSize: '12px', color: '#991B1B', fontWeight: '700' }}>
                       🛑 <b>Action:</b> Ask customer for today's new transfer confirmation.
                     </div>
                   </div>
@@ -1125,46 +1195,44 @@ export default function QRScannerPage() {
                 {/* 2. RECEIVER MISMATCH WARNING */}
                 {isRecvMismatch && (
                   <div style={{
-                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
-                    border: '2px solid #EF4444',
+                    background: '#FEF2F2',
+                    border: '1.5px solid #F87171',
                     borderRadius: '12px',
                     padding: '16px',
-                    marginBottom: '20px',
-                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                    marginBottom: '18px'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
-                      <AlertTriangle size={22} color="#EF4444" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: '800', fontSize: '14px' }}>
+                      <AlertTriangle size={20} color="#DC2626" />
                       <span>MONEY SENT TO WRONG PERSON / ACCOUNT!</span>
                     </div>
-                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                    <div style={{ fontSize: '13px', color: '#7F1D1D', marginTop: '6px', lineHeight: 1.5 }}>
                       {verifiedResult.errorMessage || 'Payment was credited to someone else, NOT your official business account!'}
                     </div>
                     {verifiedResult.receiverName && (
-                      <div style={{ marginTop: '8px', fontSize: '13px', color: '#FECACA' }}>
-                        Money was credited to: <b style={{ color: '#FFFFFF', textDecoration: 'underline' }}>{verifiedResult.receiverName}</b> ({verifiedResult.receiverAccount || 'other account'})
+                      <div style={{ marginTop: '8px', fontSize: '13px', color: '#991B1B' }}>
+                        Money was credited to: <b style={{ textDecoration: 'underline' }}>{verifiedResult.receiverName}</b> ({verifiedResult.receiverAccount || 'other account'})
                       </div>
                     )}
-                    <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', borderRadius: '6px', fontSize: '12px', color: '#FECACA', fontWeight: '700' }}>
+                    <div style={{ marginTop: '8px', padding: '8px 10px', background: '#FEE2E2', borderRadius: '6px', fontSize: '12px', color: '#991B1B', fontWeight: '700' }}>
                       🛑 <b>Do NOT serve order:</b> The business did NOT receive the money.
                     </div>
                   </div>
                 )}
 
-                {/* 3. UNDERPAID WARNING (AMOUNT IS TOO LOW) */}
+                {/* 3. UNDERPAID WARNING */}
                 {isUnderpaid && (
                   <div style={{
-                    background: 'linear-gradient(135deg, rgba(220,38,38,0.3) 0%, rgba(185,28,28,0.45) 100%)',
-                    border: '2px solid #EF4444',
+                    background: '#FEF2F2',
+                    border: '1.5px solid #F87171',
                     borderRadius: '12px',
                     padding: '16px',
-                    marginBottom: '20px',
-                    boxShadow: '0 4px 16px rgba(220,38,38,0.3)'
+                    marginBottom: '18px'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FCA5A5', fontWeight: '900', fontSize: '15px' }}>
-                      <AlertTriangle size={22} color="#EF4444" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: '800', fontSize: '14px' }}>
+                      <AlertTriangle size={20} color="#DC2626" />
                       <span>⚠️ AMOUNT IS TOO LOW — RECEIPT NOT ATTACHED!</span>
                     </div>
-                    <div style={{ fontSize: '13px', color: '#FFFFFF', marginTop: '8px', lineHeight: 1.5, fontWeight: '700' }}>
+                    <div style={{ fontSize: '13px', color: '#7F1D1D', marginTop: '6px', lineHeight: 1.5 }}>
                       Customer only paid <b>{formatMoney(verifiedResult.amount || 0)}</b>, but the order bill is <b>{formatMoney(targetBill || 0)}</b>.
                     </div>
                     <div style={{
@@ -1172,43 +1240,41 @@ export default function QRScannerPage() {
                       padding: '10px 12px',
                       background: '#DC2626',
                       borderRadius: '8px',
-                      fontSize: '14px',
+                      fontSize: '13px',
                       color: '#FFFFFF',
-                      fontWeight: '900',
+                      fontWeight: '800',
                       textAlign: 'center'
                     }}>
                       🚨 SHORT BY {formatMoney(shortAmt)}! RECEIPT NOT ATTACHED.
                     </div>
-                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#FEE2E2', textAlign: 'center', fontWeight: '600' }}>
-                      Customer must pay full balance before order can be attached or closed.
-                    </div>
                   </div>
                 )}
 
-                {/* Amount Display (RED if underpaid, GREEN if paid in full/tip) */}
+                {/* Amount Display */}
                 {typeof verifiedResult.amount === 'number' && (
                   <div style={{
-                    background: isUnderpaid ? 'rgba(220,38,38,0.15)' : 'rgba(255,255,255,0.04)',
-                    border: `1.5px solid ${isUnderpaid ? '#EF4444' : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: '12px',
-                    padding: '16px',
+                    background: isUnderpaid ? '#FEF2F2' : '#F8FAFC',
+                    border: `1.5px solid ${isUnderpaid ? '#FCA5A5' : '#E2E8F0'}`,
+                    borderRadius: '14px',
+                    padding: '18px',
                     textAlign: 'center',
                     marginBottom: '20px'
                   }}>
-                    <div style={{ fontSize: '11px', color: isUnderpaid ? '#FCA5A5' : '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '800' }}>
+                    <div style={{ fontSize: '11px', color: isUnderpaid ? '#991B1B' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '800' }}>
                       {isUnderpaid ? '⚠️ Verified Amount Paid (SHORT PAYMENT)' : 'Verified Amount Paid'}
                     </div>
                     <div style={{
                       fontSize: '34px',
                       fontWeight: '900',
-                      color: isUnderpaid ? '#EF4444' : '#10B981',
+                      color: isUnderpaid ? '#DC2626' : '#059669',
                       fontVariantNumeric: 'tabular-nums',
-                      marginTop: '4px'
+                      marginTop: '4px',
+                      letterSpacing: '-0.02em'
                     }}>
                       {formatMoney(verifiedResult.amount)}
                     </div>
                     {isUnderpaid && targetBill !== null && (
-                      <div style={{ fontSize: '12px', color: '#FCA5A5', marginTop: '6px', fontWeight: '800' }}>
+                      <div style={{ fontSize: '12px', color: '#DC2626', marginTop: '6px', fontWeight: '700' }}>
                         Bill Total: {formatMoney(targetBill)} (Short: -{formatMoney(shortAmt)})
                       </div>
                     )}
@@ -1216,128 +1282,101 @@ export default function QRScannerPage() {
                 )}
 
                 {/* Details List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Provider:</span>
-                    <b style={{ color: '#FFFFFF' }}>{verifiedResult.provider}</b>
+                <div style={{
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '12px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  fontSize: '13px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                    <span style={{ color: '#64748B' }}>Provider:</span>
+                    <b style={{ color: '#0F172A' }}>{verifiedResult.provider}</b>
                   </div>
 
                   {verifiedResult.receiverName && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                      <span style={{ color: '#94A3B8' }}>Credited Party (Receiver):</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                      <span style={{ color: '#64748B' }}>Credited Party:</span>
                       <b style={{
-                        color: isRecvMismatch ? '#EF4444' : '#34D399',
-                        fontSize: '14px',
-                        background: isRecvMismatch ? 'rgba(220,38,38,0.2)' : 'transparent',
-                        padding: isRecvMismatch ? '2px 8px' : 0,
-                        borderRadius: isRecvMismatch ? '4px' : 0,
-                        border: isRecvMismatch ? '1px solid #DC2626' : 'none'
+                        color: isRecvMismatch ? '#DC2626' : '#059669',
+                        fontSize: '13px',
+                        background: isRecvMismatch ? '#FEE2E2' : 'transparent',
+                        padding: isRecvMismatch ? '2px 6px' : 0,
+                        borderRadius: '4px'
                       }}>
-                        {isRecvMismatch ? `❌ ${verifiedResult.receiverName} (WRONG ACCOUNT)` : verifiedResult.receiverName}
+                        {verifiedResult.receiverName}
                       </b>
                     </div>
                   )}
 
-                  {verifiedResult.receiverAccount && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                      <span style={{ color: '#94A3B8' }}>Receiver Account/Phone:</span>
-                      <span style={{ color: isRecvMismatch ? '#EF4444' : '#E2E8F0', fontFamily: 'monospace', fontWeight: isRecvMismatch ? '700' : 'normal' }}>
-                        {isRecvMismatch ? `❌ ${verifiedResult.receiverAccount}` : verifiedResult.receiverAccount}
-                      </span>
+                  {verifiedResult.payerName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                      <span style={{ color: '#64748B' }}>Payer:</span>
+                      <b style={{ color: '#0F172A' }}>{verifiedResult.payerName}</b>
                     </div>
                   )}
 
-                {verifiedResult.payerName && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Payer Name:</span>
-                    <b style={{ color: '#FFFFFF' }}>{verifiedResult.payerName}</b>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                    <span style={{ color: '#64748B' }}>Reference Code:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <code style={{ fontFamily: 'monospace', fontWeight: '700', fontSize: '13px', color: '#0F172A' }}>
+                        {verifiedResult.reference}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyRef(verifiedResult.reference)}
+                        style={{
+                          background: '#E2E8F0',
+                          border: 'none',
+                          color: '#475569',
+                          borderRadius: '6px',
+                          padding: '4px 6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                        title="Copy Reference"
+                      >
+                        {copiedRef ? <Check size={12} color="#059669" /> : <Copy size={12} />}
+                      </button>
+                    </div>
                   </div>
-                )}
 
-                {verifiedResult.payerAccountOrPhone && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Payer Phone/Account:</span>
-                    <span style={{ color: '#E2E8F0', fontFamily: 'monospace' }}>{verifiedResult.payerAccountOrPhone}</span>
-                  </div>
-                )}
+                  {verifiedResult.dateTime && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748B' }}>Date & Time:</span>
+                      <span style={{ color: '#0F172A', fontWeight: '600' }}>{verifiedResult.dateTime}</span>
+                    </div>
+                  )}
 
-                {verifiedResult.dateTime && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                    <span style={{ color: '#94A3B8' }}>Payment Timestamp:</span>
-                    <span style={{ color: '#E2E8F0' }}>{verifiedResult.dateTime}</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
-                  <span style={{ color: '#94A3B8' }}>Transaction Ref:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--gold-light)', fontWeight: '700' }}>
-                      {verifiedResult.reference}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyRef(verifiedResult.reference)}
-                      style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '2px' }}
-                      title="Copy reference code"
+                  {verifiedResult.reference && (verifiedResult.reference.startsWith('http') || verifiedResult.provider !== 'UNKNOWN') && (
+                    <a
+                      href={verifiedResult.reference.startsWith('http') ? verifiedResult.reference : (verifiedResult.provider === 'TELEBIRR' ? `https://telebirr.ethiotelecom.et/receipt?ref=${verifiedResult.reference}` : `https://cbe.com.et/receipt?ref=${verifiedResult.reference}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: '#FFFFFF',
+                        border: '1px solid #CBD5E1',
+                        color: '#0F172A',
+                        textDecoration: 'none',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        marginTop: '4px'
+                      }}
                     >
-                      {copiedRef ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
-                    </button>
-                  </div>
-                </div>
-
-                {verifiedResult.errorMessage && (
-                  <div style={{
-                    background: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'rgba(245,158,11,0.12)' : 'rgba(220,38,38,0.1)',
-                    border: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(220,38,38,0.25)',
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    color: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#FDE68A' : '#FCA5A5',
-                    fontSize: '12px',
-                    lineHeight: 1.4
-                  }}>
-                    <b>{(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? 'Notice:' : 'Server Error:'}</b> {verifiedResult.errorMessage}
-                  </div>
-                )}
-
-                {/* Direct link to official bank web receipt */}
-                {verifiedResult.reference && (
-                  <a
-                    href={
-                      verifiedResult.provider === 'TELEBIRR'
-                        ? `https://transactioninfo.ethiotelecom.et/receipt/${verifiedResult.reference}`
-                        : verifiedResult.reference.startsWith('v2-')
-                          ? `https://mbreciept.cbe.com.et/${verifiedResult.reference}`
-                          : `https://apps.cbe.com.et:100/?id=${verifiedResult.reference}`
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      padding: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '12px 14px' : '10px 12px',
-                      borderRadius: '8px',
-                      background: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                        ? 'linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.3) 100%)'
-                        : 'rgba(255,255,255,0.06)',
-                      border: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                        ? '1px solid rgba(245,158,11,0.45)'
-                        : '1px solid rgba(255,255,255,0.12)',
-                      color: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                        ? '#FDE68A'
-                        : verifiedResult.provider === 'TELEBIRR' ? '#67E8F9' : '#E9D5FF',
-                      textDecoration: 'none',
-                      fontSize: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '13px' : '12px',
-                      fontWeight: '700',
-                      marginTop: '6px',
-                      boxShadow: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '0 4px 14px rgba(245,158,11,0.2)' : 'none'
-                    }}
-                  >
-                    <ExternalLink size={14} />
-                    Open Official {verifiedResult.provider} Slip in Browser ({verifiedResult.reference})
-                  </a>
-                )}
+                      <ExternalLink size={14} color="#B48A1E" />
+                      <span>Open Official {verifiedResult.provider} Slip in Browser</span>
+                    </a>
+                  )}
                 </div>
               </div>
             )
@@ -1346,11 +1385,10 @@ export default function QRScannerPage() {
             {/* Cashier Link Action */}
             {verifiedResult.success && (
               <div style={{
-                background: 'rgba(16,185,129,0.08)',
-                border: '1px solid rgba(16,185,129,0.3)',
-                borderRadius: '12px',
-                padding: '14px',
-                marginBottom: '14px'
+                background: '#ECFDF5',
+                border: '1.5px solid #A7F3D0',
+                borderRadius: '14px',
+                padding: '16px'
               }}>
                 {linkedSuccessMessage ? (
                   <div>
@@ -1358,12 +1396,12 @@ export default function QRScannerPage() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '10px',
-                      color: '#34D399',
-                      fontWeight: '700',
+                      color: '#065F46',
+                      fontWeight: '800',
                       fontSize: '13px',
                       marginBottom: '8px'
                     }}>
-                      <CheckCircle2 size={20} color="#10B981" />
+                      <CheckCircle2 size={20} color="#059669" />
                       <span>{linkedSuccessMessage}</span>
                     </div>
                     <button
@@ -1372,8 +1410,9 @@ export default function QRScannerPage() {
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#94A3B8',
-                        fontSize: '11px',
+                        color: '#059669',
+                        fontSize: '12px',
+                        fontWeight: '600',
                         cursor: 'pointer',
                         textDecoration: 'underline',
                         padding: 0
@@ -1384,7 +1423,7 @@ export default function QRScannerPage() {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '12px', color: '#CBD5E1', marginBottom: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: '11px', color: '#047857', marginBottom: '10px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       ⚡ Confirm & Send to Cashier POS:
                     </div>
 
@@ -1396,18 +1435,16 @@ export default function QRScannerPage() {
                       const isPartial = typeof scannedAmt === 'number' && typeof targetAmt === 'number' && diff < -0.5
                       const isOverpaid = typeof scannedAmt === 'number' && typeof targetAmt === 'number' && diff > 0.5
 
-                      // Check if scanned amount matches any OTHER table
                       const otherMatch = (typeof scannedAmt === 'number')
                         ? openOrders.find(o => o.id !== selectedOrderId && Math.abs(o.total - scannedAmt) < 0.5)
                         : null
 
                       return (
                         <div>
-                          {/* 1. Smart Suggestion if scanned amount matches a different table */}
                           {otherMatch && (
                             <div style={{
-                              background: 'linear-gradient(135deg, rgba(201,168,76,0.18) 0%, rgba(180,138,30,0.1) 100%)',
-                              border: '1px solid rgba(201,168,76,0.45)',
+                              background: '#FFFBEB',
+                              border: '1px solid #FCD34D',
                               borderRadius: '8px',
                               padding: '10px 12px',
                               marginBottom: '12px',
@@ -1417,10 +1454,10 @@ export default function QRScannerPage() {
                               gap: '10px'
                             }}>
                               <div>
-                                <div style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: '800' }}>
+                                <div style={{ fontSize: '11px', color: '#B45309', fontWeight: '800' }}>
                                   💡 MATCHES ANOTHER TABLE:
                                 </div>
-                                <div style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: '700' }}>
+                                <div style={{ fontSize: '13px', color: '#0F172A', fontWeight: '700' }}>
                                   {otherMatch.displayTitle} ({formatMoney(otherMatch.total)})
                                 </div>
                               </div>
@@ -1434,7 +1471,7 @@ export default function QRScannerPage() {
                                 style={{
                                   padding: '7px 12px',
                                   borderRadius: '6px',
-                                  background: '#10B981',
+                                  background: '#059669',
                                   color: '#FFFFFF',
                                   fontWeight: '700',
                                   fontSize: '12px',
@@ -1448,64 +1485,26 @@ export default function QRScannerPage() {
                             </div>
                           )}
 
-                          {/* 2. Amount analysis for the selected table */}
-                          {target && isPartial && (
-                            <div style={{
-                              background: 'linear-gradient(135deg, rgba(220,38,38,0.25) 0%, rgba(185,28,28,0.4) 100%)',
-                              border: '2px solid #EF4444',
-                              borderRadius: '10px',
-                              padding: '14px',
-                              marginBottom: '14px',
-                              color: '#FFFFFF',
-                              fontSize: '13px',
-                              boxShadow: '0 4px 14px rgba(220,38,38,0.3)'
-                            }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontWeight: '900', fontSize: '15px' }}>
-                                <AlertTriangle size={20} color="#EF4444" />
-                                <span>⚠️ AMOUNT IS TOO LOW — CANNOT ATTACH!</span>
-                              </div>
-                              <div style={{ marginTop: '6px', fontWeight: '700' }}>
-                                Customer only sent {formatMoney(scannedAmt)} for {target?.displayTitle}'s bill of {formatMoney(targetAmt)}.
-                              </div>
-                              <div style={{
-                                marginTop: '8px',
-                                padding: '8px 10px',
-                                background: '#DC2626',
-                                borderRadius: '6px',
-                                fontWeight: '900',
-                                color: '#FFFFFF',
-                                textAlign: 'center',
-                                fontSize: '13px'
-                              }}>
-                                🚨 SHORT BY {formatMoney(Math.abs(diff))}! RECEIPT NOT ATTACHED.
-                              </div>
-                              <div style={{ marginTop: '6px', fontSize: '12px', color: '#FECACA', textAlign: 'center', fontWeight: '600' }}>
-                                Customer must pay the full remaining amount.
-                              </div>
-                            </div>
-                          )}
-
                           {target && isOverpaid && (
                             <div style={{
-                              background: 'rgba(16,185,129,0.12)',
-                              border: '1px solid rgba(16,185,129,0.3)',
+                              background: '#F0FDF4',
+                              border: '1px solid #BBF7D0',
                               borderRadius: '8px',
                               padding: '10px 12px',
                               marginBottom: '12px',
-                              color: '#A7F3D0',
+                              color: '#065F46',
                               fontSize: '12px'
                             }}>
                               <b>🟢 Extra Amount / Tip:</b> Customer paid {formatMoney(scannedAmt)} for {formatMoney(targetAmt)} bill.
-                              <div style={{ marginTop: '3px', fontWeight: '700', color: '#34D399' }}>
-                                Extra +{formatMoney(diff)} will be recorded as Tip for staff.
+                              <div style={{ marginTop: '3px', fontWeight: '700', color: '#059669' }}>
+                                Extra +{formatMoney(diff)} recorded as Tip.
                               </div>
                             </div>
                           )}
 
-                          {/* 3. Universal Table Selector & Switcher */}
                           <div style={{ marginBottom: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                              <span style={{ fontSize: '12px', color: '#94A3B8' }}>
+                              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
                                 {target ? 'Assigned Target Table:' : 'Select which table to attach:'}
                               </span>
                               {target && (
@@ -1515,7 +1514,7 @@ export default function QRScannerPage() {
                                   style={{
                                     background: 'none',
                                     border: 'none',
-                                    color: 'var(--gold-light)',
+                                    color: '#B45309',
                                     fontSize: '11px',
                                     cursor: 'pointer',
                                     textDecoration: 'underline',
@@ -1534,13 +1533,14 @@ export default function QRScannerPage() {
                               }}
                               style={{
                                 width: '100%',
-                                background: '#0F172A',
-                                border: '1px solid rgba(255,255,255,0.25)',
-                                color: '#FFFFFF',
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                color: '#0F172A',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 fontSize: '13px',
-                                fontWeight: '600'
+                                fontWeight: '600',
+                                outline: 'none'
                               }}
                             >
                               <option value="">-- Choose or Switch Table / Order --</option>
@@ -1552,26 +1552,24 @@ export default function QRScannerPage() {
                             </select>
                           </div>
 
-                          {/* 4. Action Button */}
                           {selectedOrderId ? (
                             isPartial ? (
                               <div style={{
                                 width: '100%',
-                                padding: '14px',
+                                padding: '12px',
                                 borderRadius: '10px',
-                                background: 'rgba(220,38,38,0.2)',
-                                border: '2px solid #EF4444',
-                                color: '#FCA5A5',
+                                background: '#FEE2E2',
+                                border: '1.5px solid #F87171',
+                                color: '#991B1B',
                                 textAlign: 'center',
-                                fontWeight: '900',
+                                fontWeight: '800',
                                 fontSize: '13px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '8px',
-                                boxShadow: '0 4px 14px rgba(220,38,38,0.25)'
+                                gap: '8px'
                               }}>
-                                <AlertTriangle size={18} color="#EF4444" />
+                                <AlertTriangle size={18} color="#DC2626" />
                                 <span>⛔ ATTACHMENT BLOCKED: Amount is low (-{formatMoney(Math.abs(diff))})</span>
                               </div>
                             ) : (
@@ -1584,16 +1582,16 @@ export default function QRScannerPage() {
                                   padding: '12px',
                                   borderRadius: '10px',
                                   border: 'none',
-                                  background: '#10B981',
+                                  background: '#059669',
                                   color: '#FFFFFF',
-                                  fontWeight: '700',
+                                  fontWeight: '800',
                                   fontSize: '14px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   gap: '8px',
-                                  boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
+                                  boxShadow: '0 4px 12px rgba(5,150,105,0.25)'
                                 }}
                               >
                                 {isLinkingOrder ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
@@ -1605,7 +1603,7 @@ export default function QRScannerPage() {
                               </button>
                             )
                           ) : (
-                            <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center', padding: '6px 0', fontStyle: 'italic' }}>
+                            <div style={{ fontSize: '12px', color: '#64748B', textAlign: 'center', padding: '6px 0', fontStyle: 'italic' }}>
                               Select a table above to send this payment to the Cashier POS screen.
                             </div>
                           )}
@@ -1624,18 +1622,19 @@ export default function QRScannerPage() {
               style={{
                 width: '100%',
                 padding: '14px',
-                borderRadius: '12px',
+                borderRadius: '14px',
                 border: 'none',
                 background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
                 color: '#FFFFFF',
-                fontWeight: '700',
+                fontWeight: '800',
                 fontSize: '15px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                boxShadow: '0 4px 14px rgba(180,138,30,0.35)'
+                boxShadow: '0 6px 18px rgba(180,138,30,0.3)',
+                transition: 'all 0.15s ease'
               }}
             >
               <Camera size={18} />
@@ -1644,168 +1643,394 @@ export default function QRScannerPage() {
           </div>
         )}
 
-        {/* --- STATE C: CAMERA QR VIEWFINDER --- */}
+        {/* --- STATE C: CAMERA QR SCANNER & HERO BUTTON --- */}
         {!verifying && !verifiedResult && mode === 'camera' && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{
-              width: '100%',
-              maxWidth: '440px',
-              height: 'min(50vh, 380px)',
-              background: '#000000',
-              borderRadius: '20px',
-              overflow: 'hidden',
-              position: 'relative',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-              border: '2px solid rgba(212,175,55,0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxSizing: 'border-box'
-            }}>
-              {/* html5-qrcode video element mounts here */}
-              <div id={scannerContainerId} style={{ width: '100%', height: '100%' }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
 
-              {/* Viewfinder Overlay Targeting Reticle */}
+            {/* 1. HERO SCAN CARD (When camera is NOT open yet) */}
+            {!isCameraOpen && !cameraActive && !cameraStarting && !cameraError && (
               <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: 'min(76%, 260px)',
-                height: 'min(76%, 260px)',
-                border: '1.5px solid rgba(212,175,55,0.6)',
+                width: '100%',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '24px',
+                padding: '36px 20px',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.04)',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}>
+                {/* Status Pill */}
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 12px',
+                  borderRadius: '20px',
+                  background: '#ECFDF5',
+                  border: '1px solid #A7F3D0',
+                  color: '#059669',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  marginBottom: '20px'
+                }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
+                  <span>Scanner Ready</span>
+                </div>
+
+                {/* Center QR Graphic Emblem */}
+                <div style={{
+                  width: '88px',
+                  height: '88px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                  border: '2px solid #FCD34D',
+                  boxShadow: '0 4px 16px rgba(180,138,30,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '20px'
+                }}>
+                  <QrCode size={44} color="#B48A1E" />
+                </div>
+
+                <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0F172A', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>
+                  Ready to Scan Receipt
+                </h2>
+                <p style={{ fontSize: '13px', color: '#64748B', maxWidth: '300px', margin: '0 0 28px 0', lineHeight: 1.5 }}>
+                  Tap below to launch the camera and scan Telebirr or CBE Birr payment confirmation slips.
+                </p>
+
+                {/* THE PRIMARY SCAN BUTTON */}
+                <button
+                  type="button"
+                  onClick={handleStartScan}
+                  style={{
+                    width: '100%',
+                    maxWidth: '340px',
+                    minHeight: '54px',
+                    padding: '14px 24px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
+                    color: '#FFFFFF',
+                    fontWeight: '800',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    boxShadow: '0 6px 22px rgba(180,138,30,0.35)',
+                    transition: 'all 0.15s ease',
+                    touchAction: 'manipulation'
+                  }}
+                >
+                  <Camera size={22} />
+                  <span>Tap to Scan QR Code</span>
+                </button>
+
+                {/* SECONDARY UPLOAD / SNAP PHOTO BUTTON */}
+                <label
+                  style={{
+                    width: '100%',
+                    maxWidth: '340px',
+                    marginTop: '12px',
+                    minHeight: '44px',
+                    padding: '11px 20px',
+                    borderRadius: '12px',
+                    background: '#F8FAFC',
+                    border: '1px solid #CBD5E1',
+                    color: '#334155',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    touchAction: 'manipulation',
+                    transition: 'background 0.15s ease'
+                  }}
+                >
+                  <Zap size={16} color="#B48A1E" />
+                  <span>Upload / Snap QR Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileScan}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+
+                {/* Trust Footer */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  color: '#94A3B8',
+                  marginTop: '24px'
+                }}>
+                  <ShieldCheck size={14} color="#059669" />
+                  <span>Bank server validated · Anti-fraud protection</span>
+                </div>
+              </div>
+            )}
+
+            {/* 2. CAMERA VIEWFINDER (When camera is active or starting) */}
+            <div style={{
+              display: (isCameraOpen || cameraActive || cameraStarting || cameraError) ? 'flex' : 'none',
+              flexDirection: 'column',
+              alignItems: 'center',
+              width: '100%'
+            }}>
+              <div style={{
+                width: '100%',
+                maxWidth: '440px',
+                height: 'min(50vh, 380px)',
+                background: '#000000',
                 borderRadius: '20px',
-                pointerEvents: 'none',
-                boxShadow: '0 0 24px rgba(212,175,55,0.25)',
+                overflow: 'hidden',
+                position: 'relative',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                border: '2px solid #B48A1E',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: 10
+                boxSizing: 'border-box'
               }}>
-                <div className="kogna-laser-line" />
-                {/* 4 Corner Targeting Accents */}
-                <div style={{ position: 'absolute', top: -2, left: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderTopLeftRadius: 18 }} />
-                <div style={{ position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderTopRightRadius: 18 }} />
-                <div style={{ position: 'absolute', bottom: -2, left: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderBottomLeftRadius: 18 }} />
-                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderBottomRightRadius: 18 }} />
+                {/* Close camera button inside viewfinder */}
+                <button
+                  type="button"
+                  onClick={handleStopScan}
+                  style={{
+                    position: 'absolute',
+                    top: 12,
+                    right: 12,
+                    zIndex: 30,
+                    background: 'rgba(15,23,42,0.85)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#FFFFFF',
+                    borderRadius: '20px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    touchAction: 'manipulation'
+                  }}
+                >
+                  <X size={14} />
+                  <span>Close Camera</span>
+                </button>
+
+                {/* html5-qrcode video element mounts here */}
+                <div id={scannerContainerId} style={{ width: '100%', height: '100%' }} />
+
+                {/* Viewfinder Overlay Targeting Reticle */}
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 'min(76%, 260px)',
+                  height: 'min(76%, 260px)',
+                  border: '1.5px solid rgba(212,175,55,0.6)',
+                  borderRadius: '20px',
+                  pointerEvents: 'none',
+                  boxShadow: '0 0 24px rgba(212,175,55,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10
+                }}>
+                  <div className="kogna-laser-line" />
+                  {/* 4 Corner Targeting Accents */}
+                  <div style={{ position: 'absolute', top: -2, left: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderTopLeftRadius: 18 }} />
+                  <div style={{ position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderTop: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderTopRightRadius: 18 }} />
+                  <div style={{ position: 'absolute', bottom: -2, left: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderLeft: '3.5px solid #D4AF37', borderBottomLeftRadius: 18 }} />
+                  <div style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderBottom: '3.5px solid #D4AF37', borderRight: '3.5px solid #D4AF37', borderBottomRightRadius: 18 }} />
+                </div>
+
+                {cameraStarting && !cameraError && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    background: 'rgba(255,255,255,0.92)',
+                    zIndex: 15,
+                    pointerEvents: 'none'
+                  }}>
+                    <RefreshCw size={32} className="animate-spin" color="#B48A1E" />
+                    <span style={{ fontSize: '13px', color: '#0F172A', fontWeight: '700' }}>
+                      Accessing camera stream...
+                    </span>
+                  </div>
+                )}
+
+                {cameraError && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: '#FFFFFF',
+                    padding: '24px 20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    zIndex: 20
+                  }}>
+                    <CameraOff size={38} color="#DC2626" style={{ marginBottom: '12px' }} />
+                    <div style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A', marginBottom: '6px' }}>
+                      Camera Unavailable
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748B', marginBottom: '18px', lineHeight: 1.5, maxWidth: '290px' }}>
+                      {cameraError}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '250px' }}>
+                      <button
+                        type="button"
+                        onClick={() => startScanner(facingMode)}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '10px',
+                          background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <RefreshCw size={14} /> Retry Camera
+                      </button>
+
+                      <label
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '10px',
+                          background: '#F8FAFC',
+                          border: '1px solid #CBD5E1',
+                          color: '#334155',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <Camera size={14} color="#B48A1E" />
+                        <span>Snap / Upload QR Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleFileScan}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleStopScan}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#64748B',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Back to Ready Screen
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {cameraStarting && !cameraError && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '12px',
-                  background: 'rgba(11,15,25,0.75)',
-                  zIndex: 15,
-                  pointerEvents: 'none'
-                }}>
-                  <RefreshCw size={30} className="animate-spin" color="var(--gold)" />
-                  <span style={{ fontSize: '13px', color: '#F1F5F9', fontWeight: '600' }}>
-                    Accessing camera stream...
-                  </span>
+              {/* Camera Controls & Secondary Actions under viewfinder */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '440px', marginTop: '14px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748B', fontWeight: '600' }}>
+                    <Zap size={14} color="#B48A1E" />
+                    <span>Point at Telebirr or CBE QR</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleFacingMode}
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      borderRadius: '8px',
+                      background: '#FFFFFF',
+                      border: '1px solid #CBD5E1',
+                      color: '#0F172A',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                    }}
+                  >
+                    <RefreshCw size={13} /> Flip Cam
+                  </button>
                 </div>
-              )}
 
-              {cameraError && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'rgba(11,15,25,0.96)',
-                  padding: '24px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  zIndex: 20
-                }}>
-                  <CameraOff size={38} color="#EF4444" style={{ marginBottom: '12px' }} />
-                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#FFFFFF', marginBottom: '6px' }}>
-                    Camera Unavailable
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '18px', lineHeight: 1.5, maxWidth: '290px' }}>
-                    {cameraError}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '250px' }}>
-                    <button
-                      type="button"
-                      onClick={() => startScanner(facingMode)}
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        background: 'var(--gold)',
-                        border: 'none',
-                        color: '#FFFFFF',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        touchAction: 'manipulation',
-                        userSelect: 'none'
-                      }}
-                    >
-                      <RefreshCw size={14} /> Retry Camera
-                    </button>
-
-                    <label
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.08)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        color: '#F1F5F9',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        touchAction: 'manipulation',
-                        userSelect: 'none'
-                      }}
-                    >
-                      <Camera size={14} color="var(--gold)" />
-                      <span>Snap / Upload QR Photo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleFileScan}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() => setMode('manual')}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#94A3B8',
-                        fontSize: '11px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        touchAction: 'manipulation',
-                        userSelect: 'none'
-                      }}
-                    >
-                      Enter Reference Code Manually
-                    </button>
-                  </div>
-                </div>
-              )}
+                {/* Snap Photo Fallback */}
+                <label
+                  style={{
+                    width: '100%',
+                    minHeight: '44px',
+                    padding: '10px 16px',
+                    borderRadius: '10px',
+                    background: '#FFFBEB',
+                    border: '1px solid #FCD34D',
+                    color: '#92400E',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Camera size={16} color="#B48A1E" />
+                  <span>Snap Photo / Upload QR Screenshot</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileScan}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Hidden native camera / photo upload input */}
@@ -1822,17 +2047,18 @@ export default function QRScannerPage() {
             {fileScanning && (
               <div style={{
                 marginTop: '12px',
-                padding: '10px 14px',
-                background: 'rgba(201,168,76,0.1)',
-                border: '1px solid rgba(201,168,76,0.3)',
-                borderRadius: '8px',
+                padding: '10px 16px',
+                background: '#FFFBEB',
+                border: '1px solid #FCD34D',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                fontSize: '12px',
-                color: 'var(--gold-light)'
+                fontSize: '13px',
+                color: '#92400E',
+                fontWeight: '600'
               }}>
-                <RefreshCw size={14} className="animate-spin" />
+                <RefreshCw size={15} className="animate-spin" />
                 <span>Reading QR code from photo...</span>
               </div>
             )}
@@ -1841,92 +2067,35 @@ export default function QRScannerPage() {
             {fileError && (
               <div style={{
                 marginTop: '12px',
-                padding: '10px 12px',
-                background: 'rgba(220,38,38,0.1)',
-                border: '1px solid rgba(220,38,38,0.3)',
-                borderRadius: '8px',
-                fontSize: '12px',
-                color: '#FCA5A5',
+                padding: '12px 14px',
+                background: '#FEF2F2',
+                border: '1px solid #F87171',
+                borderRadius: '10px',
+                fontSize: '13px',
+                color: '#991B1B',
                 lineHeight: 1.4
               }}>
                 {fileError}
               </div>
             )}
-
-            {/* Camera Controls & Secondary Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '440px', marginTop: '16px', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94A3B8' }}>
-                  <Zap size={14} color="var(--gold-light)" />
-                  <span>Point at Telebirr or CBE QR</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={toggleFacingMode}
-                  style={{
-                    padding: '8px 14px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#E2E8F0',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    touchAction: 'manipulation',
-                    userSelect: 'none'
-                  }}
-                >
-                  <RefreshCw size={12} /> Flip Cam
-                </button>
-              </div>
-
-              {/* Snap / Upload Fallback Button (Native File Input Label) */}
-              <label
-                style={{
-                  width: '100%',
-                  minHeight: '48px',
-                  padding: '12px 16px',
-                  borderRadius: '10px',
-                  background: 'rgba(212,175,55,0.14)',
-                  border: '1.5px solid rgba(212,175,55,0.5)',
-                  color: '#FFFFFF',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  touchAction: 'manipulation',
-                  userSelect: 'none',
-                  WebkitTapHighlightColor: 'transparent',
-                  boxSizing: 'border-box'
-                }}
-              >
-                <Camera size={16} color="var(--gold)" />
-                <span>Snap Photo / Upload QR Screenshot</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileScan}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
           </div>
         )}
 
         {/* --- STATE D: MANUAL REFERENCE CODE ENTRY --- */}
         {!verifying && !verifiedResult && mode === 'manual' && (
           <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#131B2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid #E2E8F0',
+              borderRadius: '16px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
+            }}>
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                   Transaction Code or Slip URL
                 </label>
                 <input
@@ -1939,19 +2108,20 @@ export default function QRScannerPage() {
                     width: '100%',
                     padding: '12px 14px',
                     fontSize: '14px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: '#0B0F19',
-                    color: '#FFFFFF',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    color: '#0F172A',
                     outline: 'none',
-                    fontFamily: 'monospace'
+                    fontFamily: 'monospace',
+                    fontWeight: '600'
                   }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
                     Bank Provider
                   </label>
                   <select
@@ -1959,13 +2129,14 @@ export default function QRScannerPage() {
                     onChange={e => setManualProvider(e.target.value as any)}
                     style={{
                       width: '100%',
-                      padding: '10px 12px',
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: '#0B0F19',
-                      color: '#FFFFFF',
-                      outline: 'none'
+                      padding: '11px 12px',
+                      fontSize: '13px',
+                      borderRadius: '10px',
+                      border: '1px solid #CBD5E1',
+                      background: '#F8FAFC',
+                      color: '#0F172A',
+                      outline: 'none',
+                      fontWeight: '600'
                     }}
                   >
                     <option value="AUTO">Auto Detect</option>
@@ -1975,7 +2146,7 @@ export default function QRScannerPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
                     Expected Bill (ETB)
                   </label>
                   <input
@@ -1986,13 +2157,14 @@ export default function QRScannerPage() {
                     onChange={e => setExpectedAmount(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '10px 12px',
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: '#0B0F19',
-                      color: '#FFFFFF',
-                      outline: 'none'
+                      padding: '11px 12px',
+                      fontSize: '13px',
+                      borderRadius: '10px',
+                      border: '1px solid #CBD5E1',
+                      background: '#F8FAFC',
+                      color: '#0F172A',
+                      outline: 'none',
+                      fontWeight: '600'
                     }}
                   />
                 </div>
@@ -2000,7 +2172,7 @@ export default function QRScannerPage() {
 
               {manualProvider === 'CBE' && (
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
                     CBE Receiver Account (Last 8 digits)
                   </label>
                   <input
@@ -2011,13 +2183,15 @@ export default function QRScannerPage() {
                     onChange={e => setManualAccountDigits(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '10px 12px',
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: '#0B0F19',
-                      color: '#FFFFFF',
-                      outline: 'none'
+                      padding: '11px 12px',
+                      fontSize: '13px',
+                      borderRadius: '10px',
+                      border: '1px solid #CBD5E1',
+                      background: '#F8FAFC',
+                      color: '#0F172A',
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                      fontWeight: '600'
                     }}
                   />
                 </div>
@@ -2030,17 +2204,19 @@ export default function QRScannerPage() {
               style={{
                 width: '100%',
                 padding: '14px',
-                borderRadius: '12px',
+                borderRadius: '14px',
                 border: 'none',
-                background: manualCode.trim() ? 'var(--gold)' : 'rgba(255,255,255,0.1)',
-                color: '#FFFFFF',
-                fontWeight: '700',
-                fontSize: '14px',
+                background: manualCode.trim() ? 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)' : '#E2E8F0',
+                color: manualCode.trim() ? '#FFFFFF' : '#94A3B8',
+                fontWeight: '800',
+                fontSize: '15px',
                 cursor: manualCode.trim() ? 'pointer' : 'not-allowed',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px'
+                gap: '8px',
+                boxShadow: manualCode.trim() ? '0 6px 18px rgba(180,138,30,0.3)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
               <ShieldCheck size={18} />
@@ -2050,11 +2226,11 @@ export default function QRScannerPage() {
         )}
       </main>
 
-      {/* 4. Bottom Collapsible Shift History Drawer */}
+      {/* 4. Bottom Collapsible Shift History Drawer (Light Theme) */}
       <footer style={{
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(15,23,42,0.95)',
-        backdropFilter: 'blur(10px)',
+        borderTop: '1px solid #E2E8F0',
+        background: '#FFFFFF',
+        boxShadow: '0 -2px 10px rgba(0,0,0,0.02)',
         width: '100%',
         boxSizing: 'border-box',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))'
@@ -2067,20 +2243,20 @@ export default function QRScannerPage() {
             padding: '12px 20px',
             background: 'none',
             border: 'none',
-            color: '#94A3B8',
-            fontSize: '12px',
-            fontWeight: '600',
+            color: '#475569',
+            fontSize: '13px',
+            fontWeight: '700',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             cursor: 'pointer'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <History size={14} color="var(--gold)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <History size={16} color="#B48A1E" />
             <span>Recent Verified Scans ({history.length})</span>
           </div>
-          {showHistory ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          {showHistory ? <ChevronDown size={16} color="#64748B" /> : <ChevronUp size={16} color="#64748B" />}
         </button>
 
         {showHistory && (
@@ -2093,17 +2269,17 @@ export default function QRScannerPage() {
             gap: '8px'
           }}>
             {history.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: '#64748B', fontSize: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '20px', color: '#94A3B8', fontSize: '13px', fontStyle: 'italic' }}>
                 No receipts scanned in this session yet.
               </div>
             ) : history.map(item => (
               <div
                 key={item.id}
                 style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '9px 12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -2111,15 +2287,15 @@ export default function QRScannerPage() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: '600', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.success ? '#10B981' : '#EF4444' }} />
+                  <div style={{ fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.success ? '#059669' : '#DC2626' }} />
                     <span>{item.payerName || item.reference}</span>
                   </div>
-                  <div style={{ fontSize: '10px', color: '#94A3B8' }}>
+                  <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
                     {item.provider} · {item.timestamp}
                   </div>
                 </div>
-                <b style={{ color: item.success ? '#10B981' : '#EF4444', fontVariantNumeric: 'tabular-nums' }}>
+                <b style={{ color: item.success ? '#059669' : '#DC2626', fontVariantNumeric: 'tabular-nums', fontWeight: '800' }}>
                   {typeof item.amount === 'number' ? formatMoney(item.amount) : (item.success ? 'OK' : 'FAIL')}
                 </b>
               </div>
