@@ -358,6 +358,8 @@ model SystemSetting {
   updatedAt DateTime @updatedAt @default(now())
 }
 
-
-
-
+model DeletedUser {
+  id        String?
+  username  String   @id
+  deletedAt DateTime @default(now())
+}

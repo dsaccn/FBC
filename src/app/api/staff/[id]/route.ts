@@ -63,8 +63,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       await prisma.order.deleteMany({ where: { id: { in: orderIds } } })
     }
 
-    // 5. Delete the user from SQLite
-    await prisma.user.delete({ where: { id } })
+    // 5. Delete the user from active database
+    if (existingUser) {
+      await prisma.user.delete({ where: { id } }).catch(() => {})
+    }
 
     // 6. Delete the user and cascading relations from Cloud (Neon) by ID AND username
     await deleteUserFromCloud(id, username)
