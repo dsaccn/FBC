@@ -585,14 +585,7 @@ export default function QRScannerPage() {
         verifyReference(decodedText, 'AUTO', undefined, expAmt)
       }
 
-      const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-      const primaryTarget: any = isMobile
-        ? {
-            facingMode: facing,
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-          }
-        : { facingMode: facing === 'environment' ? 'user' : facing }
+      const primaryTarget: any = { facingMode: facing }
 
       const startWithTimeout = (target: any, timeoutMs = 25000) => {
         return Promise.race([
