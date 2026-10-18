@@ -1421,10 +1421,23 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           })
 
           pulled.orders++
-        } else if (!localOrder.pendingSync) {
-          // Record exists and is clean — sync status from cloud only if it's more terminal.
-          const terminalLocally = localOrder.status === 'PAID' || localOrder.status === 'CANCELLED'
-          if (!terminalLocally && localOrder.status !== co.status) {
+        } else {
+          // If cloud has closed the order (PAID or CANCELLED), cloud terminal status ALWAYS wins!
+          const cloudTerminal = co.status === 'PAID' || co.status === 'CANCELLED'
+          const localTerminal = localOrder.status === 'PAID' || localOrder.status === 'CANCELLED'
+
+          if (cloudTerminal && localOrder.status !== co.status) {
+            await prisma.order.update({
+              where: { id: co.id },
+              data: { status: co.status, pendingSync: false, updatedAt: new Date(co.updatedAt) },
+            })
+            // If cloud closed the order, free the table locally
+            const tableStatus = co.status === 'OPEN' ? 'OCCUPIED' : 'FREE'
+            await prisma.table.update({
+              where: { id: co.tableId },
+              data: { status: tableStatus, pendingSync: false },
+            }).catch(() => {})
+          } else if (!localOrder.pendingSync && !localTerminal && localOrder.status !== co.status) {
             await prisma.order.update({
               where: { id: co.id },
               data: { status: co.status, updatedAt: new Date(co.updatedAt) },

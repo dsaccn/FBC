@@ -141,6 +141,13 @@ export default function QRScannerPage() {
         const data = await res.json()
         if (data.success && Array.isArray(data.orders)) {
           setOpenOrders(data.orders)
+          // If the currently selected order was paid and removed from open orders, deselect it immediately
+          setSelectedOrderId(prev => {
+            if (prev && !data.orders.some((o: any) => o.id === prev)) {
+              return null
+            }
+            return prev
+          })
         }
       }
     } catch {}
@@ -156,7 +163,7 @@ export default function QRScannerPage() {
       es.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data)
-          if (payload.type === 'ORDER_VERIFIED' || payload.type === 'ORDER_CLEARED') {
+          if (payload.type === 'ORDER_VERIFIED' || payload.type === 'ORDER_CLEARED' || payload.type === 'ORDER_PAID') {
             fetchOpenOrders()
           }
         } catch {}

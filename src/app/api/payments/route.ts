@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { backgroundSync } from '@/lib/sync-engine'
+import { broadcastVerificationEvent } from '@/lib/scanner-events'
 import { checkReceiptDuplicate } from '@/lib/receipt-dedup'
 
 export async function POST(req: Request) {
@@ -175,6 +176,14 @@ export async function POST(req: Request) {
 
     // 7. Trigger background sync to Neon (only in offline local mode)
     backgroundSync()
+
+    // 8. Broadcast instant real-time clearance to mobile scanner devices
+    broadcastVerificationEvent({
+      type: 'ORDER_PAID',
+      orderId,
+      tableNumber: payment?.order?.table?.number,
+      timestamp: new Date().toISOString(),
+    })
 
     return NextResponse.json(payment)
   } catch (error: any) {

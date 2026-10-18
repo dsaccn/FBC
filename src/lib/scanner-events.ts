@@ -12,7 +12,7 @@ if (!globalForEvents.scannerEmitter) {
 }
 
 export interface VerificationEvent {
-  type: 'ORDER_VERIFIED' | 'ORDER_CLEARED' | 'RECEIPT_SCANNED'
+  type: 'ORDER_VERIFIED' | 'ORDER_CLEARED' | 'RECEIPT_SCANNED' | 'ORDER_PAID'
   orderId?: string
   tableNumber?: string
   reference?: string
