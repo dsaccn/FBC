@@ -103,8 +103,8 @@ let _pool: PgPool | null = null
 function getPool(): PgPool {
   if (!_pool || (_pool as any).ending || (_pool as any).ended) {
     _pool = null
-    const url = process.env.NEON_DATABASE_URL
-    if (!url) throw new Error('NEON_DATABASE_URL is not set in .env')
+    const url = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
+    if (!url) throw new Error('Neither NEON_DATABASE_URL nor DATABASE_URL is set in environment')
     _pool = new PgPool({
       connectionString: url,
       max: 3,
@@ -161,12 +161,20 @@ export async function pushUserToCloud(u: {
   active: boolean
   createdAt?: Date
 }): Promise<void> {
-  if (process.env.VERCEL) return
   // Ensure user is removed from deletion tombstones
   clearDeletedUser(u.id, u.username)
 
   try {
     const pg = getPool()
+    if (u.username) {
+      await pg.query(
+        `DELETE FROM "DeletedUser" WHERE username = $1 OR (id IS NOT NULL AND id = $2)`,
+        [u.username, u.id]
+      ).catch(() => {})
+    }
+
+    if (process.env.VERCEL) return
+
     if (u.passwordHash) {
       await pg.query(
         `INSERT INTO "User" (id, username, "passwordHash", "fullName", role, phone, active, "createdAt")
@@ -202,21 +210,31 @@ export async function pushUserToCloud(u: {
  * matching both by ID and by username.
  */
 export async function deleteUserFromCloud(id: string, username?: string): Promise<void> {
-  // 1. Immediately record tombstone so local sync never re-inserts this user
+  // 1. Immediately record tombstone locally
   recordDeletedUser(id, username)
 
-  if (process.env.VERCEL) return
   try {
     const pg = getPool()
     const uname = username || null
-    await pg.query(`DELETE FROM "ShiftLog" WHERE "userId" = $1 OR ($2::text IS NOT NULL AND "userId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
-    await pg.query(`DELETE FROM "Cancellation" WHERE "managerId" = $1 OR ($2::text IS NOT NULL AND "managerId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
-    await pg.query(`DELETE FROM "Payment" WHERE "cashierId" = $1 OR ($2::text IS NOT NULL AND "cashierId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
-    await pg.query(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2))))`, [id, uname])
-    await pg.query(`DELETE FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2)))`, [id, uname])
-    await pg.query(`DELETE FROM "Payment" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2)))`, [id, uname])
-    await pg.query(`DELETE FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
-    await pg.query(`DELETE FROM "User" WHERE id = $1 OR ($2::text IS NOT NULL AND username = $2)`, [id, uname])
+    if (uname) {
+      await pg.query(
+        `INSERT INTO "DeletedUser" (id, username, "deletedAt")
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (username) DO UPDATE SET "deletedAt" = NOW()`,
+        [id, uname]
+      ).catch((err: any) => console.warn('[SyncEngine] Error inserting DeletedUser tombstone:', err?.message))
+    }
+
+    if (!process.env.VERCEL) {
+      await pg.query(`DELETE FROM "ShiftLog" WHERE "userId" = $1 OR ($2::text IS NOT NULL AND "userId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
+      await pg.query(`DELETE FROM "Cancellation" WHERE "managerId" = $1 OR ($2::text IS NOT NULL AND "managerId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
+      await pg.query(`DELETE FROM "Payment" WHERE "cashierId" = $1 OR ($2::text IS NOT NULL AND "cashierId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
+      await pg.query(`DELETE FROM "Cancellation" WHERE "orderItemId" IN (SELECT id FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2))))`, [id, uname])
+      await pg.query(`DELETE FROM "OrderItem" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2)))`, [id, uname])
+      await pg.query(`DELETE FROM "Payment" WHERE "orderId" IN (SELECT id FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2)))`, [id, uname])
+      await pg.query(`DELETE FROM "Order" WHERE "waiterId" = $1 OR ($2::text IS NOT NULL AND "waiterId" IN (SELECT id FROM "User" WHERE username = $2))`, [id, uname])
+      await pg.query(`DELETE FROM "User" WHERE id = $1 OR ($2::text IS NOT NULL AND username = $2)`, [id, uname])
+    }
   } catch (err: any) {
     console.warn('[SyncEngine] deleteUserFromCloud error:', err?.message)
     resetPool()
@@ -449,6 +467,35 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     // ── Pull static metadata (User, Category, Ingredient, MenuItem, Recipe, Table) ──
     // 0. Users / Staff
     try {
+      // 0a. Check cloud tombstones (e.g. users deleted on Vercel online)
+      try {
+        const { rows: cloudDeleted } = await pg.query(
+          `SELECT id, username FROM "DeletedUser"`
+        )
+        for (const d of cloudDeleted) {
+          recordDeletedUser(d.id, d.username)
+          const localU = await prisma.user.findFirst({
+            where: { OR: [{ id: d.id }, { username: d.username }] }
+          })
+          if (localU && localU.username !== 'master' && localU.username !== 'admin') {
+            await prisma.shiftLog.deleteMany({ where: { userId: localU.id } }).catch(() => {})
+            await prisma.cancellation.deleteMany({ where: { managerId: localU.id } }).catch(() => {})
+            await prisma.payment.deleteMany({ where: { cashierId: localU.id } }).catch(() => {})
+            const luOrders = await prisma.order.findMany({ where: { waiterId: localU.id }, select: { id: true } })
+            if (luOrders.length > 0) {
+              const oIds = luOrders.map(o => o.id)
+              await prisma.cancellation.deleteMany({ where: { orderItem: { orderId: { in: oIds } } } }).catch(() => {})
+              await prisma.orderItem.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
+              await prisma.payment.deleteMany({ where: { orderId: { in: oIds } } }).catch(() => {})
+              await prisma.order.deleteMany({ where: { id: { in: oIds } } }).catch(() => {})
+            }
+            await prisma.user.delete({ where: { id: localU.id } }).catch(() => {})
+          }
+        }
+      } catch (delErr: any) {
+        console.warn('[SyncEngine] Error querying DeletedUser tombstones:', delErr?.message)
+      }
+
       const { rows: cloudUsers } = await pg.query(
         `SELECT id, username, "passwordHash", "fullName", role, phone, active, "createdAt" FROM "User"`
       )
