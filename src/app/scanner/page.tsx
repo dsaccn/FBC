@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import Link from 'next/link'
 import {
   QrCode,
   ShieldCheck,
@@ -10,7 +9,6 @@ import {
   Camera,
   CameraOff,
   Keyboard,
-  ArrowLeft,
   Volume2,
   VolumeX,
   Copy,
@@ -734,26 +732,20 @@ export default function QRScannerPage() {
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Link
-            href="/dashboard/payment"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              background: '#F1F5F9',
-              border: '1px solid #E2E8F0',
-              color: '#0F172A',
-              textDecoration: 'none',
-              touchAction: 'manipulation',
-              transition: 'background 0.15s ease'
-            }}
-            title="Back to POS Payment"
-          >
-            <ArrowLeft size={18} />
-          </Link>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
+            border: '1px solid #FCD34D',
+            color: '#B48A1E',
+            boxShadow: '0 1px 3px rgba(180, 138, 30, 0.12)'
+          }}>
+            <QrCode size={20} />
+          </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontWeight: '800', fontSize: '16px', letterSpacing: '-0.01em', color: '#0F172A' }}>
@@ -1973,32 +1965,11 @@ export default function QRScannerPage() {
 
               {/* Camera Controls & Secondary Actions under viewfinder */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '440px', marginTop: '14px', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748B', fontWeight: '600' }}>
-                    <Zap size={14} color="#B48A1E" />
-                    <span>Point at Telebirr or CBE QR</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', fontWeight: '700' }}>
+                    <Zap size={15} color="#B48A1E" />
+                    <span>Point rear camera at Telebirr or CBE QR</span>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={toggleFacingMode}
-                    style={{
-                      padding: '8px 14px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      borderRadius: '8px',
-                      background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
-                      color: '#0F172A',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-                    }}
-                  >
-                    <RefreshCw size={13} /> Flip Cam
-                  </button>
                 </div>
 
                 {/* Snap Photo Fallback */}

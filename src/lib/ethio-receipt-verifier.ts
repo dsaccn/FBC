@@ -42,7 +42,7 @@ export function matchMaskedAccountOrPhone(
   received: string | undefined | null
 ): boolean {
   if (!target || !target.trim()) return true // No restriction configured
-  if (!received || !received.trim()) return true // No account number returned by receipt
+  if (!received || !received.trim()) return false // Target account/phone is required, but receipt has none!
 
   const cleanTarget = target.trim().replace(/\D/g, '')
   if (cleanTarget.length < 4) return true
@@ -153,7 +153,10 @@ export function extractTelebirrTransactionId(raw: string): string {
  * Verify Telebirr receipt by transaction ID, URL, or SuperApp QR code
  * Official endpoint: https://transactioninfo.ethiotelecom.et/receipt/{id}
  */
-export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedReceipt> {
+export async function verifyTelebirrReceipt(
+  idOrUrl: string,
+  accountDigits?: string
+): Promise<VerifiedReceipt> {
   const clean = cleanReference(idOrUrl)
   if (!clean) {
     return {
@@ -203,20 +206,24 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
       }
     }
 
-    // Helper regex to extract label -> value pairs in HTML table
+    // Helper regex to extract label -> value pairs in HTML table (supporting multiline values)
     const extractField = (pattern: RegExp): string | undefined => {
       const match = html.match(pattern)
       return match ? match[1].replace(/<[^>]+>/g, '').trim() : undefined
     }
 
-    const payerName = extractField(/Payer\s*Name[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
-    const payerPhone = extractField(/Payer\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
-    const receiverName = extractField(/Credited\s*Party\s*name[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
-    const receiverPhone = extractField(/Credited\s*party\s*account\s*no[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
-    const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i) || 'Completed'
-    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i) ||
-                      extractField(/Settled\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
-    const rawDate = extractField(/Payment\s*date[^<]*<\/t[dh]>\s*<td[^>]*>(.*?)<\/td>/i)
+    const payerName = extractField(/Payer\s*Name[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const payerPhone = extractField(/Payer\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const receiverName = extractField(/Credited\s*Party\s*name[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const receiverPhone =
+      extractField(/Credited\s*party\s*account\s*no[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
+      extractField(/Credited\s*Party\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
+      extractField(/Receiver\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
+      extractField(/Credited\s*party\s*no[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) || 'Completed'
+    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
+                      extractField(/Settled\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const rawDate = extractField(/Payment\s*date[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
 
     let parsedAmount: number | undefined
     if (rawAmount) {
@@ -226,11 +233,23 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
 
     const isSuccess = /completed|success|approved/i.test(rawStatus)
 
-    // Check receiver phone/account against configured settings
+    // Check receiver phone/account against configured settings or provided account
     const settings = await getPaymentSettings()
+    const targetPhone = (accountDigits && accountDigits.trim())
+      ? accountDigits.trim()
+      : (settings.telebirrReceiverPhone || '')
+
     let isReceiverMatched = true
-    if (settings.telebirrReceiverPhone && settings.telebirrReceiverPhone.trim()) {
-      isReceiverMatched = matchMaskedAccountOrPhone(settings.telebirrReceiverPhone, receiverPhone)
+    if (targetPhone && targetPhone.trim()) {
+      isReceiverMatched = matchMaskedAccountOrPhone(targetPhone, receiverPhone)
+      // Fallback: If receiver phone is masked or missing, check merchantName against receiverName
+      if (!isReceiverMatched && settings.merchantName && receiverName) {
+        const cleanRecv = receiverName.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const cleanMerch = settings.merchantName.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (cleanRecv.includes(cleanMerch) || cleanMerch.includes(cleanRecv)) {
+          isReceiverMatched = true
+        }
+      }
     }
 
     if (isSuccess && !isReceiverMatched) {
@@ -247,7 +266,7 @@ export async function verifyTelebirrReceipt(idOrUrl: string): Promise<VerifiedRe
         dateTime: rawDate || undefined,
         status: 'FAILED',
         isReceiverMatched: false,
-        errorMessage: `RECEIVER MISMATCH: Payment was credited to ${receiverPhone || receiverName || 'another account'}, NOT your official Telebirr (${settings.telebirrReceiverPhone})!`,
+        errorMessage: `RECEIVER MISMATCH: Payment was credited to ${receiverPhone || receiverName || 'another account'}, NOT your official Telebirr (${targetPhone})!`,
       }
     }
 
@@ -636,9 +655,9 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
   }
 
   if (isTelebirr) {
-    return verifyTelebirrReceipt(clean)
+    return verifyTelebirrReceipt(clean, accountDigits)
   }
 
   // Fallback to Telebirr attempt
-  return verifyTelebirrReceipt(clean)
+  return verifyTelebirrReceipt(clean, accountDigits)
 }
