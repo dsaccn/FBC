@@ -148,8 +148,27 @@ export default function QRScannerPage() {
 
   useEffect(() => {
     fetchOpenOrders()
-    const interval = setInterval(fetchOpenOrders, 4000)
-    return () => clearInterval(interval)
+    const interval = setInterval(fetchOpenOrders, 3000)
+
+    let es: EventSource | null = null
+    try {
+      es = new EventSource('/api/scanner/events')
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload.type === 'ORDER_VERIFIED' || payload.type === 'ORDER_CLEARED') {
+            fetchOpenOrders()
+          }
+        } catch {}
+      }
+    } catch {}
+
+    return () => {
+      clearInterval(interval)
+      if (es) {
+        try { es.close() } catch {}
+      }
+    }
   }, [fetchOpenOrders])
 
   const handleSelectOrder = (order: OpenOrder | null) => {
@@ -931,6 +950,8 @@ export default function QRScannerPage() {
                     <span style={{ fontSize: '11px', color: '#B45309', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Target Order:
                     </span>
+                    {selected?.isDelivery && <span style={{ fontSize: '13px' }}>🛵</span>}
+                    {selected?.isTakeaway && <span style={{ fontSize: '13px' }}>🥡</span>}
                     <span style={{ fontSize: '14px', color: '#0F172A', fontWeight: '800' }}>
                       {selected?.displayTitle || 'Order'}
                     </span>
@@ -1047,6 +1068,8 @@ export default function QRScannerPage() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {order.isDelivery && <span style={{ fontSize: '11px' }}>🛵</span>}
+                      {order.isTakeaway && <span style={{ fontSize: '11px' }}>🥡</span>}
                       <span style={{ fontWeight: '700', fontSize: '12px', color: order.isVerified ? '#065F46' : '#0F172A' }}>
                         {order.displayTitle}
                       </span>

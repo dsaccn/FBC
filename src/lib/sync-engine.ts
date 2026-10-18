@@ -467,6 +467,31 @@ export function backgroundSync(): void {
   syncBothDirections().catch((e) => console.warn('[BackgroundSync]', String(e)))
 }
 
+let _backgroundPullTimer: NodeJS.Timeout | null = null
+
+/**
+ * Autonomous background pull loop for local POS server.
+ * Ensures orders created on Vercel or cloud are synced down to SQLite automatically.
+ */
+export function startBackgroundPullLoop(intervalMs = 10000): void {
+  if (process.env.VERCEL) return
+  if (_backgroundPullTimer) return
+
+  _backgroundPullTimer = setInterval(async () => {
+    try {
+      if (!isSyncing) {
+        await pullFromCloud()
+      }
+    } catch (e) {
+      console.warn('[BackgroundPullLoop]', String(e))
+    }
+  }, intervalMs)
+
+  if (typeof _backgroundPullTimer.unref === 'function') {
+    _backgroundPullTimer.unref()
+  }
+}
+
 /**
  * Pull cloud-native orders (created on Vercel) into local SQLite.
  *
