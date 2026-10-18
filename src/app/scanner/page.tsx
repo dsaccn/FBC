@@ -126,14 +126,17 @@ export default function QRScannerPage() {
     selectedOrderIdRef.current = selectedOrderId
   }, [selectedOrderId])
 
-  // Fetch open orders from API
+  // Fetch open orders from API (with strict anti-cache headers)
   const fetchOpenOrders = useCallback(async () => {
     try {
       const savedToken = typeof window !== 'undefined' ? (localStorage.getItem('scanner_token') || 'kogna_scanner_secure_2026') : ''
       const headers: Record<string, string> = {}
       if (savedToken) headers['x-scanner-token'] = savedToken
 
-      const res = await fetch('/api/scanner/orders', { headers })
+      const res = await fetch(`/api/scanner/orders?_t=${Date.now()}`, {
+        headers,
+        cache: 'no-store'
+      })
       if (res.ok) {
         const data = await res.json()
         if (data.success && Array.isArray(data.orders)) {
@@ -145,7 +148,7 @@ export default function QRScannerPage() {
 
   useEffect(() => {
     fetchOpenOrders()
-    const interval = setInterval(fetchOpenOrders, 6000)
+    const interval = setInterval(fetchOpenOrders, 4000)
     return () => clearInterval(interval)
   }, [fetchOpenOrders])
 
@@ -992,9 +995,27 @@ export default function QRScannerPage() {
         ) : (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Open Orders ({openOrders.length}):
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Open Orders ({openOrders.length}):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fetchOpenOrders()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    color: '#94A3B8',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Refresh open orders"
+                >
+                  <RefreshCw size={11} />
+                </button>
+              </div>
               <span style={{ fontSize: '11px', color: '#B45309', fontWeight: '600' }}>
                 Tap a table to link payment
               </span>

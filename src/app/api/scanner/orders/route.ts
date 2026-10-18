@@ -56,7 +56,16 @@ export async function GET(req: Request) {
       }
     })
 
-    return NextResponse.json({ success: true, orders: formatted })
+    return NextResponse.json(
+      { success: true, orders: formatted },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      }
+    )
   } catch (err: any) {
     console.error('[GET /api/scanner/orders]', err)
     return NextResponse.json({ success: false, error: String(err?.message || err) }, { status: 500 })
