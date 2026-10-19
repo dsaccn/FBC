@@ -18,6 +18,8 @@ export default function NewOrderPage() {
   const router = useRouter()
   const tableId = searchParams.get('tableId') || ''
 
+  const [allTables, setAllTables] = useState<any[]>([])
+  const [selectedTableId, setSelectedTableId] = useState<string>(tableId)
   const [categories, setCategories] = useState<Category[]>([])
   const [activeCategory, setActiveCategory] = useState<string>('')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -31,11 +33,32 @@ export default function NewOrderPage() {
   const [tempNote, setTempNote] = useState('')
   const [mobileShowCart, setMobileShowCart] = useState(false)
 
+  const checkOpenOrderForTable = useCallback(async (targetId: string) => {
+    if (!targetId) {
+      setExistingOrder(null)
+      return
+    }
+    try {
+      const ordRes = await fetch(`/api/orders?tableId=${encodeURIComponent(targetId)}&status=OPEN&_t=${Date.now()}`, { cache: 'no-store' })
+      if (ordRes.ok) {
+        const orders = await ordRes.json()
+        if (orders.length > 0) {
+          setExistingOrder(orders[0])
+        } else {
+          setExistingOrder(null)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check open order:', err)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     try {
-      const [catRes, sessRes] = await Promise.all([
-        fetch('/api/categories'),
-        fetch('/api/auth/me'),
+      const [catRes, sessRes, tableRes] = await Promise.all([
+        fetch('/api/categories', { cache: 'no-store' }),
+        fetch('/api/auth/me', { cache: 'no-store' }),
+        fetch('/api/tables', { cache: 'no-store' }),
       ])
       if (catRes.ok) {
         const cats = await catRes.json()
@@ -48,35 +71,46 @@ export default function NewOrderPage() {
         setSession(await sessRes.json())
       }
 
-      if (tableId) {
-        // Fetch the table to get its display number
-        const [tableRes, ordRes] = await Promise.all([
-          fetch('/api/tables'),
-          fetch(`/api/orders?tableId=${tableId}&status=OPEN`),
-        ])
-        if (tableRes.ok) {
-          const tables = await tableRes.json()
-          const found = tables.find((t: any) => t.id === tableId)
+      if (tableRes.ok) {
+        const tables = await tableRes.json()
+        const isDineIn = (t: any) => {
+          const num = (t.number || '').trim().toLowerCase()
+          return !num.startsWith('delivery') && !num.startsWith('takeaway') && !num.startsWith('dlv-') && !num.startsWith('archived') && t.id !== '__archived_orders_table__'
+        }
+        const filtered = tables.filter(isDineIn)
+        setAllTables(filtered)
+
+        const activeId = selectedTableId || tableId
+        if (activeId) {
+          const found = filtered.find((t: any) => t.id === activeId || t.number === activeId)
           if (found) {
+            setSelectedTableId(found.id)
             setTableNumber(found.displayLabel || found.mergeGroupLabel || found.number)
             setTableInfo(found)
+            await checkOpenOrderForTable(found.id)
           }
-        } else {
-          console.error('Failed to load tables:', tableRes.statusText)
-        }
-        if (ordRes.ok) {
-          const orders = await ordRes.json()
-          if (orders.length > 0) setExistingOrder(orders[0])
-        } else {
-          console.error('Failed to load orders:', ordRes.statusText)
         }
       }
     } catch (err) {
       console.error('Error loading page data:', err)
     }
-  }, [tableId])
+  }, [tableId, selectedTableId, checkOpenOrderForTable])
 
   useEffect(() => { loadData() }, [loadData])
+
+  async function handleSelectTable(targetId: string) {
+    setSelectedTableId(targetId)
+    const found = allTables.find((t: any) => t.id === targetId || t.number === targetId)
+    if (found) {
+      setTableNumber(found.displayLabel || found.mergeGroupLabel || found.number)
+      setTableInfo(found)
+      await checkOpenOrderForTable(found.id)
+    } else {
+      setTableNumber('')
+      setTableInfo(null)
+      setExistingOrder(null)
+    }
+  }
 
   function addToCart(item: MenuItem) {
     setCart(prev => {
@@ -158,8 +192,15 @@ export default function NewOrderPage() {
     setLoading(true)
     setOrderError('')
 
+    const activeTableId = selectedTableId || tableId
+    if (!activeTableId) {
+      toast.warning('Please select a table for this order.')
+      setLoading(false)
+      return
+    }
+
     let orderId = existingOrder?.id
-    let tableNumber = existingOrder?.table.number || tableId
+    let activeTableNumber = tableNumber || existingOrder?.table.number || activeTableId
 
     try {
       if (!orderId) {
@@ -167,7 +208,7 @@ export default function NewOrderPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tableId,
+            tableId: activeTableId,
             waiterId: session.id,
             items: cart.map(c => ({ menuItemId: c.menuItem.id, quantity: c.quantity, notes: c.notes })),
           }),
@@ -181,7 +222,7 @@ export default function NewOrderPage() {
           return
         }
         orderId = data.id
-        tableNumber = data.table.number
+        activeTableNumber = data.table?.number || activeTableNumber
       } else {
         const res = await fetch(`/api/orders/${orderId}/items`, {
           method: 'POST',
@@ -198,7 +239,7 @@ export default function NewOrderPage() {
         }
       }
 
-      toast.success(`Order placed for Table ${tableNumber}! Tickets sent to printer.`)
+      toast.success(`Order placed for Table ${activeTableNumber}! Tickets sent to printer.`)
 
       // Print tickets directly via hidden iframe
       let ticketHTML = `<html>
@@ -362,8 +403,36 @@ export default function NewOrderPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <h1 className="font-cinzel" style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>
                 <span className="gold-text">{existingOrder ? 'Add More Items' : 'New Order'}</span>
-                {(tableNumber || tableId) && <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginLeft: '10px', fontFamily: 'Inter' }}>Table {tableNumber || tableId}</span>}
+                {tableNumber && <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginLeft: '10px', fontFamily: 'Inter' }}>Table {tableNumber}</span>}
               </h1>
+
+              {/* Table Selector Dropdown */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <select
+                  value={selectedTableId}
+                  onChange={e => handleSelectTable(e.target.value)}
+                  className="input"
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    padding: '3px 10px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: 'var(--black-card)',
+                    color: 'var(--gold)',
+                    border: '1px solid var(--gold)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">{selectedTableId ? 'Change Table...' : '-- Select Table --'}</option>
+                  {allTables.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      Table {t.displayLabel || t.mergeGroupLabel || t.number} {t.status === 'OCCUPIED' ? '🟡 (Open Order)' : '🟢 (Free)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {tableInfo?.isMerged && (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                   <span className="badge" style={{ background: 'rgba(201,168,76,0.18)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.35)', fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>

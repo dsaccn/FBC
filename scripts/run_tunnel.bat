@@ -48,11 +48,21 @@ if not exist "%POS_DIR%\bin\cloudflared.exe" (
     exit /b 1
 )
 
+:: Check if port 3000 is listening; if not, give Next.js time to boot
+set /a RETRIES=0
+:CHECK_PORT
 netstat -ano | findstr LISTENING | findstr :3000 >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [%DATE% %TIME%] [ERROR] POS server is not listening on port 3000! Aborting tunnel to prevent HTTP 503 errors. >> "%POS_DIR%\logs\tunnel.log"
-    exit /b 1
+    if %RETRIES% LSS 10 (
+        set /a RETRIES+=1
+        timeout /t 2 /nobreak >nul
+        goto CHECK_PORT
+    )
+    echo [%DATE% %TIME%] [WARNING] POS server not detected on port 3000 yet, starting tunnel anyway... >> "%POS_DIR%\logs\tunnel.log"
+) else (
+    echo [%DATE% %TIME%] [OK] POS server detected on port 3000. >> "%POS_DIR%\logs\tunnel.log"
 )
 
-"%POS_DIR%\bin\cloudflared.exe" tunnel --url http://localhost:3000 --protocol http2 run --token eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9 --logfile "%POS_DIR%\logs\tunnel.log"
+echo [%DATE% %TIME%] [INFO] Starting Cloudflare tunnel... >> "%POS_DIR%\logs\tunnel.log"
+"%POS_DIR%\bin\cloudflared.exe" tunnel --logfile "%POS_DIR%\logs\tunnel.log" --loglevel info --protocol http2 run --token eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9
 

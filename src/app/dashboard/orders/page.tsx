@@ -36,7 +36,8 @@ interface OrderItem {
 
 interface Order {
   id: string
-  table: { number: string }
+  tableId?: string
+  table: { id?: string; number: string }
   waiterId?: string
   waiter: { id?: string; fullName: string; username?: string; role?: string }
   orderItems: OrderItem[]
@@ -737,14 +738,24 @@ export default function OrdersPage() {
                 {/* Amount & Actions */}
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--gold)' }}>{total.toFixed(2)} ETB</div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     <Link href={`/dashboard/orders/${order.id}`} className="btn btn-outline btn-sm">
                       <Eye size={13} /> View
                     </Link>
                     {order.status === 'OPEN' && (
-                      <Link href={`/dashboard/payment?orderId=${order.id}`} className="btn btn-gold btn-sm">
-                        Pay
-                      </Link>
+                      <>
+                        <Link
+                          href={`/dashboard/orders/new?tableId=${order.table?.id || order.tableId || order.table?.number || ''}`}
+                          className="btn btn-outline btn-sm"
+                          style={{ borderColor: 'rgba(201,168,76,0.4)', color: 'var(--gold)' }}
+                          title="Add more items to this open table order"
+                        >
+                          <Plus size={13} /> Add Items
+                        </Link>
+                        <Link href={`/dashboard/payment?orderId=${order.id}`} className="btn btn-gold btn-sm">
+                          Pay
+                        </Link>
+                      </>
                     )}
                   </div>
                 </div>

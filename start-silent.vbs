@@ -7,7 +7,8 @@ WshShell.CurrentDirectory = posDir
 WshShell.Run "cmd.exe /c ""attrib -r -s -h """ & posDir & "\prisma\*""" & " /s /d & attrib -r -s -h """ & posDir & "\prisma\kogna.db*""""", 0, True
 
 ' Start Cloudflare Tunnel silently for mobile phone scanner
-WshShell.Run """" & posDir & "\scripts\run_tunnel.bat""", 0, False
+WshShell.Run "cmd.exe /c """ & posDir & "\scripts\run_tunnel.bat""", 0, False
+
 
 ' 0 = Hide window completely. Runs server silently in the background.
 WshShell.Run "cmd.exe /c ""set PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm;C:\Program Files (x86)\nodejs && npm start""", 0, False

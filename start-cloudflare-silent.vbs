@@ -26,4 +26,5 @@ If Not fso.FolderExists(posDir & "\logs") Then
 End If
 
 ' 0 = Hide window completely. Runs Cloudflare tunnel silently in background with logging.
-WshShell.Run """" & posDir & "\scripts\run_tunnel.bat""", 0, False
+WshShell.Run "cmd.exe /c """ & posDir & "\scripts\run_tunnel.bat""", 0, False
+

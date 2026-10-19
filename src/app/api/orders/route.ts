@@ -18,7 +18,12 @@ export async function GET(req: Request) {
 
     const whereClause: any = {}
     if (tableId) {
-      const queriedTable = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+      let queriedTable = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+      if (!queriedTable) {
+        queriedTable = await prisma.table.findUnique({ where: { number: tableId } }).catch(() => null)
+      }
+      const actualTableId = queriedTable?.id || tableId
+
       if (queriedTable?.mergeGroupId) {
         const groupTables = await prisma.table.findMany({
           where: { mergeGroupId: queriedTable.mergeGroupId },
@@ -26,16 +31,16 @@ export async function GET(req: Request) {
         })
         whereClause.tableId = { in: groupTables.map(t => t.id) }
       } else if (queriedTable?.mergedWithId) {
-        whereClause.tableId = { in: [tableId, queriedTable.mergedWithId] }
+        whereClause.tableId = { in: [actualTableId, queriedTable.mergedWithId] }
       } else {
         const childTables = await prisma.table.findMany({
-          where: { mergedWithId: tableId },
+          where: { mergedWithId: actualTableId },
           select: { id: true },
         })
         if (childTables.length > 0) {
-          whereClause.tableId = { in: [tableId, ...childTables.map(t => t.id)] }
+          whereClause.tableId = { in: [actualTableId, ...childTables.map(t => t.id)] }
         } else {
-          whereClause.tableId = tableId
+          whereClause.tableId = actualTableId
         }
       }
     }
@@ -70,7 +75,15 @@ export async function GET(req: Request) {
       },
       orderBy: { createdAt: 'desc' },
     })
-    return NextResponse.json(orders)
+    return new NextResponse(JSON.stringify(orders), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    })
   } catch (err) {
     console.error('[GET /api/orders]', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
@@ -111,32 +124,14 @@ export async function POST(req: Request) {
 
     const isOfflineLocal = !process.env.VERCEL
 
-    // If requested table is a merged child, anchor the order to the host table
-    const targetTableRecord = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
-    const effectiveTableId = targetTableRecord?.mergedWithId || tableId
+    // If requested table is a merged child or referenced by number, resolve target record
+    let targetTableRecord = await prisma.table.findUnique({ where: { id: tableId } }).catch(() => null)
+    if (!targetTableRecord) {
+      targetTableRecord = await prisma.table.findUnique({ where: { number: tableId } }).catch(() => null)
+    }
+    const effectiveTableId = targetTableRecord?.mergedWithId || targetTableRecord?.id || tableId
 
-    const order = await prisma.order.create({
-      data: {
-        tableId: effectiveTableId,
-        waiterId,
-        pendingSync: isOfflineLocal,
-        orderItems: {
-          create: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
-            menuItemId: item.menuItemId,
-            quantity: item.quantity,
-            notes: item.notes || null,
-            pendingSync: isOfflineLocal,
-          })),
-        },
-      },
-      include: {
-        table: true,
-        waiter: { select: { id: true, fullName: true } },
-        orderItems: { include: { menuItem: { include: { category: true } } } },
-      },
-    })
-
-    // Update table status to OCCUPIED for all tables in the merge group
+    // Cluster table IDs for merge groups
     const clusterIds = [effectiveTableId]
     if (targetTableRecord?.mergeGroupId) {
       const groupTables = await prisma.table.findMany({
@@ -152,6 +147,66 @@ export async function POST(req: Request) {
       childTables.forEach(ct => { if (!clusterIds.includes(ct.id)) clusterIds.push(ct.id) })
     }
 
+    // CRITICAL: Check if this table already has an active OPEN order!
+    // If so, append items into the existing active order instead of creating an individual split order.
+    const existingOpenOrder = await prisma.order.findFirst({
+      where: {
+        tableId: { in: clusterIds },
+        status: 'OPEN',
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    let order
+    if (existingOpenOrder) {
+      // Add items to the existing open order
+      await prisma.orderItem.createMany({
+        data: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
+          orderId: existingOpenOrder.id,
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          notes: item.notes || null,
+          pendingSync: isOfflineLocal,
+        })),
+      })
+
+      // Update parent order pendingSync and updatedAt
+      order = await prisma.order.update({
+        where: { id: existingOpenOrder.id },
+        data: {
+          pendingSync: isOfflineLocal,
+          updatedAt: new Date(),
+        },
+        include: {
+          table: true,
+          waiter: { select: { id: true, fullName: true } },
+          orderItems: { include: { menuItem: { include: { category: true } } } },
+        },
+      })
+    } else {
+      order = await prisma.order.create({
+        data: {
+          tableId: effectiveTableId,
+          waiterId,
+          pendingSync: isOfflineLocal,
+          orderItems: {
+            create: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
+              menuItemId: item.menuItemId,
+              quantity: item.quantity,
+              notes: item.notes || null,
+              pendingSync: isOfflineLocal,
+            })),
+          },
+        },
+        include: {
+          table: true,
+          waiter: { select: { id: true, fullName: true } },
+          orderItems: { include: { menuItem: { include: { category: true } } } },
+        },
+      })
+    }
+
+    // Update table status to OCCUPIED for all tables in the merge group
     await prisma.table.updateMany({
       where: { id: { in: clusterIds } },
       data: { status: 'OCCUPIED' },
@@ -185,3 +240,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
+
