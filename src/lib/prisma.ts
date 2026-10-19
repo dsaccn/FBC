@@ -7,9 +7,16 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   // On Vercel, use the pooled Neon URL (DATABASE_URL) for serverless connection pooling
   // Fall back to DATABASE_URL_UNPOOLED or local SQLite DATABASE_URL
-  const url = process.env.VERCEL
+  let url = process.env.VERCEL
     ? (process.env.DATABASE_URL ?? process.env.DATABASE_URL_UNPOOLED)
     : process.env.DATABASE_URL
+
+  // On Vercel (Neon serverless), ensure connect_timeout is at least 15s to absorb cold start resumes
+  if (process.env.VERCEL && url && (url.startsWith('postgres://') || url.startsWith('postgresql://'))) {
+    if (!url.includes('connect_timeout=')) {
+      url += (url.includes('?') ? '&' : '?') + 'connect_timeout=15&pool_timeout=15'
+    }
+  }
 
   const client = new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],

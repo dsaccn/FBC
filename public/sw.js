@@ -1,14 +1,9 @@
 /**
- * Diva Addis POS — Service Worker
- * Provides offline capability by caching the app shell.
- *
- * Strategy:
- * - App shell (HTML/JS/CSS/fonts): Cache-first, update in background
- * - API routes (/api/*): Network-first with 5s timeout, no offline cache
- * - Static assets (/icons, /manifest): Cache-first, long TTL
+ * Kogna Coffee POS — Service Worker v9
+ * Provides resilient offline capability without breaking RSC navigations or cold starts.
  */
 
-const CACHE_NAME = 'nexora-pos-v8';
+const CACHE_NAME = 'kogna-pos-v9';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to pre-cache on install (app shell)
@@ -27,7 +22,6 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        // Don't fail install if some assets aren't available
         console.warn('[SW] Pre-cache partial failure:', err);
       });
     })
@@ -59,7 +53,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Scanner & Tunnels: Always network only, NEVER cache anything (chunks or HTML)
+  // Scanner & Tunnels: Always network only, NEVER cache anything
   if (
     url.pathname.startsWith('/scanner') ||
     url.hostname.startsWith('scanner.') ||
@@ -69,75 +63,93 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API routes: Network-first, never cache (always fresh data)
+  // API routes: Always network only (fresh dynamic data)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkOnly(request));
     return;
   }
 
-  // Static assets: Cache-first
-  if (
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname.startsWith('/icons/') ||
-    url.pathname === '/manifest.json'
-  ) {
-    event.respondWith(cacheFirst(request));
+  // Next.js RSC Flight requests (?_rsc=... or Header RSC: 1):
+  // MUST ALWAYS be network-only. NEVER return offline.html or text to RSC requests!
+  if (request.headers.get('RSC') === '1' || url.searchParams.has('_rsc')) {
+    event.respondWith(networkOnly(request));
     return;
   }
 
-  // Pages: Network-first with offline fallback
-  event.respondWith(networkFirstWithFallback(request));
+  // Next.js static assets and build chunks:
+  // Use Cache-First with Network fallback, but NEVER return a fake 503 text string
+  if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json') {
+    event.respondWith(cacheFirstStatic(request));
+    return;
+  }
+
+  // Full-page navigations (HTML documents):
+  // Network-first with generous timeout (25s) to accommodate serverless & Neon DB cold starts
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstDocument(request));
+    return;
+  }
+
+  // Default: Network fetch
+  event.respondWith(fetch(request));
 });
 
-// ── Strategies ────────────────────────────────────────────
+// ── Resilient Strategies ──────────────────────────────────
 
 async function networkOnly(request) {
   try {
     return await fetch(request);
-  } catch {
-    return new Response(
-      JSON.stringify({ error: 'Offline — no network connection', offline: true }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    // If it's an API route, return JSON error
+    const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/')) {
+      return new Response(
+        JSON.stringify({ error: 'Offline — no network connection', offline: true }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    // For other requests (e.g. RSC), let the network error propagate cleanly to React
+    throw err;
   }
 }
 
-async function cacheFirst(request) {
+async function cacheFirstStatic(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
 
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (response && response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
-  } catch {
-    return new Response('Asset not available offline', { status: 503 });
+  } catch (err) {
+    // DO NOT return a 503 text response! Throw so browser/script tags handle retry
+    throw err;
   }
 }
 
-async function networkFirstWithFallback(request) {
+async function networkFirstDocument(request) {
   try {
-    // Try network with 5-second timeout
+    // 25-second timeout to handle Vercel serverless cold starts & Neon wake-up gracefully
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     const response = await fetch(request, { signal: controller.signal });
     clearTimeout(timeout);
 
-    if (response.ok) {
+    if (response && response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
   } catch {
-    // Offline or timeout — return cached version
+    // Offline or network failure: check if this specific URL is in cache
     const cached = await caches.match(request);
     if (cached) return cached;
 
-    // Return offline page as last resort
+    // Return friendly offline page as last resort for document navigation
     const offlinePage = await caches.match(OFFLINE_URL);
     if (offlinePage) return offlinePage;
 
@@ -149,9 +161,8 @@ async function networkFirstWithFallback(request) {
 }
 
 // ── Background sync trigger ──────────────────────────────
-// When browser comes back online, notify the app to sync
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'diva-sync') {
+  if (event.tag === 'diva-sync' || event.tag === 'kogna-sync') {
     event.waitUntil(
       fetch('/api/sync', { method: 'POST' })
         .then(() => console.log('[SW] Background sync completed'))

@@ -4,11 +4,30 @@ import bcrypt from 'bcryptjs'
 import { backgroundSync, pushUserToCloud, clearDeletedUser } from '@/lib/sync-engine'
 
 export async function GET() {
-  const users = await prisma.user.findMany({
-    select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
-    orderBy: { fullName: 'asc' },
-  })
-  return NextResponse.json(users)
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
+      orderBy: { fullName: 'asc' },
+    })
+    return NextResponse.json(users, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+    })
+  } catch (err: any) {
+    console.warn('[GET /api/staff] Initial query failed, retrying once:', err?.message)
+    try {
+      await new Promise(r => setTimeout(r, 600))
+      const users = await prisma.user.findMany({
+        select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
+        orderBy: { fullName: 'asc' },
+      })
+      return NextResponse.json(users, {
+        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+      })
+    } catch (retryErr) {
+      console.error('[GET /api/staff] Fatal query error:', retryErr)
+      return NextResponse.json({ error: 'Failed to fetch staff members' }, { status: 500 })
+    }
+  }
 }
 
 export async function POST(req: Request) {

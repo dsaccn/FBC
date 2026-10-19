@@ -245,11 +245,11 @@ export default function StaffPage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: s.active ? 'rgba(201,168,76,0.1)' : 'rgba(220,38,38,0.1)', border: `1px solid ${s.active ? 'var(--gold-dark)' : '#DC2626'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '700', color: s.active ? 'var(--gold)' : '#DC2626', flexShrink: 0 }}>
-                  {s.fullName.charAt(0)}
+                  {(s.fullName || s.username || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{s.fullName}</span>
+                    <span>{s.fullName || s.username}</span>
                     {!s.active && (
                       <span style={{ fontSize: '9px', fontWeight: '800', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '1px 5px', borderRadius: '4px' }}>
                         DEACTIVATED
@@ -259,7 +259,7 @@ export default function StaffPage() {
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>@{s.username}</div>
                 </div>
               </div>
-              <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '10px', background: `${roleColors[s.role]}22`, color: roleColors[s.role], fontWeight: '700', border: `1px solid ${roleColors[s.role]}44`, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '10px', background: `${roleColors[s.role] || 'var(--gold)'}22`, color: roleColors[s.role] || 'var(--gold)', fontWeight: '700', border: `1px solid ${roleColors[s.role] || 'var(--gold)'}44`, whiteSpace: 'nowrap' }}>
                 {s.role}
               </span>
             </div>

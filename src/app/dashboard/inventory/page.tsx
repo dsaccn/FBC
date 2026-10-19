@@ -72,47 +72,84 @@ export default function InventoryPage() {
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
 
+  const [itemsError, setItemsError] = useState<string | null>(null)
+  const [ingsError, setIngsError] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
   const hasLoadedItemsRef = useRef(false)
   const hasLoadedIngsRef = useRef(false)
   const hasLoadedLogsRef = useRef(false)
 
+  // Resilient fetch helper with 12s timeout and automatic 1x retry (ideal for absorbing Neon cold starts)
+  const fetchWithRetry = useCallback(async (url: string, timeoutMs = 12000): Promise<Response> => {
+    const doFetch = async () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        return await fetch(url, { cache: 'no-store', signal: controller.signal })
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    try {
+      const res = await doFetch()
+      if (res.ok) return res
+      // If server returned 5xx (e.g. Neon cold start wake-up), wait 700ms and retry once
+      await new Promise(r => setTimeout(r, 700))
+      return await doFetch()
+    } catch {
+      // If network timed out or failed, wait 700ms and retry once
+      await new Promise(r => setTimeout(r, 700))
+      return await doFetch()
+    }
+  }, [])
+
   const loadItems = useCallback(async (isSilent = false) => {
     if (!isSilent && !hasLoadedItemsRef.current) setLoadingItems(true)
+    setItemsError(null)
     try {
-      const res = await fetch('/api/menu-items', { cache: 'no-store' })
+      const res = await fetchWithRetry('/api/menu-items')
       if (res.ok) {
         setItems(await res.json())
         hasLoadedItemsRef.current = true
+        setItemsError(null)
       } else {
         console.error('Failed to load menu items:', res.statusText)
+        if (!hasLoadedItemsRef.current) setItemsError('Failed to load menu items from server')
       }
     } catch (err) {
       console.error('Error loading menu items:', err)
+      if (!hasLoadedItemsRef.current) setItemsError('Connection timed out loading items')
     } finally {
       setLoadingItems(false)
     }
-  }, [])
+  }, [fetchWithRetry])
 
   const loadIngredients = useCallback(async (isSilent = false) => {
     if (!isSilent && !hasLoadedIngsRef.current) setLoadingIngs(true)
+    setIngsError(null)
     try {
-      const res = await fetch('/api/ingredients', { cache: 'no-store' })
+      const res = await fetchWithRetry('/api/ingredients')
       if (res.ok) {
         setIngredients(await res.json())
         hasLoadedIngsRef.current = true
+        setIngsError(null)
       } else {
         console.error('Failed to load ingredients:', res.statusText)
+        if (!hasLoadedIngsRef.current) setIngsError('Failed to load ingredients from server')
       }
     } catch (err) {
       console.error('Error loading ingredients:', err)
+      if (!hasLoadedIngsRef.current) setIngsError('Connection timed out loading ingredients')
     } finally {
       setLoadingIngs(false)
     }
-  }, [])
+  }, [fetchWithRetry])
 
   const loadCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/categories', { cache: 'no-store' })
+      const res = await fetchWithRetry('/api/categories')
       if (res.ok) {
         setCategories(await res.json())
       } else {
@@ -121,12 +158,12 @@ export default function InventoryPage() {
     } catch (err) {
       console.error('Error loading categories:', err)
     }
-  }, [])
+  }, [fetchWithRetry])
 
   const loadLogs = useCallback(async (isSilent = false) => {
     if (!isSilent && !hasLoadedLogsRef.current) setLoadingLogs(true)
     try {
-      const res = await fetch('/api/inventory/logs', { cache: 'no-store' })
+      const res = await fetchWithRetry('/api/inventory/logs')
       if (res.ok) {
         setLogs(await res.json())
         hasLoadedLogsRef.current = true
@@ -138,7 +175,7 @@ export default function InventoryPage() {
     } finally {
       setLoadingLogs(false)
     }
-  }, [])
+  }, [fetchWithRetry])
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -517,7 +554,22 @@ export default function InventoryPage() {
             )}
           </div>
 
-          <button className="btn btn-ghost btn-sm" onClick={() => { loadItems(); loadIngredients(); loadLogs() }}><RefreshCw size={14} /> Refresh</button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={isRefreshing}
+            onClick={async () => {
+              setIsRefreshing(true)
+              try {
+                await Promise.allSettled([loadItems(), loadIngredients(), loadCategories(), loadLogs()])
+                toast.success('Inventory refreshed')
+              } finally {
+                setIsRefreshing(false)
+              }
+            }}
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           {tab === 'ingredients' && <button className="btn btn-gold btn-sm" onClick={openNewIng}><Plus size={14} /> Add Ingredient</button>}
         </div>
       </div>
@@ -604,7 +656,21 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {loadingItems ? (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <RefreshCw size={15} className="animate-spin" />
+                          <span>Loading items...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : itemsError ? (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
+                        <div style={{ marginBottom: '10px', fontSize: '13px' }}>⚠ {itemsError}</div>
+                        <button className="btn btn-outline btn-sm" onClick={() => loadItems()}>Try Again</button>
+                      </td>
+                    </tr>
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>No items found.</td></tr>
                   ) : (
@@ -732,7 +798,17 @@ export default function InventoryPage() {
           {/* Mobile View Cards */}
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             {loadingItems ? (
-              <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</div>
+              <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <RefreshCw size={15} className="animate-spin" />
+                  <span>Loading items...</span>
+                </div>
+              </div>
+            ) : itemsError ? (
+              <div className="card" style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
+                <div style={{ marginBottom: '10px', fontSize: '13px' }}>⚠ {itemsError}</div>
+                <button className="btn btn-outline btn-sm" onClick={() => loadItems()}>Try Again</button>
+              </div>
             ) : filtered.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No items found.</div>
             ) : filtered.map(item => {
@@ -886,7 +962,21 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {loadingIngs ? (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <RefreshCw size={15} className="animate-spin" />
+                          <span>Loading ingredients...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : ingsError ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
+                        <div style={{ marginBottom: '10px', fontSize: '13px' }}>⚠ {ingsError}</div>
+                        <button className="btn btn-outline btn-sm" onClick={() => loadIngredients()}>Try Again</button>
+                      </td>
+                    </tr>
                   ) : filteredIngredients.length === 0 ? (
                     <tr><td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
@@ -966,7 +1056,17 @@ export default function InventoryPage() {
           {/* Mobile View Cards */}
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             {loadingIngs ? (
-              <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading...</div>
+              <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <RefreshCw size={15} className="animate-spin" />
+                  <span>Loading ingredients...</span>
+                </div>
+              </div>
+            ) : ingsError ? (
+              <div className="card" style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
+                <div style={{ marginBottom: '10px', fontSize: '13px' }}>⚠ {ingsError}</div>
+                <button className="btn btn-outline btn-sm" onClick={() => loadIngredients()}>Try Again</button>
+              </div>
             ) : filteredIngredients.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                 {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}

@@ -5,11 +5,31 @@ import { backgroundSync, pushMenuItemToCloud } from '@/lib/sync-engine'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const items = await prisma.menuItem.findMany({
-    include: { category: true, recipes: { include: { ingredient: true } } },
-    orderBy: { name: 'asc' },
-  })
-  return NextResponse.json(items)
+  try {
+    const items = await prisma.menuItem.findMany({
+      include: { category: true, recipes: { include: { ingredient: true } } },
+      orderBy: { name: 'asc' },
+    })
+    return NextResponse.json(items, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+    })
+  } catch (err: any) {
+    console.warn('[GET /api/menu-items] Initial query failed, retrying once for Neon resume:', err?.message)
+    try {
+      // Retry once after brief pause to allow Neon pooler to resume
+      await new Promise(r => setTimeout(r, 600))
+      const items = await prisma.menuItem.findMany({
+        include: { category: true, recipes: { include: { ingredient: true } } },
+        orderBy: { name: 'asc' },
+      })
+      return NextResponse.json(items, {
+        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+      })
+    } catch (retryErr) {
+      console.error('[GET /api/menu-items] Fatal query error:', retryErr)
+      return NextResponse.json({ error: 'Failed to fetch menu items' }, { status: 500 })
+    }
+  }
 }
 
 export async function POST(req: Request) {
