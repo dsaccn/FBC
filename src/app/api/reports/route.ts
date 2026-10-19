@@ -56,7 +56,7 @@ export async function GET(req: Request) {
 
   // Helper to compute effective cost price for a menu item
   // If it has a recipe with ingredient costs > 0, sum recipe ingredient costs!
-  // Otherwise, fall back to menuItem.costPrice.
+  // If direct costPrice is also set (packaging, cups), add them together so all costs are captured.
   function getItemCost(menuItem: any): { cost: number; isRecipe: boolean; recipeCost: number } {
     if (!menuItem) return { cost: 0, isRecipe: false, recipeCost: 0 }
     let calculatedRecipeCost = 0
@@ -69,11 +69,13 @@ export async function GET(req: Request) {
       calculatedRecipeCost = Math.round(calculatedRecipeCost * 100) / 100
     }
 
-    if (hasRecipe && calculatedRecipeCost > 0) {
-      return { cost: calculatedRecipeCost, isRecipe: true, recipeCost: calculatedRecipeCost }
-    }
     const directCost = Number(menuItem.costPrice || 0)
-    return { cost: directCost, isRecipe: hasRecipe, recipeCost: calculatedRecipeCost }
+    const effectiveCost = calculatedRecipeCost > 0 ? (directCost + calculatedRecipeCost) : directCost
+    return {
+      cost: Math.round(effectiveCost * 100) / 100,
+      isRecipe: hasRecipe,
+      recipeCost: calculatedRecipeCost
+    }
   }
 
   // Helper to extract tip from payment notes

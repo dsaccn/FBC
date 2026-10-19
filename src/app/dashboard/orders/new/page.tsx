@@ -427,7 +427,7 @@ export default function NewOrderPage() {
                   <option value="">{selectedTableId ? 'Change Table...' : '-- Select Table --'}</option>
                   {allTables.map((t: any) => (
                     <option key={t.id} value={t.id}>
-                      Table {t.displayLabel || t.mergeGroupLabel || t.number} {t.status === 'OCCUPIED' ? '🟡 (Open Order)' : '🟢 (Free)'}
+                      Table {t.displayLabel || t.mergeGroupLabel || t.number}{t.status === 'OCCUPIED' ? ' 🟡 (Open Order)' : ''}
                     </option>
                   ))}
                 </select>

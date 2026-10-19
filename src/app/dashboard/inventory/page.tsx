@@ -6,8 +6,21 @@ import Portal from '@/components/Portal'
 import { toast } from '@/components/ToastProvider'
 
 interface Category { id: string; name: string; type: string }
-interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null }
+interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null; recipes?: any[] }
 interface Ingredient { id: string; name: string; unit: string; quantity: number; costPerUnit?: number; minThreshold: number }
+
+function getEffectiveItemCost(item: MenuItem): { cost: number; isRecipe: boolean } {
+  let recipeCost = 0
+  if (Array.isArray(item.recipes) && item.recipes.length > 0) {
+    for (const r of item.recipes) {
+      recipeCost += Number(r.quantity || 0) * Number(r.ingredient?.costPerUnit || 0)
+    }
+    recipeCost = Math.round(recipeCost * 100) / 100
+  }
+  const directCost = Number(item.costPrice || 0)
+  const total = recipeCost > 0 ? (directCost + recipeCost) : directCost
+  return { cost: Math.round(total * 100) / 100, isRecipe: recipeCost > 0 }
+}
 
 const UNITS = ['grams', 'kg', 'ml', 'liters', 'pieces', 'cups', 'tbsp', 'tsp']
 
@@ -637,11 +650,17 @@ export default function InventoryPage() {
 
                             {/* Cost Price */}
                             <td style={{ padding: '9px 6px', textAlign: 'right', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                              {item.costPrice > 0 ? (
-                                <span style={{ color: 'var(--text-secondary)' }}>{item.costPrice.toFixed(2)}</span>
-                              ) : (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
-                              )}
+                              {(() => {
+                                const { cost, isRecipe } = getEffectiveItemCost(item)
+                                if (cost > 0) {
+                                  return (
+                                    <span style={{ color: 'var(--text-secondary)' }} title={isRecipe ? 'Calculated from recipe ingredients' : 'Direct cost'}>
+                                      {cost.toFixed(2)} {isRecipe && <span style={{ fontSize: '10px', color: 'var(--gold)' }}>★</span>}
+                                    </span>
+                                  )
+                                }
+                                return <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                              })()}
                             </td>
 
                             {/* Sell Price */}
@@ -651,15 +670,19 @@ export default function InventoryPage() {
 
                             {/* Margin */}
                             <td style={{ padding: '9px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              {item.costPrice > 0 ? (() => {
-                                const margin = item.price - item.costPrice
-                                const pct = ((margin / item.price) * 100).toFixed(0)
-                                return (
-                                  <span style={{ fontSize: '11px', fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                                    {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ({pct}%)
-                                  </span>
-                                )
-                              })() : <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>}
+                              {(() => {
+                                const { cost } = getEffectiveItemCost(item)
+                                if (cost > 0) {
+                                  const margin = item.price - cost
+                                  const pct = ((margin / item.price) * 100).toFixed(0)
+                                  return (
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                                      {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ({pct}%)
+                                    </span>
+                                  )
+                                }
+                                return <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                              })()}
                             </td>
 
                             {/* Status & Min threshold */}
@@ -772,9 +795,17 @@ export default function InventoryPage() {
                     
                     <div style={{ gridColumn: 'span 1', marginTop: '4px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Cost Price</span>
-                      {item.costPrice > 0 ? (
-                        <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{item.costPrice.toFixed(2)} ETB</span>
-                      ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                      {(() => {
+                        const { cost, isRecipe } = getEffectiveItemCost(item)
+                        if (cost > 0) {
+                          return (
+                            <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>
+                              {cost.toFixed(2)} ETB {isRecipe && <span style={{ fontSize: '10px', color: 'var(--gold)' }}>★</span>}
+                            </span>
+                          )
+                        }
+                        return <span style={{ color: 'var(--text-muted)' }}>-</span>
+                      })()}
                     </div>
                     <div style={{ gridColumn: 'span 2', marginTop: '4px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Sell Price</span>
@@ -782,15 +813,19 @@ export default function InventoryPage() {
                     </div>
                     <div style={{ gridColumn: 'span 3', marginTop: '4px', borderTop: '1px solid var(--black-border)', paddingTop: '4px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Profit Margin</span>
-                      {item.costPrice > 0 ? (() => {
-                        const margin = item.price - item.costPrice
-                        const pct = ((margin / item.price) * 100).toFixed(0)
-                        return (
-                          <span style={{ fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
-                            {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ETB ({pct}%)
-                          </span>
-                        )
-                      })() : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                      {(() => {
+                        const { cost } = getEffectiveItemCost(item)
+                        if (cost > 0) {
+                          const margin = item.price - cost
+                          const pct = ((margin / item.price) * 100).toFixed(0)
+                          return (
+                            <span style={{ fontWeight: '700', color: margin >= 0 ? 'var(--success-light)' : 'var(--danger-light)' }}>
+                              {margin >= 0 ? '+' : ''}{margin.toFixed(2)} ETB ({pct}%)
+                            </span>
+                          )
+                        }
+                        return <span style={{ color: 'var(--text-muted)' }}>-</span>
+                      })()}
                     </div>
                   </div>
 

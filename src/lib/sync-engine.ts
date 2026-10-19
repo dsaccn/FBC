@@ -57,15 +57,21 @@ export function recordDeletedUser(id?: string | null, username?: string | null):
   }
 }
 
-export function isUserDeleted(id?: string | null, username?: string | null): boolean {
+export function isUserDeleted(id?: string | null, username?: string | null, createdAt?: Date | string | null): boolean {
   const safeId = (id && typeof id === 'string' && id.trim()) ? id.trim() : ''
-  const safeUsername = (username && typeof username === 'string' && username.trim()) ? username.trim() : ''
+  const safeUsername = (username && typeof username === 'string' && username.trim()) ? username.trim().toLowerCase() : ''
   if (!safeId && !safeUsername) return false
 
   const list = getDeletedUsers()
   return list.some(e => {
+    // If the tombstone was created BEFORE this user was created, this is a fresh user!
+    if (createdAt && e.deletedAt) {
+      const createdTime = new Date(createdAt).getTime()
+      const deletedTime = new Date(e.deletedAt).getTime()
+      if (createdTime > deletedTime) return false
+    }
     if (safeId && e.id && e.id === safeId) return true
-    if (safeUsername && e.username && e.username === safeUsername) return true
+    if (safeUsername && e.username && e.username.toLowerCase() === safeUsername) return true
     return false
   })
 }
@@ -79,12 +85,22 @@ export function clearDeletedUser(id?: string | null, username?: string | null): 
     const list = getDeletedUsers()
     const updated = list.filter(e => {
       if (safeId && e.id === safeId) return false
-      if (safeUsername && e.username === safeUsername) return false
+      if (safeUsername && e.username && e.username.toLowerCase() === safeUsername.toLowerCase()) return false
       return true
     })
     fs.writeFileSync(TOMBSTONES_FILE, JSON.stringify(updated, null, 2), 'utf8')
   } catch (err) {
     console.warn('[SyncEngine] Error clearing deleted user tombstone:', err)
+  }
+
+  // Also remove matching tombstone from Neon's DeletedUser table
+  try {
+    deleteFromCloud(
+      `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1) OR (id IS NOT NULL AND id = $2)`,
+      [safeUsername || '__none__', safeId || '__none__']
+    ).catch(() => {})
+  } catch {
+    // ignore
   }
 }
 
@@ -179,19 +195,14 @@ export async function pushUserToCloud(u: {
   active: boolean
   createdAt?: Date
 }): Promise<void> {
-  // If user is marked as deleted, NEVER resurrect them into cloud!
-  if (isUserDeleted(u.id, u.username)) {
-    return
-  }
-
-  // Ensure user is removed from deletion tombstones
+  // Ensure user is removed from deletion tombstones locally
   clearDeletedUser(u.id, u.username)
 
   try {
     const pg = getPool()
     if (u.username) {
       await pg.query(
-        `DELETE FROM "DeletedUser" WHERE username = $1 OR (id IS NOT NULL AND id = $2)`,
+        `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1) OR (id IS NOT NULL AND id = $2)`,
         [u.username, u.id]
       ).catch(() => {})
     }
@@ -519,13 +530,9 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const cloudDeletedIds = new Set<string>()
       try {
         const { rows: cloudDeleted } = await pg.query(
-          `SELECT id, username FROM "DeletedUser"`
+          `SELECT id, username, "deletedAt" FROM "DeletedUser"`
         )
         for (const d of cloudDeleted) {
-          if (d.username) cloudDeletedUsernames.add(d.username)
-          if (d.id) cloudDeletedIds.add(d.id)
-          recordDeletedUser(d.id, d.username)
-
           const conditions: Array<{ id?: string; username?: string }> = []
           if (d.id && typeof d.id === 'string' && d.id.trim()) {
             conditions.push({ id: d.id.trim() })
@@ -538,6 +545,20 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           const localU = await prisma.user.findFirst({
             where: { OR: conditions }
           }).catch(() => null)
+
+          // If local user exists and was created AFTER the tombstone, this is a fresh user!
+          if (localU) {
+            const userCreated = localU.createdAt ? new Date(localU.createdAt).getTime() : 0
+            const tombDeleted = d.deletedAt ? new Date(d.deletedAt).getTime() : 0
+            if (userCreated > tombDeleted) {
+              clearDeletedUser(d.id, d.username)
+              continue
+            }
+          }
+
+          if (d.username) cloudDeletedUsernames.add(d.username.toLowerCase())
+          if (d.id) cloudDeletedIds.add(d.id)
+          recordDeletedUser(d.id, d.username)
 
           if (localU && localU.username !== 'master' && localU.username !== 'admin') {
             await prisma.shiftLog.deleteMany({ where: { userId: localU.id } }).catch(() => {})
@@ -563,9 +584,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       )
 
       for (const u of cloudUsers) {
-        // If this user was deleted locally or in cloud tombstones, do NOT re-insert or update them.
-        if (isUserDeleted(u.id, u.username) || cloudDeletedUsernames.has(u.username) || (u.id && cloudDeletedIds.has(u.id))) {
-          deleteUserFromCloud(u.id, u.username).catch(() => {})
+        // If this user is marked as deleted (and created before tombstone), skip pulling them
+        if (isUserDeleted(u.id, u.username, u.createdAt) || cloudDeletedUsernames.has(u.username.toLowerCase()) || (u.id && cloudDeletedIds.has(u.id))) {
           continue
         }
 
@@ -625,7 +645,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
       const localUsers = await prisma.user.findMany()
       for (const lu of localUsers) {
         if (!cloudUsernames.has(lu.username) && !cloudIds.has(lu.id)) {
-          const isDeleted = isUserDeleted(lu.id, lu.username) || cloudDeletedUsernames.has(lu.username) || (lu.id && cloudDeletedIds.has(lu.id))
+          const isDeleted = isUserDeleted(lu.id, lu.username, lu.createdAt) || (lu.id && cloudDeletedIds.has(lu.id))
           if (isDeleted) {
             recordDeletedUser(lu.id, lu.username)
             if (lu.username !== 'master' && lu.username !== 'admin') {

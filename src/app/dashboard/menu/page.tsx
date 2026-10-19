@@ -6,10 +6,10 @@ import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 
 interface Category { id: string; name: string; type: string }
-interface Ingredient { id: string; name: string; unit: string; currentStock: number }
-interface MenuItem { id: string; name: string; description?: string; price: number; available: boolean; stockQuantity: number; lowStockThreshold: number; category: Category; recipes?: any[]; parentItemId?: string | null; unitMultiplier?: number }
+interface Ingredient { id: string; name: string; unit: string; currentStock: number; costPerUnit?: number }
+interface MenuItem { id: string; name: string; description?: string; price: number; costPrice?: number; available: boolean; stockQuantity: number; lowStockThreshold: number; category: Category; recipes?: any[]; parentItemId?: string | null; unitMultiplier?: number }
 
-const EMPTY_FORM = { name: '', description: '', price: '', categoryId: '', available: true, stockQuantity: '0', lowStockThreshold: '5', parentItemId: '', unitMultiplier: '1' }
+const EMPTY_FORM = { name: '', description: '', price: '', costPrice: '0', categoryId: '', available: true, stockQuantity: '0', lowStockThreshold: '5', parentItemId: '', unitMultiplier: '1' }
 
 export default function MenuPage() {
   const [items, setItems] = useState<MenuItem[]>([])
@@ -73,6 +73,7 @@ export default function MenuPage() {
       name: item.name,
       description: item.description || '',
       price: item.price.toString(),
+      costPrice: (item.costPrice || 0).toString(),
       categoryId: item.category?.id || '',
       available: item.available,
       stockQuantity: item.stockQuantity.toString(),
@@ -104,6 +105,7 @@ export default function MenuPage() {
       name: form.name.trim(),
       description: form.description?.trim() || '',
       price: priceVal,
+      costPrice: parseFloat(form.costPrice) || 0,
       available: form.available,
       stockQuantity: parseInt(form.stockQuantity) || 0,
       lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
@@ -448,9 +450,13 @@ export default function MenuPage() {
               </div>
               <div>
                 <label className="input-label">Price (ETB)</label>
-                <input className="input" type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0.00" />
+                <input className="input" type="number" step="any" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0.00" />
               </div>
               <div>
+                <label className="input-label">Direct Cost / Packaging (ETB)</label>
+                <input className="input" type="number" step="any" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} placeholder="0.00" />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
                 <label className="input-label">Category</label>
                 <select className="input" value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
                   <option value="">Select category</option>
@@ -493,29 +499,71 @@ export default function MenuPage() {
               </div>
 
               {/* Recipe Section */}
-              <div style={{ gridColumn: '1/-1', borderTop: '1px solid var(--black-border)', paddingTop: '16px', marginTop: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <label className="input-label" style={{ marginBottom: 0 }}>Recipe / Ingredients (Optional)</label>
-                  <button className="btn btn-outline btn-sm" onClick={() => setFormRecipes([...formRecipes, { ingredientId: '', quantity: '1' }])}><Plus size={12}/> Add Ingredient</button>
-                </div>
-                {formRecipes.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No ingredients linked. Used for inventory tracking.</div>}
-                {formRecipes.map((fr, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                    <select className="input" style={{ flex: 1 }} value={fr.ingredientId} onChange={e => {
-                      const newR = [...formRecipes]; newR[idx].ingredientId = e.target.value; setFormRecipes(newR);
-                    }}>
-                      <option value="">Select ingredient...</option>
-                      {ingredients.map(ing => <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>)}
-                    </select>
-                    <input className="input" style={{ width: '100px' }} type="number" step="any" placeholder="Qty" value={fr.quantity} onChange={e => {
-                      const newR = [...formRecipes]; newR[idx].quantity = e.target.value; setFormRecipes(newR);
-                    }} />
-                    <button className="btn btn-outline btn-sm" style={{ padding: '0 10px', color: 'var(--danger-light)', borderColor: 'var(--danger-light)' }} onClick={() => {
-                      const newR = [...formRecipes]; newR.splice(idx, 1); setFormRecipes(newR);
-                    }}><Trash2 size={14}/></button>
+              {(() => {
+                const totalRecipeCost = Math.round(
+                  formRecipes.reduce((sum, fr) => {
+                    const ing = ingredients.find(i => i.id === fr.ingredientId)
+                    const unitCost = Number(ing?.costPerUnit || 0)
+                    const qty = parseFloat(fr.quantity) || 0
+                    return sum + (qty * unitCost)
+                  }, 0) * 100
+                ) / 100
+
+                return (
+                  <div style={{ gridColumn: '1/-1', borderTop: '1px solid var(--black-border)', paddingTop: '16px', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <label className="input-label" style={{ marginBottom: 0 }}>Recipe / Ingredients (Optional)</label>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormRecipes([...formRecipes, { ingredientId: '', quantity: '1' }])}><Plus size={12}/> Add Ingredient</button>
+                    </div>
+                    {formRecipes.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No ingredients linked. Used for inventory tracking & recipe costing.</div>}
+                    {formRecipes.map((fr, idx) => {
+                      const matchedIng = ingredients.find(ing => ing.id === fr.ingredientId)
+                      const ingCost = Number(matchedIng?.costPerUnit || 0)
+                      const lineCost = Math.round((parseFloat(fr.quantity) || 0) * ingCost * 100) / 100
+
+                      return (
+                        <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                          <select className="input" style={{ flex: 2 }} value={fr.ingredientId} onChange={e => {
+                            const newR = [...formRecipes]; newR[idx].ingredientId = e.target.value; setFormRecipes(newR);
+                          }}>
+                            <option value="">Select ingredient...</option>
+                            {ingredients.map(ing => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}) {ing.costPerUnit ? `— ${ing.costPerUnit.toFixed(2)} ETB/${ing.unit}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <input className="input" style={{ width: '80px' }} type="number" step="any" placeholder="Qty" value={fr.quantity} onChange={e => {
+                            const newR = [...formRecipes]; newR[idx].quantity = e.target.value; setFormRecipes(newR);
+                          }} />
+                          <div style={{ width: '90px', fontSize: '12px', textAlign: 'right', fontWeight: '600', color: lineCost > 0 ? '#E11D48' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            {lineCost > 0 ? `${lineCost.toFixed(2)} ETB` : '—'}
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ padding: '0 8px', color: 'var(--danger-light)', borderColor: 'var(--danger-light)' }} onClick={() => {
+                            const newR = [...formRecipes]; newR.splice(idx, 1); setFormRecipes(newR);
+                          }}><Trash2 size={14}/></button>
+                        </div>
+                      )
+                    })}
+
+                    {formRecipes.length > 0 && totalRecipeCost > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--black-hover)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--black-border)', marginTop: '8px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Total Ingredients Cost: <b style={{ color: '#E11D48', fontSize: '14px' }}>{totalRecipeCost.toFixed(2)} ETB</b>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--gold)', borderColor: 'var(--gold)' }}
+                          onClick={() => setForm(f => ({ ...f, costPrice: totalRecipeCost.toString() }))}
+                        >
+                          Use as Item Cost
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                )
+              })()}
               
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>

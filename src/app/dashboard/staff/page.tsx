@@ -48,13 +48,22 @@ export default function StaffPage() {
   function openEdit(s: Staff) { setEditStaff(s); setForm({ username: s.username, fullName: s.fullName, password: '', role: s.role, phone: s.phone || '' }); setDeleteConfirming(false); setShowForm(true) }
 
   async function save() {
-    if (!form.fullName.trim() || !form.username.trim()) {
+    const cleanUsername = form.username.trim().toLowerCase()
+    const cleanFullName = form.fullName.trim()
+
+    if (!cleanFullName || !cleanUsername) {
       toast.warning('Full name and username are required')
       return
     }
     if (!editStaff && !form.password.trim()) {
       toast.warning('Password is required for new staff accounts')
       return
+    }
+
+    const payload = {
+      ...form,
+      username: cleanUsername,
+      fullName: cleanFullName,
     }
 
     setSaving(true)
@@ -64,13 +73,13 @@ export default function StaffPage() {
         res = await fetch(`/api/staff/${editStaff.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form)
+          body: JSON.stringify(payload)
         })
       } else {
         res = await fetch('/api/staff', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form)
+          body: JSON.stringify(payload)
         })
       }
 

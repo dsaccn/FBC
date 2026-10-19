@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const items = await prisma.menuItem.findMany({
-    include: { category: true, recipes: true },
+    include: { category: true, recipes: { include: { ingredient: true } } },
     orderBy: { name: 'asc' },
   })
   return NextResponse.json(items)
@@ -24,6 +24,8 @@ export async function POST(req: Request) {
     if (isNaN(price) || price < 0) {
       return NextResponse.json({ error: 'Valid price is required' }, { status: 400 })
     }
+
+    const costPrice = body.costPrice !== undefined ? Math.max(0, Number(body.costPrice) || 0) : 0
 
     let categoryId = body.categoryId && typeof body.categoryId === 'string' && body.categoryId.trim()
       ? body.categoryId.trim()
@@ -59,13 +61,14 @@ export async function POST(req: Request) {
         ...body,
         name: body.name.trim(),
         price,
+        costPrice,
         categoryId,
         parentItemId,
         recipes: validRecipes.length > 0 ? {
           create: validRecipes
         } : undefined
       },
-      include: { recipes: true, category: true }
+      include: { recipes: { include: { ingredient: true } }, category: true }
     })
 
     await pushMenuItemToCloud(item)

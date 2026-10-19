@@ -51,6 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const updateData: any = { ...body }
+    if (body.costPrice !== undefined) updateData.costPrice = Math.max(0, Number(body.costPrice) || 0)
     if (categoryId !== undefined) updateData.categoryId = categoryId
     if (parentItemId !== undefined) updateData.parentItemId = parentItemId
     if (recipeUpdate !== undefined) updateData.recipes = recipeUpdate
@@ -59,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const item = await prisma.menuItem.update({
       where: { id },
       data: updateData,
-      include: { recipes: true, category: true }
+      include: { recipes: { include: { ingredient: true } }, category: true }
     })
 
     // Log any stock changes
