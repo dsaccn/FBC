@@ -3,5 +3,27 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 posDir = fso.GetParentFolderName(WScript.ScriptFullName)
 WshShell.CurrentDirectory = posDir
 
-' 0 = Hide window completely. Runs Cloudflare tunnel silently in background.
-WshShell.Run "cmd.exe /c """"" & posDir & "\bin\cloudflared.exe"" tunnel --url http://localhost:3000 --protocol http2 run --token eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9", 0, False
+cloudflaredPath = posDir & "\bin\cloudflared.exe"
+needsDownload = False
+
+If Not fso.FileExists(cloudflaredPath) Then
+    needsDownload = True
+Else
+    Set fileObj = fso.GetFile(cloudflaredPath)
+    If fileObj.Size < 20000000 Then
+        needsDownload = True
+    End If
+End If
+
+If needsDownload Then
+    ' Download cloudflared visibly so the user can see progress
+    WshShell.Run """" & posDir & "\start-cloudflare.bat""", 1, False
+    WScript.Quit
+End If
+
+If Not fso.FolderExists(posDir & "\logs") Then
+    fso.CreateFolder(posDir & "\logs")
+End If
+
+' 0 = Hide window completely. Runs Cloudflare tunnel silently in background with logging.
+WshShell.Run """" & posDir & "\scripts\run_tunnel.bat""", 0, False
