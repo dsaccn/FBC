@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#1F1A14" />
+      <stop offset="60%" stop-color="#120F0C" />
+      <stop offset="100%" stop-color="#080705" />
+    </radialGradient>
+
+    <!-- Outer Gold Border Gradient -->
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE8A3" />
+      <stop offset="25%" stop-color="#D4AF37" />
+      <stop offset="50%" stop-color="#997519" />
+      <stop offset="75%" stop-color="#E5C158" />
+      <stop offset="100%" stop-color="#FFF2B8" />
+    </linearGradient>
+
+    <!-- Cup & Steam Gold Gradient -->
+    <linearGradient id="cupGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5C2" />
+      <stop offset="20%" stop-color="#F3D16B" />
+      <stop offset="55%" stop-color="#D4AF37" />
+      <stop offset="85%" stop-color="#A67C1E" />
+      <stop offset="100%" stop-color="#735410" />
+    </linearGradient>
+
+    <!-- Subtle Golden Glow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Squircle / Circular Base -->
+  <rect x="16" y="16" width="480" height="480" rx="120" fill="url(#bgGrad)" stroke="url(#goldBorder)" stroke-width="12" />
+
+  <!-- Inner Subtle Accent Ring -->
+  <rect x="34" y="34" width="444" height="444" rx="104" fill="none" stroke="#D4AF37" stroke-width="2" stroke-opacity="0.35" />
+
+  <!-- Steam 1 (Left - Curved) -->
+  <path d="M 215 175 C 200 145 230 115 210 85 C 205 77 198 70 205 60"
+        fill="none" stroke="url(#cupGold)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" filter="url(#glow)" />
+
+  <!-- Steam 2 (Center - Tall & Majestic) -->
+  <path d="M 256 165 C 240 130 275 100 256 65 C 250 55 245 48 252 38"
+        fill="none" stroke="url(#cupGold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" filter="url(#glow)" />
+
+  <!-- Steam 3 (Right - Curved) -->
+  <path d="M 297 175 C 312 145 282 115 302 85 C 307 77 314 70 307 60"
+        fill="none" stroke="url(#cupGold)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" filter="url(#glow)" />
+
+  <!-- Saucer (Golden Plate Base) -->
+  <path d="M 120 380 C 120 405 392 405 392 380 C 375 365 137 365 120 380 Z"
+        fill="url(#cupGold)" filter="url(#glow)" />
+  <ellipse cx="256" cy="382" rx="145" ry="10" fill="#1A140A" opacity="0.7" />
+
+  <!-- Coffee Cup Body -->
+  <path d="M 148 210 
+           L 364 210 
+           C 358 310 320 355 256 355 
+           C 192 355 154 310 148 210 Z"
+        fill="url(#cupGold)" filter="url(#glow)" />
+
+  <!-- Cup Rim (Top Oval) -->
+  <ellipse cx="256" cy="210" rx="108" ry="24" fill="url(#goldBorder)" />
+  <ellipse cx="256" cy="212" rx="98" ry="19" fill="#1C1409" />
+  <ellipse cx="256" cy="213" rx="92" ry="15" fill="#38220F" />
+
+  <!-- Coffee Surface Accent Line -->
+  <path d="M 180 215 C 215 222 297 222 332 215" fill="none" stroke="#D4AF37" stroke-width="4" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Cup Handle -->
+  <path d="M 345 230 
+           C 410 230 415 315 330 320 
+           C 345 305 365 300 365 275 
+           C 365 250 345 245 340 240 Z"
+        fill="url(#cupGold)" />
+
+  <!-- Elegant 'K' Crest On Cup Center -->
+  <g transform="translate(236, 255) scale(0.9)" filter="url(#glow)">
+    <path d="M 5 0 L 15 0 L 15 55 L 5 55 Z" fill="#1F170D" />
+    <path d="M 15 28 L 38 0 L 50 0 L 25 31 L 52 55 L 39 55 Z" fill="#1F170D" />
+    <path d="M 7 2 L 13 2 L 13 53 L 7 53 Z" fill="#FFE8A3" opacity="0.4" />
+  </g>
+
+  <!-- Luxury Bottom Star Accent -->
+  <polygon points="256,432 260,442 271,442 262,448 265,458 256,452 247,458 250,448 241,442 252,442" fill="url(#cupGold)" />
+  <circle cx="216" cy="445" r="3" fill="#D4AF37" opacity="0.7" />
+  <circle cx="296" cy="445" r="3" fill="#D4AF37" opacity="0.7" />
+</svg>
