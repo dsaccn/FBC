@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock, User, Eye, EyeOff, Sparkles, ArrowRight, Coffee } from 'lucide-react'
 
@@ -12,8 +12,18 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
+  // Clean up any trailing '?' if the browser arrived via a previous native GET submission
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search === '?') {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  async function handleLogin(e?: React.FormEvent) {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
     setLoading(true)
     setError('')
 
@@ -31,12 +41,14 @@ export default function LoginPage() {
       })
 
       const data = await res.json()
-      setLoading(false)
 
       if (!res.ok) {
         setError(data.error || 'Invalid username or password')
+        setLoading(false)
       } else {
-        router.push('/dashboard')
+        // Use full navigation so the browser synchronously attaches the Set-Cookie session header
+        // and eliminates Next.js client-side router cookie race condition redirects
+        window.location.href = '/dashboard'
       }
     } catch {
       setError('Network connection error. Please try again.')
@@ -216,7 +228,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleLogin} action="javascript:void(0);" method="POST">
             {/* Username Input */}
             <div style={{ marginBottom: '18px' }}>
               <label
