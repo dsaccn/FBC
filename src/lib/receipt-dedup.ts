@@ -43,8 +43,9 @@ export function extractTransactionReference(raw: string | null | undefined): str
   const cbeUrl = str.match(/[?&]id=(FT[0-9A-Z]{10})/i)
   if (cbeUrl) return cbeUrl[1].toUpperCase()
 
-  // 3. Structured tag in notes: "[CBE Ref: FT26290B9PKK | ...]" or "[Telebirr Ref: CHQ0FJ403O | ...]" or "Ref: XYZ"
-  const tagMatch = str.match(/(?:CBE|Telebirr|Digital|Slip)?\s*Ref:\s*([A-Za-z0-9_-]{6,32})/i)
+  // 3. Structured tag in notes or SMS: "[CBE Ref: FT26290B9PKK]" or "Transaction number: DJJ7261SX7" or "Txn ID: DJJ7261SX7"
+  const tagMatch = str.match(/(?:CBE|Telebirr|Digital|Slip)?\s*Ref(?:erence)?(?:\s*No)?:\s*([A-Za-z0-9_-]{6,32})/i) ||
+                   str.match(/(?:Transaction\s*(?:number|no|id)|Txn\s*ID|የግብይት\s*ቁጥር|Receipt\s*(?:no|number)|Code)[:\s]+([A-Za-z0-9]{8,14})/i)
   if (tagMatch) {
     return tagMatch[1].toUpperCase()
   }
@@ -55,7 +56,19 @@ export function extractTransactionReference(raw: string | null | undefined): str
     return ftMatch[1].toUpperCase()
   }
 
-  // 5. Standalone single-word reference code (no whitespace in original string)
+  // 5. Telebirr Base64 EMVCo QR code string (e.g. starting with ODAx... or containing 000A...)
+  try {
+    const decoded = Buffer.from(str.replace(/\s+/g, ''), 'base64').toString('utf8')
+    const emvMatch = decoded.match(/000A([0-9a-fA-F]{20})/i)
+    if (emvMatch) {
+      const ascii = Buffer.from(emvMatch[1], 'hex').toString('utf8')
+      if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
+        return ascii.toUpperCase()
+      }
+    }
+  } catch {}
+
+  // 6. Standalone single-word reference code (no whitespace in original string)
   if (!/\s/.test(str)) {
     const clean = str.replace(/[^A-Za-z0-9_-]/g, '')
     if (/^FT[0-9A-Z]{10,12}$/i.test(clean)) {
@@ -64,6 +77,21 @@ export function extractTransactionReference(raw: string | null | undefined): str
     // Telebirr transaction code: usually 10-14 alphanumeric, mixed letters and digits
     if (/^[A-Z0-9]{10,14}$/i.test(clean) && !/^[A-Z]+$/i.test(clean) && !/^[0-9]+$/i.test(clean)) {
       return clean.toUpperCase()
+    }
+  }
+
+  // 7. 10-character Telebirr reference code embedded inside sentence/SMS text (e.g. DJJ7261SX7)
+  const wordTokens = str.split(/[\s,.;:()!?-]+/)
+  for (const token of wordTokens) {
+    const cleanToken = token.replace(/[^A-Za-z0-9]/g, '')
+    if (
+      cleanToken.length === 10 &&
+      /^[A-Z0-9]{10}$/i.test(cleanToken) &&
+      !/^[A-Z]+$/i.test(cleanToken) && // exclude pure words
+      !/^[0-9]+$/i.test(cleanToken) && // exclude pure numbers/phones
+      !/^(TELEBIRR|ETHIOTELE|COMMERCIAL|BANKOFETH)/i.test(cleanToken)
+    ) {
+      return cleanToken.toUpperCase()
     }
   }
 

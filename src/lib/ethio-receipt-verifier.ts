@@ -110,7 +110,7 @@ export function cleanReference(raw: string): string {
 }
 
 /**
- * Extract Telebirr transaction ID from plain text, URL, or Telebirr SuperApp EMVCo QR code
+ * Extract Telebirr transaction ID from plain text, URL, Telebirr SuperApp EMVCo QR code, or SMS message
  */
 export function extractTelebirrTransactionId(raw: string): string {
   const clean = (raw || '').trim()
@@ -122,9 +122,15 @@ export function extractTelebirrTransactionId(raw: string): string {
     return urlMatch[1].toUpperCase()
   }
 
-  // 2. If it's a Base64-encoded Telebirr SuperApp QR code
+  // 2. Structured SMS or text tag: "Transaction number: DJJ7261SX7", "Txn ID: DJJ7261SX7", "የግብይት ቁጥር: DJJ7261SX7"
+  const smsTagMatch = clean.match(/(?:Transaction\s*(?:number|no|id)|Txn\s*ID|የግብይት\s*ቁጥር|Receipt\s*(?:no|number)|Ref(?:erence)?(?:\s*No)?)[:\s]+([A-Za-z0-9]{8,14})/i)
+  if (smsTagMatch) {
+    return smsTagMatch[1].toUpperCase()
+  }
+
+  // 3. If it's a Base64-encoded Telebirr SuperApp QR code
   try {
-    const decoded = Buffer.from(clean, 'base64').toString('utf8')
+    const decoded = Buffer.from(clean.replace(/\s+/g, ''), 'base64').toString('utf8')
     const match = decoded.match(/000A([0-9a-fA-F]{20})/i)
     if (match) {
       const ascii = Buffer.from(match[1], 'hex').toString('utf8')
@@ -134,7 +140,7 @@ export function extractTelebirrTransactionId(raw: string): string {
     }
   } catch {}
 
-  // 3. If it's directly the decoded EMVCo string
+  // 4. If it's directly the decoded EMVCo string
   const directMatch = clean.match(/000A([0-9a-fA-F]{20})/i)
   if (directMatch) {
     try {
@@ -145,8 +151,64 @@ export function extractTelebirrTransactionId(raw: string): string {
     } catch {}
   }
 
-  // 4. Default clean alphanumeric code
-  return clean.toUpperCase()
+  // 5. Look for standalone 10-character Telebirr reference code in sentence or SMS text (e.g. DJJ7261SX7)
+  const tokens = clean.split(/[\s,.;:()!?-]+/)
+  for (const token of tokens) {
+    const cleanTok = token.replace(/[^A-Za-z0-9]/g, '')
+    if (
+      cleanTok.length === 10 &&
+      /^[A-Z0-9]{10}$/i.test(cleanTok) &&
+      !/^[A-Z]+$/i.test(cleanTok) &&
+      !/^[0-9]+$/i.test(cleanTok) &&
+      !/^(TELEBIRR|ETHIOTELE|COMMERCIAL)/i.test(cleanTok)
+    ) {
+      return cleanTok.toUpperCase()
+    }
+  }
+
+  // 6. Default clean alphanumeric code
+  return clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+}
+
+/**
+ * Fetch with automatic in-flight retry against Ethio Telecom gateway.
+ * Absorbs intermittent packet drops and network latency spikes so users don't have to scan multiple times!
+ */
+async function fetchTelebirrWithRetry(url: string, maxAttempts = 3): Promise<Response> {
+  let lastErr: any = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Attempt 1: 4.5s fast timeout. Attempt 2: 6.5s timeout. Attempt 3: 7s timeout.
+    const timeoutMs = attempt === 1 ? 4500 : (attempt === 2 ? 6500 : 7000)
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+
+      // If we got an OK response or permanent 404/400, return immediately
+      if (res.ok || res.status === 404 || res.status === 400) {
+        return res
+      }
+
+      // If 5xx or server rate-limit error, wait briefly before retrying
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 300 * attempt))
+      }
+    } catch (err: any) {
+      lastErr = err
+      // On network timeout or connection reset, wait briefly and retry with a fresh socket
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 350 * attempt))
+      }
+    }
+  }
+  throw lastErr || new Error('All Ethio Telecom verification attempts timed out')
 }
 
 /**
@@ -169,18 +231,12 @@ export async function verifyTelebirrReceipt(
     }
   }
 
-  // Extract ID using helper (handles URLs, raw codes, and Base64 EMVCo QR codes)
-  const transactionId = extractTelebirrTransactionId(clean)
+  // Extract ID using helper (handles URLs, raw codes, SMS, and Base64 EMVCo QR codes)
+  const transactionId = extractTelebirrTransactionId(idOrUrl)
   const fetchUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionId}`
 
   try {
-    const res = await fetch(fetchUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-      signal: AbortSignal.timeout(8000),
-    })
+    const res = await fetchTelebirrWithRetry(fetchUrl, 3)
 
     if (!res.ok) {
       return {
@@ -221,9 +277,19 @@ export async function verifyTelebirrReceipt(
       extractField(/Receiver\s*telebirr[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
       extractField(/Credited\s*party\s*no[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
     const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) || 'Completed'
-    const rawAmount = extractField(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) ||
-                      extractField(/Settled\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
-    const rawDate = extractField(/Payment\s*date[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+
+    // Extract amount: Try Total Paid Amount first, then Settled Amount from data row
+    const totalPaidMatch = html.match(/Total\s*Paid\s*Amount[\s\S]*?([\d.]+)\s*Birr/i) ||
+                           html.match(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
+    const settledMatch = html.match(/Settled\s*Amount[\s\S]*?([\d.]+)\s*Birr/i) ||
+                         html.match(/<td[^>]*class="[^"]*receipttableTd2[^"]*"[^>]*>[^<]*<\/td>\s*<td[^>]*>[^<]*<\/td>\s*<td[^>]*>\s*([\d.]+)\s*Birr/i)
+    const rawAmount = totalPaidMatch ? totalPaidMatch[1] : (settledMatch ? settledMatch[1] : undefined)
+
+    // Extract payment date: From data row containing date timestamp e.g. "19-10-2026 15:03:21"
+    const dateRowMatch = html.match(/<td[^>]*class="[^"]*receipttableTd[^"]*"[^>]*>\s*(\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2})\s*<\/td>/i) ||
+                         html.match(/\b(\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2})\b/) ||
+                         html.match(/\b(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\b/)
+    const rawDate = dateRowMatch ? dateRowMatch[1].trim() : undefined
 
     let parsedAmount: number | undefined
     if (rawAmount) {
@@ -266,7 +332,7 @@ export async function verifyTelebirrReceipt(
         dateTime: rawDate || undefined,
         status: 'FAILED',
         isReceiverMatched: false,
-        errorMessage: `RECEIVER MISMATCH: Payment was credited to ${receiverPhone || receiverName || 'another account'}, NOT your official Telebirr (${targetPhone})!`,
+        errorMessage: `RECEIVER MISMATCH: Payment was credited to ${receiverName ? receiverName + ' (' + (receiverPhone || 'other') + ')' : receiverPhone || 'another account'}, NOT your official Telebirr (${targetPhone})!`,
       }
     }
 

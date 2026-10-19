@@ -373,11 +373,13 @@ export default function QRScannerPage() {
       const receiptPayload = data.receipt || null
       const isDup = Boolean(
         data.duplicate ||
+        receiptPayload?.isDuplicate ||
         data.error?.toLowerCase().includes('duplicate') ||
         data.error?.toLowerCase().includes('already used') ||
         receiptPayload?.errorMessage?.toLowerCase().includes('already used')
       )
       const isRecvMismatch = Boolean(
+        data.receiverMismatch ||
         receiptPayload?.isReceiverMatched === false ||
         data.error?.toLowerCase().includes('receiver mismatch') ||
         receiptPayload?.errorMessage?.toLowerCase().includes('receiver mismatch')
@@ -387,6 +389,13 @@ export default function QRScannerPage() {
         receiptPayload?.isUnderpaid ||
         data.error?.toLowerCase().includes('amount too low') ||
         receiptPayload?.errorMessage?.toLowerCase().includes('amount too low')
+      )
+      const isGatewayDelay = Boolean(
+        !isDup && !isRecvMismatch && !isUnder &&
+        (receiptPayload?.isTimeout ||
+         receiptPayload?.status === 'PENDING' ||
+         data.error?.toLowerCase().includes('timed out') ||
+         receiptPayload?.errorMessage?.toLowerCase().includes('timed out'))
       )
 
       if (res.ok && receiptPayload && receiptPayload.success && !isRecvMismatch && !isUnder && !isDup) {
@@ -428,7 +437,8 @@ export default function QRScannerPage() {
           provider: receiptPayload?.provider || detectedProv,
           reference: receiptPayload?.reference || clean,
           currency: receiptPayload?.currency || 'ETB',
-          status: 'FAILED',
+          status: isGatewayDelay ? 'PENDING' : (receiptPayload?.status || 'FAILED'),
+          isTimeout: isGatewayDelay,
           isDuplicate: isDup,
           isReceiverMatched: isRecvMismatch ? false : (receiptPayload?.isReceiverMatched ?? true),
           isUnderpaid: isUnder,
@@ -440,7 +450,7 @@ export default function QRScannerPage() {
           payerAccountOrPhone: receiptPayload?.payerAccountOrPhone,
           amount: typeof receiptPayload?.amount === 'number' ? receiptPayload.amount : undefined,
           dateTime: receiptPayload?.dateTime,
-          errorMessage: data.error || receiptPayload?.errorMessage || 'Receipt verification server could not validate this transaction.',
+          errorMessage: data.error || receiptPayload?.errorMessage || (isGatewayDelay ? 'Ethio Telecom receipt gateway timed out. Tap "Open Official Slip in Browser" below.' : 'Receipt verification server could not validate this transaction.'),
         }
 
         setVerifiedResult(failReceipt)
@@ -452,13 +462,17 @@ export default function QRScannerPage() {
       const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
         ? 'CBE'
         : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : 'UNKNOWN')
+      const isNetTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
       const netErrorReceipt: VerifiedReceipt = {
         success: false,
         provider: detectedProv,
         reference: clean,
         currency: 'ETB',
-        status: 'FAILED',
-        errorMessage: err.message || 'Network connection failed while verifying with bank server.',
+        status: isNetTimeout ? 'PENDING' : 'FAILED',
+        isTimeout: isNetTimeout,
+        errorMessage: isNetTimeout
+          ? 'Network timed out connecting to bank. Tap "Open Official Slip in Browser" below.'
+          : (err.message || 'Network connection failed while verifying with bank server.'),
       }
       setVerifiedResult(netErrorReceipt)
       playChime(false)
@@ -1174,12 +1188,20 @@ export default function QRScannerPage() {
               ? Math.max(0, targetBill - verifiedResult.amount)
               : (verifiedResult.shortAmount || 0)
 
+            const isGatewayDelay = Boolean(
+              !verifiedResult.success &&
+              !isDup &&
+              !isRecvMismatch &&
+              !isUnderpaid &&
+              (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+            )
+
             const borderColor = (isDup || isRecvMismatch || isUnderpaid)
               ? '#DC2626'
-              : verifiedResult.success
-                ? '#059669'
-                : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                  ? '#D97706'
+              : isGatewayDelay
+                ? '#D97706'
+                : verifiedResult.success
+                  ? '#059669'
                   : '#DC2626'
 
             return (
@@ -1190,9 +1212,11 @@ export default function QRScannerPage() {
                 padding: '24px 20px',
                 boxShadow: (isDup || isRecvMismatch || isUnderpaid)
                   ? '0 10px 30px rgba(220,38,38,0.12)'
-                  : verifiedResult.success
-                    ? '0 10px 30px rgba(5,150,105,0.12)'
-                    : '0 10px 30px rgba(220,38,38,0.08)',
+                  : isGatewayDelay
+                    ? '0 10px 30px rgba(217,119,6,0.12)'
+                    : verifiedResult.success
+                      ? '0 10px 30px rgba(5,150,105,0.12)'
+                      : '0 10px 30px rgba(220,38,38,0.08)',
                 position: 'relative'
               }}>
                 {/* Result Status Banner */}
@@ -1201,12 +1225,14 @@ export default function QRScannerPage() {
                     width: '48px',
                     height: '48px',
                     borderRadius: '14px',
-                    background: (isDup || isRecvMismatch || isUnderpaid || !verifiedResult.success)
+                    background: (isDup || isRecvMismatch || isUnderpaid)
                       ? '#FEF2F2'
-                      : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
+                      : isGatewayDelay
                         ? '#FFFBEB'
-                        : '#ECFDF5',
-                    border: `1.5px solid ${(isDup || isRecvMismatch || isUnderpaid || !verifiedResult.success) ? '#FECACA' : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#FDE68A' : '#A7F3D0'}`,
+                        : verifiedResult.success
+                          ? '#ECFDF5'
+                          : '#FEF2F2',
+                    border: `1.5px solid ${(isDup || isRecvMismatch || isUnderpaid) ? '#FECACA' : isGatewayDelay ? '#FDE68A' : verifiedResult.success ? '#A7F3D0' : '#FECACA'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1214,12 +1240,14 @@ export default function QRScannerPage() {
                   }}>
                     {isUnderpaid ? (
                       <AlertTriangle size={28} color="#DC2626" />
-                    ) : (isDup || isRecvMismatch || !verifiedResult.success) ? (
+                    ) : (isDup || isRecvMismatch) ? (
                       <XCircle size={28} color="#DC2626" />
-                    ) : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? (
+                    ) : isGatewayDelay ? (
                       <AlertTriangle size={28} color="#D97706" />
-                    ) : (
+                    ) : verifiedResult.success ? (
                       <CheckCircle2 size={28} color="#059669" />
+                    ) : (
+                      <XCircle size={28} color="#DC2626" />
                     )}
                   </div>
                   <div>
@@ -1230,10 +1258,10 @@ export default function QRScannerPage() {
                       letterSpacing: '0.06em',
                       color: (isDup || isRecvMismatch || isUnderpaid)
                         ? '#DC2626'
-                        : verifiedResult.success
-                          ? '#059669'
-                          : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                            ? '#D97706'
+                        : isGatewayDelay
+                          ? '#D97706'
+                          : verifiedResult.success
+                            ? '#059669'
                             : '#DC2626'
                     }}>
                       {isUnderpaid
@@ -1242,10 +1270,10 @@ export default function QRScannerPage() {
                           ? '🚨 DUPLICATE / REUSE DETECTED'
                           : isRecvMismatch
                             ? '🚨 WRONG RECEIVER ACCOUNT'
-                            : verifiedResult.success
-                              ? 'Official Bank Verified'
-                              : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                                ? 'Gateway Delay / Check Direct Slip'
+                            : isGatewayDelay
+                              ? '⏳ GATEWAY DELAY / CHECK DIRECT SLIP'
+                              : verifiedResult.success
+                                ? 'Official Bank Verified'
                                 : 'Verification Unsuccessful'}
                     </div>
                     <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#0F172A', margin: '3px 0 0 0', letterSpacing: '-0.02em' }}>
@@ -1255,10 +1283,10 @@ export default function QRScannerPage() {
                           ? 'Already Used Receipt!'
                           : isRecvMismatch
                             ? 'Not Credited to Your Account!'
-                            : verifiedResult.success
-                              ? 'Legitimate Payment'
-                              : (verifiedResult.isTimeout || verifiedResult.status === 'PENDING')
-                                ? 'Ref Decoded — Tap Official Slip'
+                            : isGatewayDelay
+                              ? 'Ref Decoded — Tap Official Slip'
+                              : verifiedResult.success
+                                ? 'Legitimate Payment'
                                 : 'Unconfirmed / Invalid'}
                     </h2>
                   </div>
@@ -1448,7 +1476,13 @@ export default function QRScannerPage() {
 
                   {verifiedResult.reference && (verifiedResult.reference.startsWith('http') || verifiedResult.provider !== 'UNKNOWN') && (
                     <a
-                      href={verifiedResult.reference.startsWith('http') ? verifiedResult.reference : (verifiedResult.provider === 'TELEBIRR' ? `https://telebirr.ethiotelecom.et/receipt?ref=${verifiedResult.reference}` : `https://cbe.com.et/receipt?ref=${verifiedResult.reference}`)}
+                      href={
+                        verifiedResult.reference.startsWith('http')
+                          ? verifiedResult.reference
+                          : (verifiedResult.provider === 'TELEBIRR'
+                            ? `https://transactioninfo.ethiotelecom.et/receipt/${verifiedResult.reference}`
+                            : `https://apps.cbe.com.et:100/?id=${verifiedResult.reference}`)
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
@@ -1456,18 +1490,18 @@ export default function QRScannerPage() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '6px',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
-                        background: '#FFFFFF',
-                        border: '1px solid #CBD5E1',
-                        color: '#0F172A',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#FEF3C7' : '#FFFFFF',
+                        border: `1.5px solid ${(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#F59E0B' : '#CBD5E1'}`,
+                        color: (verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#92400E' : '#0F172A',
                         textDecoration: 'none',
                         fontSize: '12px',
-                        fontWeight: '700',
-                        marginTop: '4px'
+                        fontWeight: '800',
+                        marginTop: '6px'
                       }}
                     >
-                      <ExternalLink size={14} color="#B48A1E" />
+                      <ExternalLink size={15} color={(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#B45309' : '#B48A1E'} />
                       <span>Open Official {verifiedResult.provider} Slip in Browser</span>
                     </a>
                   )}

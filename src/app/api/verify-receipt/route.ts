@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { verifyEthioReceipt } from '@/lib/ethio-receipt-verifier'
+import { verifyEthioReceipt, extractTelebirrTransactionId } from '@/lib/ethio-receipt-verifier'
 import { prisma } from '@/lib/prisma'
 import { Client as PgClient } from 'pg'
 import { broadcastVerificationEvent } from '@/lib/scanner-events'
-import { checkReceiptDuplicate } from '@/lib/receipt-dedup'
+import { checkReceiptDuplicate, extractTransactionReference } from '@/lib/receipt-dedup'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -20,12 +20,45 @@ export async function POST(req: Request) {
       )
     }
 
+    const trimmedInput = referenceOrUrl.trim()
+    const extractedRef = extractTransactionReference(trimmedInput) || extractTelebirrTransactionId(trimmedInput) || trimmedInput.toUpperCase()
+
+    // 🚨 1. DUPLICATE PROTECTION: Run FIRST! Instant check in local DB/Neon (<2ms) before slow bank networks
+    if (extractedRef) {
+      const duplicateConflict = await checkReceiptDuplicate(extractedRef, orderId)
+      if (duplicateConflict) {
+        return NextResponse.json({
+          success: false,
+          duplicate: true,
+          error: duplicateConflict.errorMessage,
+          receipt: {
+            success: false,
+            reference: extractedRef,
+            provider: provider || (extractedRef.startsWith('FT') ? 'CBE' : 'TELEBIRR'),
+            status: 'FAILED',
+            isDuplicate: true,
+            errorMessage: duplicateConflict.errorMessage,
+          }
+        }, { status: 400 })
+      }
+    }
+
     const receipt = await verifyEthioReceipt({
-      referenceOrUrl: referenceOrUrl.trim(),
+      referenceOrUrl: trimmedInput,
       provider,
       accountDigits,
       expectedAmount: typeof expectedAmount === 'number' ? expectedAmount : undefined,
     })
+
+    // 🚨 2. WRONG RECEIVER MISMATCH: Immediately flag fraud/wrong payment
+    if (receipt.isReceiverMatched === false) {
+      return NextResponse.json({
+        success: false,
+        receiverMismatch: true,
+        error: receipt.errorMessage || 'RECEIVER MISMATCH: Payment was NOT credited to your business account!',
+        receipt,
+      }, { status: 400 })
+    }
 
     let amountMatches = true
     let amountDifference = 0
@@ -44,9 +77,9 @@ export async function POST(req: Request) {
 
     // If verification succeeded
     if (receipt.success) {
-      const cleanRef = String(receipt.reference || referenceOrUrl).trim().toUpperCase()
+      const cleanRef = String(receipt.reference || extractedRef || trimmedInput).trim().toUpperCase()
 
-      // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on another order or payment
+      // Double-check duplicate protection just in case reference was updated by bank receipt payload
       const duplicateConflict = await checkReceiptDuplicate(cleanRef, orderId)
       if (duplicateConflict) {
         return NextResponse.json({
@@ -56,6 +89,7 @@ export async function POST(req: Request) {
           receipt: {
             ...receipt,
             success: false,
+            isDuplicate: true,
             errorMessage: duplicateConflict.errorMessage,
           }
         }, { status: 400 })
