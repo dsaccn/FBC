@@ -27,6 +27,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  devIndicators: false,
   allowedDevOrigins: [
     '*.kogna.coffee',
     'kogna.coffee',

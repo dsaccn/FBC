@@ -111,5 +111,27 @@
       }
     }
   } catch (e) {}
+
+  // 6. Suppress Next.js floating development indicator badge ("N" icon)
+  try {
+    var hideDevBadge = function () {
+      var badges = document.querySelectorAll('nextjs-portal, [data-nextjs-toast], [data-nextjs-dev-tools-button], [data-nextjs-indicator], #__next-build-watcher, #nextjs-dev-tools-button');
+      for (var k = 0; k < badges.length; k++) {
+        badges[k].style.setProperty('display', 'none', 'important');
+        badges[k].style.setProperty('visibility', 'hidden', 'important');
+        badges[k].style.setProperty('opacity', '0', 'important');
+        badges[k].style.setProperty('pointer-events', 'none', 'important');
+        if (badges[k].parentNode) {
+          try { badges[k].parentNode.removeChild(badges[k]); } catch (_) {}
+        }
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', hideDevBadge);
+    } else {
+      hideDevBadge();
+    }
+    setInterval(hideDevBadge, 1000);
+  } catch (e) {}
 })();
 

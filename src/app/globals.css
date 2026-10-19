@@ -44,6 +44,19 @@ html, body {
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
 
+/* Suppress Next.js floating dev indicator badge ("N" icon) */
+nextjs-portal,
+[data-nextjs-toast],
+[data-nextjs-dev-tools-button],
+[data-nextjs-indicator],
+#__next-build-watcher,
+#nextjs-dev-tools-button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* Gold gradient text */
 .gold-text {
   background: linear-gradient(135deg, #8C6810 0%, #B48A1E 50%, #D4AF37 100%);
