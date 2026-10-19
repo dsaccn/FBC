@@ -54,9 +54,32 @@ if "%NEED_DL%"=="1" (
     )
 )
 
+netstat -ano | findstr LISTENING | findstr :3000 >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo =========================================================
+    echo [ERROR] POS Server is NOT running on port 3000!
+    echo =========================================================
+    echo Running the Cloudflare scanner tunnel on a PC where the
+    echo POS server is not running will cause mobile phones to
+    echo display "HTTP ERROR 503".
+    echo.
+    echo - If this PC is a waiter/client PC:
+    echo   Keep this tunnel running ONLY on the main POS server PC.
+    echo.
+    echo - If this PC is the main POS server:
+    echo   Please start the POS server first using start-silent.vbs
+    echo   or start-pos.bat, then run this tunnel!
+    echo =========================================================
+    echo.
+    pause
+    exit /b 1
+)
+
 echo Starting mobile scanner tunnel...
 echo Phones can access: https://scanner.kogna.coffee/scanner
 echo.
+
 echo (Keep this window open while using the mobile scanner!)
 echo =========================================================
 echo.

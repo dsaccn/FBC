@@ -48,4 +48,11 @@ if not exist "%POS_DIR%\bin\cloudflared.exe" (
     exit /b 1
 )
 
+netstat -ano | findstr LISTENING | findstr :3000 >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [%DATE% %TIME%] [ERROR] POS server is not listening on port 3000! Aborting tunnel to prevent HTTP 503 errors. >> "%POS_DIR%\logs\tunnel.log"
+    exit /b 1
+)
+
 "%POS_DIR%\bin\cloudflared.exe" tunnel --url http://localhost:3000 --protocol http2 run --token eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9 --logfile "%POS_DIR%\logs\tunnel.log"
+

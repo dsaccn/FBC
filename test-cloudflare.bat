@@ -55,6 +55,20 @@ if "%NEED_DL%"=="1" (
 
 echo [OK] Found bin\cloudflared.exe
 echo.
+netstat -ano | findstr LISTENING | findstr :3000 >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo =========================================================
+    echo [ERROR] POS Server is NOT running on port 3000!
+    echo =========================================================
+    echo Please start the POS server first using start-silent.vbs
+    echo or start-pos.bat, otherwise the tunnel will cause 503 errors.
+    echo =========================================================
+    echo.
+    pause
+    exit /b 1
+)
+
 echo Starting Cloudflare Tunnel in test mode...
 echo (If successful, it will say 'Registered tunnel connection')
 echo.
