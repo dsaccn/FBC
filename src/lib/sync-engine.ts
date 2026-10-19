@@ -62,6 +62,11 @@ export function isUserDeleted(id?: string | null, username?: string | null, crea
   const safeUsername = (username && typeof username === 'string' && username.trim()) ? username.trim().toLowerCase() : ''
   if (!safeId && !safeUsername) return false
 
+  // Protected system accounts can NEVER be deleted!
+  if (safeUsername === 'master' || safeUsername === 'admin' || safeUsername === 'admin10' || safeUsername === 'master_console') {
+    return false
+  }
+
   const list = getDeletedUsers()
   return list.some(e => {
     // If the tombstone was created BEFORE this user was created, this is a fresh user!
@@ -1873,16 +1878,17 @@ export async function syncToCloud(): Promise<SyncResult> {
     // ── Users (must push BEFORE Orders/Cancellations so FK targets exist) ─────
     const allLocalUsers = await prisma.user.findMany()
     for (const u of allLocalUsers) {
-      // NEVER resurrect deleted users into cloud!
-      if (isUserDeleted(u.id, u.username)) {
+      // System accounts are always preserved; check tombstones with createdAt for standard staff
+      if (isUserDeleted(u.id, u.username, u.createdAt)) {
         continue
       }
       try {
-        // Try to insert/update by primary key (id)
         await pg.query(
           `INSERT INTO "User" (id, username, "passwordHash", "fullName", role, phone, active, "createdAt")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (id) DO UPDATE SET
+           ON CONFLICT (username) DO UPDATE SET
+             id             = EXCLUDED.id,
+             "passwordHash" = EXCLUDED."passwordHash",
              "fullName"     = EXCLUDED."fullName",
              role           = EXCLUDED.role,
              phone          = EXCLUDED.phone,
@@ -1890,21 +1896,7 @@ export async function syncToCloud(): Promise<SyncResult> {
           [u.id, u.username, u.passwordHash, u.fullName, u.role, u.phone, u.active, u.createdAt]
         )
       } catch (e: any) {
-        // If the INSERT failed due to a username uniqueness conflict (same username,
-        // different id — can happen when cloud was seeded independently), update by username.
-        if (e.code === '23505' && e.constraint?.includes('username')) {
-          try {
-            await pg.query(
-              `UPDATE "User" SET id=$1, "passwordHash"=$3, "fullName"=$4, role=$5, phone=$6, active=$7
-               WHERE username=$2`,
-              [u.id, u.username, u.passwordHash, u.fullName, u.role, u.phone, u.active]
-            )
-          } catch (e2) {
-            errors.push(`User ${u.id} (username fallback): ${String(e2)}`)
-          }
-        } else {
-          errors.push(`User ${u.id}: ${String(e)}`)
-        }
+        errors.push(`User ${u.username}: ${String(e?.message || e)}`)
       }
     }
     // Note: Catalog items (Categories, Ingredients, MenuItems, Recipes) are synced from
