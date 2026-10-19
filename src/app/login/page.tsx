@@ -46,9 +46,9 @@ export default function LoginPage() {
         setError(data.error || 'Invalid username or password')
         setLoading(false)
       } else {
-        // Use full navigation so the browser synchronously attaches the Set-Cookie session header
-        // and eliminates Next.js client-side router cookie race condition redirects
-        window.location.href = '/dashboard'
+        // Direct navigation to role dashboard without intermediate 307 redirect
+        const target = data?.role === 'CASHIER' ? '/dashboard/payment' : '/dashboard/tables'
+        window.location.href = target
       }
     } catch {
       setError('Network connection error. Please try again.')
