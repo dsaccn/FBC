@@ -9,7 +9,7 @@ import { isScannerAuthorized } from '@/lib/scanner-auth'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { orderId, reference, provider, amount, payerName, receiverName } = body
+    const { orderId, reference, provider, amount, payerName, receiverName, manualConfirmed } = body
 
     if (!orderId || !reference) {
       return NextResponse.json({ success: false, error: 'Missing orderId or transaction reference' }, { status: 400 })
@@ -44,24 +44,31 @@ export async function POST(req: Request) {
 
     const orderTotal = targetOrder.orderItems.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
 
-    // 🚨 OFFICIAL BANK VERIFICATION: Validate with Telebirr / CBE directly so fake codes are rejected
-    const bankVerification = await verifyEthioReceipt({
-      referenceOrUrl: cleanRef,
-      provider: provider || 'AUTO',
-      expectedAmount: orderTotal > 0 ? orderTotal : undefined,
-    })
+    let finalAmount = typeof amount === 'number' ? amount : parseFloat(amount || '0')
+    let finalPayer = payerName || null
+    let finalReceiver = receiverName || null
+    let finalProvider = provider || 'AUTO'
 
-    if (!bankVerification.success) {
-      return NextResponse.json({
-        success: false,
-        error: bankVerification.errorMessage || 'Invalid transaction: Bank verification failed. Please verify with official slip.',
-      }, { status: 400 })
+    // If not already verified on scanner UI or manually confirmed after slip review:
+    if (!manualConfirmed && isNaN(finalAmount)) {
+      const bankVerification = await verifyEthioReceipt({
+        referenceOrUrl: cleanRef,
+        provider: provider || 'AUTO',
+        expectedAmount: orderTotal > 0 ? orderTotal : undefined,
+      })
+
+      if (!bankVerification.success) {
+        return NextResponse.json({
+          success: false,
+          error: bankVerification.errorMessage || 'Invalid transaction: Bank verification failed. Please verify with official slip.',
+        }, { status: 400 })
+      }
+
+      if (typeof bankVerification.amount === 'number') finalAmount = bankVerification.amount
+      if (bankVerification.payerName) finalPayer = bankVerification.payerName
+      if (bankVerification.receiverName) finalReceiver = bankVerification.receiverName
+      if (bankVerification.provider) finalProvider = bankVerification.provider
     }
-
-    // Use authoritative values returned by the bank
-    const finalAmount = typeof bankVerification.amount === 'number'
-      ? bankVerification.amount
-      : (typeof amount === 'number' ? amount : parseFloat(amount || '0'))
 
     // 🚨 AMOUNT CHECK: Do NOT attach if bank amount is less than order's bill!
     if (!isNaN(finalAmount) && orderTotal > 0 && finalAmount < orderTotal - 0.5) {
@@ -74,10 +81,6 @@ export async function POST(req: Request) {
         error: `AMOUNT TOO LOW: Bank verified amount (${finalAmount.toFixed(2)} ETB) is less than order bill (${orderTotal.toFixed(2)} ETB). Short by ${shortAmt.toFixed(2)} ETB! Receipt was NOT attached.`
       }, { status: 400 })
     }
-
-    const finalPayer = bankVerification.payerName || payerName || null
-    const finalReceiver = bankVerification.receiverName || receiverName || null
-    const finalProvider = bankVerification.provider || provider || 'AUTO'
 
     // 1. Update database
     const updated = await prisma.order.update({

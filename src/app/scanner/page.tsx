@@ -189,7 +189,7 @@ export default function QRScannerPage() {
     setLinkedSuccessMessage(null)
   }
 
-  const handleLinkToOrder = async (targetOrderId: string) => {
+  const handleLinkToOrder = async (targetOrderId: string, isManualConfirm = false) => {
     if (!verifiedResult || !verifiedResult.reference) return
     const targetOrder = openOrders.find(o => o.id === targetOrderId)
     const targetBill = targetOrder?.total || 0
@@ -207,15 +207,16 @@ export default function QRScannerPage() {
           orderId: targetOrderId,
           reference: verifiedResult.reference,
           provider: verifiedResult.provider,
-          amount: verifiedResult.amount,
+          amount: verifiedResult.amount || (targetBill > 0 ? targetBill : undefined),
           payerName: verifiedResult.payerName,
           receiverName: verifiedResult.receiverName,
+          manualConfirmed: isManualConfirm,
         }),
       })
       const data = await res.json()
       if (data.success) {
         const targetOrder = openOrders.find(o => o.id === targetOrderId)
-        setLinkedSuccessMessage(`Verified payment sent to Cashier for ${targetOrder?.displayTitle || 'Order'}!`)
+        setLinkedSuccessMessage(`⚡ Verified payment sent to Cashier for ${targetOrder?.displayTitle || 'Order'}!`)
         fetchOpenOrders()
       } else {
         alert(data.error || 'Failed to link payment to order')
@@ -1544,6 +1545,74 @@ export default function QRScannerPage() {
                       <ExternalLink size={15} color={(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') ? '#B45309' : '#B48A1E'} />
                       <span>Open Official {verifiedResult.provider} Slip in Browser</span>
                     </a>
+                  )}
+
+                  {/* ⚡ Option B & Gateway Delay Fallback: 1-Tap Slip Approval & Re-check */}
+                  {(verifiedResult.isTimeout || verifiedResult.status === 'PENDING') && !verifiedResult.isDuplicate && verifiedResult.isReceiverMatched !== false && (
+                    <div style={{
+                      marginTop: '12px',
+                      paddingTop: '12px',
+                      borderTop: '1px dashed #FCD34D',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ fontSize: '11px', color: '#92400E', fontWeight: '700', lineHeight: 1.4 }}>
+                        💡 <b>Gateway Lag Workaround:</b> Once you glance at the customer's phone or official slip:
+                      </div>
+
+                      {selectedOrderId ? (
+                        <button
+                          type="button"
+                          disabled={isLinkingOrder}
+                          onClick={() => handleLinkToOrder(selectedOrderId, true)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            padding: '12px 16px',
+                            borderRadius: '10px',
+                            background: '#059669',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(5,150,105,0.25)'
+                          }}
+                        >
+                          <CheckCircle2 size={18} color="#FFFFFF" />
+                          <span>{isLinkingOrder ? 'Sending to POS...' : '⚡ Slip Verified — Attach & Send to Cashier POS'}</span>
+                        </button>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: '#B45309', background: '#FEF3C7', padding: '8px 10px', borderRadius: '8px', fontWeight: '700' }}>
+                          Select an open table above to attach this payment directly.
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => verifyReference(verifiedResult.reference, verifiedResult.provider as any)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          padding: '9px 14px',
+                          borderRadius: '8px',
+                          background: '#F1F5F9',
+                          color: '#475569',
+                          border: '1px solid #CBD5E1',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <RefreshCw size={14} color="#64748B" />
+                        <span>Re-check Ethio Telecom Gateway</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

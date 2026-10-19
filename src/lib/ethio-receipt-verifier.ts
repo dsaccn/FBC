@@ -175,11 +175,11 @@ export function extractTelebirrTransactionId(raw: string): string {
  * Fetch with automatic in-flight retry against Ethio Telecom gateway.
  * Absorbs intermittent packet drops and network latency spikes so users don't have to scan multiple times!
  */
-async function fetchTelebirrWithRetry(url: string, maxAttempts = 3): Promise<Response> {
+async function fetchTelebirrWithRetry(url: string, maxAttempts = 2): Promise<Response> {
   let lastErr: any = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Attempt 1: 4.5s fast timeout. Attempt 2: 6.5s timeout. Attempt 3: 7s timeout.
-    const timeoutMs = attempt === 1 ? 4500 : (attempt === 2 ? 6500 : 7000)
+    // Attempt 1: 3.5s fast timeout. Attempt 2: 4.5s timeout. (Max 8s total to prevent cashier freeze)
+    const timeoutMs = attempt === 1 ? 3500 : 4500
     try {
       const res = await fetch(url, {
         headers: {
@@ -199,17 +199,17 @@ async function fetchTelebirrWithRetry(url: string, maxAttempts = 3): Promise<Res
 
       // If 5xx or server rate-limit error, wait briefly before retrying
       if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, 300 * attempt))
+        await new Promise(r => setTimeout(r, 200))
       }
     } catch (err: any) {
       lastErr = err
       // On network timeout or connection reset, wait briefly and retry with a fresh socket
       if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, 350 * attempt))
+        await new Promise(r => setTimeout(r, 250))
       }
     }
   }
-  throw lastErr || new Error('All Ethio Telecom verification attempts timed out')
+  throw lastErr || new Error('Ethio Telecom receipt gateway timed out (8s limit)')
 }
 
 /**
