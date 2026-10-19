@@ -4,14 +4,18 @@ import bcrypt from 'bcryptjs'
 import { backgroundSync, pushUserToCloud, clearDeletedUser } from '@/lib/sync-engine'
 
 export async function GET() {
+  const noCacheHeaders = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  }
+
   try {
     const users = await prisma.user.findMany({
       select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
       orderBy: { fullName: 'asc' },
     })
-    return NextResponse.json(users, {
-      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
-    })
+    return NextResponse.json(users, { headers: noCacheHeaders })
   } catch (err: any) {
     console.warn('[GET /api/staff] Initial query failed, retrying once:', err?.message)
     try {
@@ -20,12 +24,10 @@ export async function GET() {
         select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
         orderBy: { fullName: 'asc' },
       })
-      return NextResponse.json(users, {
-        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
-      })
+      return NextResponse.json(users, { headers: noCacheHeaders })
     } catch (retryErr) {
       console.error('[GET /api/staff] Fatal query error:', retryErr)
-      return NextResponse.json({ error: 'Failed to fetch staff members' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch staff members' }, { status: 500, headers: noCacheHeaders })
     }
   }
 }
@@ -60,7 +62,13 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(cleanPassword, 10)
 
     // Un-tombstone username if it was previously deleted in local file and Neon table
-    clearDeletedUser(undefined, cleanUsername)
+    await clearDeletedUser(undefined, cleanUsername)
+    try {
+      await (prisma as any).$executeRawUnsafe(
+        `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1)`,
+        cleanUsername
+      ).catch(() => {})
+    } catch {}
 
     const user = await prisma.user.create({
       data: {
@@ -73,7 +81,14 @@ export async function POST(req: Request) {
       select: { id: true, username: true, fullName: true, role: true, phone: true, active: true, createdAt: true },
     })
 
-    clearDeletedUser(user.id, user.username)
+    await clearDeletedUser(user.id, user.username)
+    try {
+      await (prisma as any).$executeRawUnsafe(
+        `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1) OR (id IS NOT NULL AND id = $2)`,
+        user.username,
+        user.id
+      ).catch(() => {})
+    } catch {}
 
     await pushUserToCloud({
       id: user.id,
@@ -88,7 +103,13 @@ export async function POST(req: Request) {
 
     backgroundSync()
 
-    return NextResponse.json(user)
+    return NextResponse.json(user, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    })
   } catch (err: any) {
     console.error('[POST /api/staff]', err)
     if (err?.code === 'P2002') {

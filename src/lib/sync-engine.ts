@@ -76,7 +76,7 @@ export function isUserDeleted(id?: string | null, username?: string | null, crea
   })
 }
 
-export function clearDeletedUser(id?: string | null, username?: string | null): void {
+export async function clearDeletedUser(id?: string | null, username?: string | null): Promise<void> {
   const safeId = (id && typeof id === 'string' && id.trim()) ? id.trim() : ''
   const safeUsername = (username && typeof username === 'string' && username.trim()) ? username.trim() : ''
   if (!safeId && !safeUsername) return
@@ -95,10 +95,10 @@ export function clearDeletedUser(id?: string | null, username?: string | null): 
 
   // Also remove matching tombstone from Neon's DeletedUser table
   try {
-    deleteFromCloud(
+    await deleteFromCloud(
       `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1) OR (id IS NOT NULL AND id = $2)`,
       [safeUsername || '__none__', safeId || '__none__']
-    ).catch(() => {})
+    )
   } catch {
     // ignore
   }
@@ -172,8 +172,11 @@ function resetPool() {
  * push-diff will finish the job on the next successful sync.
  */
 export async function deleteFromCloud(sql: string, params: unknown[]): Promise<void> {
-  if (process.env.VERCEL) return // Vercel writes directly to Neon, no extra step needed
   try {
+    if (process.env.VERCEL) {
+      await (prisma as any).$executeRawUnsafe(sql, ...params).catch(() => {})
+      return
+    }
     const pg = getPool()
     await pg.query(sql, params)
   } catch (err: any) {
@@ -195,8 +198,19 @@ export async function pushUserToCloud(u: {
   active: boolean
   createdAt?: Date
 }): Promise<void> {
-  // Ensure user is removed from deletion tombstones locally
-  clearDeletedUser(u.id, u.username)
+  // Ensure user is removed from deletion tombstones locally and in cloud
+  await clearDeletedUser(u.id, u.username)
+
+  if (process.env.VERCEL) {
+    try {
+      await (prisma as any).$executeRawUnsafe(
+        `DELETE FROM "DeletedUser" WHERE LOWER(username) = LOWER($1) OR (id IS NOT NULL AND id = $2)`,
+        u.username,
+        u.id
+      ).catch(() => {})
+    } catch {}
+    return
+  }
 
   try {
     const pg = getPool()
@@ -206,8 +220,6 @@ export async function pushUserToCloud(u: {
         [u.username, u.id]
       ).catch(() => {})
     }
-
-    if (process.env.VERCEL) return
 
     if (u.passwordHash) {
       await pg.query(
@@ -525,6 +537,10 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     // ── Pull static metadata (User, Category, Ingredient, MenuItem, Recipe, Table) ──
     // 0. Users / Staff
     try {
+      const { rows: cloudUsers } = await pg.query(
+        `SELECT id, username, "passwordHash", "fullName", role, phone, active, "createdAt" FROM "User"`
+      )
+
       // 0a. Check cloud tombstones (e.g. users deleted on Vercel online)
       const cloudDeletedUsernames = new Set<string>()
       const cloudDeletedIds = new Set<string>()
@@ -533,6 +549,20 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           `SELECT id, username, "deletedAt" FROM "DeletedUser"`
         )
         for (const d of cloudDeleted) {
+          const dTime = d.deletedAt ? new Date(d.deletedAt).getTime() : 0
+
+          // Check if this user exists in cloudUsers and was created AFTER tombstone
+          const matchingCloudU = cloudUsers.find(
+            cu => (d.id && cu.id === d.id) || (d.username && cu.username.toLowerCase() === d.username.toLowerCase())
+          )
+          if (matchingCloudU) {
+            const cloudCreatedTime = matchingCloudU.createdAt ? new Date(matchingCloudU.createdAt).getTime() : 0
+            if (cloudCreatedTime > dTime) {
+              await clearDeletedUser(d.id, d.username)
+              continue
+            }
+          }
+
           const conditions: Array<{ id?: string; username?: string }> = []
           if (d.id && typeof d.id === 'string' && d.id.trim()) {
             conditions.push({ id: d.id.trim() })
@@ -549,9 +579,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           // If local user exists and was created AFTER the tombstone, this is a fresh user!
           if (localU) {
             const userCreated = localU.createdAt ? new Date(localU.createdAt).getTime() : 0
-            const tombDeleted = d.deletedAt ? new Date(d.deletedAt).getTime() : 0
-            if (userCreated > tombDeleted) {
-              clearDeletedUser(d.id, d.username)
+            if (userCreated > dTime) {
+              await clearDeletedUser(d.id, d.username)
               continue
             }
           }
@@ -560,7 +589,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           if (d.id) cloudDeletedIds.add(d.id)
           recordDeletedUser(d.id, d.username)
 
-          if (localU && localU.username !== 'master' && localU.username !== 'admin') {
+          if (localU && localU.username !== 'master' && localU.username !== 'admin' && localU.username !== 'admin10') {
             await prisma.shiftLog.deleteMany({ where: { userId: localU.id } }).catch(() => {})
             await prisma.cancellation.deleteMany({ where: { managerId: localU.id } }).catch(() => {})
             await prisma.payment.deleteMany({ where: { cashierId: localU.id } }).catch(() => {})
@@ -579,13 +608,9 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
         console.warn('[SyncEngine] Error querying DeletedUser tombstones:', delErr?.message)
       }
 
-      const { rows: cloudUsers } = await pg.query(
-        `SELECT id, username, "passwordHash", "fullName", role, phone, active, "createdAt" FROM "User"`
-      )
-
       for (const u of cloudUsers) {
         // If this user is marked as deleted (and created before tombstone), skip pulling them
-        if (isUserDeleted(u.id, u.username, u.createdAt) || cloudDeletedUsernames.has(u.username.toLowerCase()) || (u.id && cloudDeletedIds.has(u.id))) {
+        if (isUserDeleted(u.id, u.username, u.createdAt)) {
           continue
         }
 
@@ -648,7 +673,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
           const isDeleted = isUserDeleted(lu.id, lu.username, lu.createdAt) || (lu.id && cloudDeletedIds.has(lu.id))
           if (isDeleted) {
             recordDeletedUser(lu.id, lu.username)
-            if (lu.username !== 'master' && lu.username !== 'admin') {
+            if (lu.username !== 'master' && lu.username !== 'admin' && lu.username !== 'admin10') {
               // User was explicitly marked for deletion in tombstones! Clean up locally.
               await prisma.shiftLog.deleteMany({ where: { userId: lu.id } }).catch(() => {})
               await prisma.cancellation.deleteMany({ where: { managerId: lu.id } }).catch(() => {})

@@ -27,7 +27,10 @@ export default function StaffPage() {
     setLoading(true)
     setLoadError(null)
     try {
-      const res = await fetch('/api/staff')
+      const res = await fetch(`/api/staff?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      })
       if (res.ok) {
         setStaff(await res.json())
       } else {
@@ -88,6 +91,17 @@ export default function StaffPage() {
         toast.error(data.error || 'Failed to save staff member')
         setSaving(false)
         return
+      }
+
+      const savedData: Staff = await res.json().catch(() => null)
+      if (savedData && savedData.id) {
+        setStaff(prev => {
+          const exists = prev.some(x => x.id === savedData.id || x.username === savedData.username)
+          if (exists) {
+            return prev.map(x => (x.id === savedData.id || x.username === savedData.username) ? savedData : x)
+          }
+          return [...prev, savedData].sort((a, b) => a.fullName.localeCompare(b.fullName))
+        })
       }
 
       toast.success(editStaff ? 'Staff member details updated!' : 'Staff member created successfully!')
