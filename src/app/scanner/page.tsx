@@ -627,6 +627,7 @@ export default function QRScannerPage() {
         try {
           const cameras = await Html5Qrcode.getCameras().catch(() => [])
           if (cameras && cameras.length > 0) {
+            const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent || '')
             const chosen = isMobile
               ? (cameras.find((c: any) => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1])
               : (cameras.find((c: any) => /front|user|integrated|wide vision/i.test(c.label)) || cameras[0])
