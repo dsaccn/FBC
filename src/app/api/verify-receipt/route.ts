@@ -11,7 +11,7 @@ export const maxDuration = 30
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { referenceOrUrl, provider, accountDigits, expectedAmount, orderId } = body
+    const { referenceOrUrl, provider, accountDigits, expectedAmount, orderId, htmlContent } = body
 
     if (!referenceOrUrl || typeof referenceOrUrl !== 'string') {
       return NextResponse.json(
@@ -48,6 +48,7 @@ export async function POST(req: Request) {
       provider,
       accountDigits,
       expectedAmount: typeof expectedAmount === 'number' ? expectedAmount : undefined,
+      htmlContent: typeof htmlContent === 'string' && htmlContent.length > 200 ? htmlContent : undefined,
     })
 
     // 🚨 2. WRONG RECEIVER MISMATCH: Immediately flag fraud/wrong payment

@@ -10,6 +10,7 @@ import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -26,6 +27,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -97,6 +103,9 @@ public class MainActivity extends AppCompatActivity {
 
         String defaultUserAgent = settings.getUserAgentString();
         settings.setUserAgentString(defaultUserAgent + " KognaVerifierApp/1.0");
+
+        // ⚡ Option B: Native Device-Level Bridge for instantaneous direct slip fetching
+        webView.addJavascriptInterface(new ScannerBridge(), "AndroidBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -229,5 +238,77 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         if (webView != null) webView.destroy();
         super.onDestroy();
+    }
+
+    /**
+     * ⚡ Option B: Native Device-Level Fetch Bridge
+     * Fetches the official Telebirr HTML slip directly over the phone's mobile network / Wi-Fi,
+     * completely bypassing data center IP rate-limits and proxy bottlenecks.
+     */
+    public class ScannerBridge {
+        @JavascriptInterface
+        public void fetchReceipt(final String targetUrl, final String callbackId) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    HttpURLConnection conn = null;
+                    try {
+                        URL url = new URL(targetUrl);
+                        conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("GET");
+                        conn.setConnectTimeout(6500);
+                        conn.setReadTimeout(6500);
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+                        conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+                        conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9,am;q=0.8");
+
+                        int code = conn.getResponseCode();
+                        if (code >= 200 && code < 400) {
+                            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = in.readLine()) != null) {
+                                sb.append(line).append("\n");
+                            }
+                            in.close();
+                            final String html = sb.toString();
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (webView != null) {
+                                        String script = "if (typeof window['" + callbackId + "'] === 'function') { window['" + callbackId + "'](true, " + JSONObject.quote(html) + "); }";
+                                        webView.evaluateJavascript(script, null);
+                                    }
+                                }
+                            });
+                        } else {
+                            final int errCode = code;
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (webView != null) {
+                                        String script = "if (typeof window['" + callbackId + "'] === 'function') { window['" + callbackId + "'](false, 'HTTP " + errCode + "'); }";
+                                        webView.evaluateJavascript(script, null);
+                                    }
+                                }
+                            });
+                        }
+                    } catch (final Exception e) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (webView != null) {
+                                    String msg = e.getMessage() != null ? e.getMessage() : "Network error";
+                                    String script = "if (typeof window['" + callbackId + "'] === 'function') { window['" + callbackId + "'](false, " + JSONObject.quote(msg) + "); }";
+                                    webView.evaluateJavascript(script, null);
+                                }
+                            }
+                        });
+                    } finally {
+                        if (conn != null) conn.disconnect();
+                    }
+                }
+            }).start();
+        }
     }
 }

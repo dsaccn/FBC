@@ -344,7 +344,8 @@ export default function QRScannerPage() {
     codeOrUrl: string, 
     prov: 'AUTO' | 'TELEBIRR' | 'CBE' = 'AUTO', 
     accountDigits?: string,
-    expAmt?: number
+    expAmt?: number,
+    htmlOverride?: string
   ) => {
     const clean = codeOrUrl.trim()
     if (!clean) return
@@ -354,6 +355,44 @@ export default function QRScannerPage() {
     setVerifying(true)
     setVerifiedResult(null)
     setAmountMatches(null)
+
+    // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
+    let htmlContent: string | undefined = htmlOverride
+    if (!htmlContent && typeof (window as any).AndroidBridge?.fetchReceipt === 'function') {
+      try {
+        const txnIdMatch = clean.match(/\b([A-Za-z0-9]{8,14})\b/)
+        const candidateId = txnIdMatch ? txnIdMatch[1] : ''
+        if (candidateId && !clean.toUpperCase().startsWith('FT')) {
+          htmlContent = await new Promise<string>((resolve) => {
+            const cbId = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
+            const timer = setTimeout(() => {
+              delete (window as any)[cbId]
+              resolve('')
+            }, 6000)
+            ;(window as any)[cbId] = (success: boolean, result: string) => {
+              clearTimeout(timer)
+              delete (window as any)[cbId]
+              if (success && typeof result === 'string' && result.length > 200) {
+                resolve(result)
+              } else {
+                resolve('')
+              }
+            }
+            try {
+              ;(window as any).AndroidBridge.fetchReceipt(
+                `https://transactioninfo.ethiotelecom.et/receipt/${candidateId}`,
+                cbId
+              )
+            } catch {
+              clearTimeout(timer)
+              resolve('')
+            }
+          })
+        }
+      } catch (bridgeErr) {
+        console.warn('[Scanner] AndroidBridge fetch error:', bridgeErr)
+      }
+    }
 
     try {
       const activeOrderId = selectedOrderIdRef.current || undefined
@@ -366,6 +405,7 @@ export default function QRScannerPage() {
           accountDigits: accountDigits || undefined,
           expectedAmount: expAmt || undefined,
           orderId: activeOrderId,
+          htmlContent: htmlContent || undefined,
         }),
       })
 
