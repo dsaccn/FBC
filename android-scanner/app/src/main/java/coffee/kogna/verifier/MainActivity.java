@@ -1088,15 +1088,17 @@ public class MainActivity extends AppCompatActivity {
         String receiverPhone = extractHtmlField(htmlContent, "Credited\\s*party\\s*account\\s*no");
         if (receiverPhone == null) receiverPhone = extractHtmlField(htmlContent, "Receiver\\s*telebirr");
 
-        double amount = 0.0;
+        double parsedAmt = 0.0;
         Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(htmlContent);
         if (settledMatch.find()) {
-            amount = parseDoubleSafe(settledMatch.group(1));
+            parsedAmt = parseDoubleSafe(settledMatch.group(1));
         }
+        final double amount = parsedAmt;
 
-        String dateTime = "-";
+        String parsedDateTime = "-";
         Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(htmlContent);
-        if (dateMatch.find()) dateTime = dateMatch.group(1);
+        if (dateMatch.find()) parsedDateTime = dateMatch.group(1);
+        final String dateTime = parsedDateTime;
 
         final String finalPayer = (payerName != null && !payerName.isEmpty()) ? payerName : (payerPhone != null ? payerPhone : "Customer");
         final String finalReceiver = (receiverName != null && !receiverName.isEmpty()) ? receiverName : (receiverPhone != null ? receiverPhone : cachedMerchantName);
@@ -1104,10 +1106,9 @@ public class MainActivity extends AppCompatActivity {
         // 🚨 1. FRAUD CHECK: Receiver Account Match
         boolean receiverMatched = matchReceiver("TELEBIRR", receiverPhone, receiverName);
         if (!receiverMatched) {
-            final double finalAmt = amount;
             mainHandler.post(() -> {
                 showVerificationResult(
-                        false, "TELEBIRR", reference, finalAmt, finalPayer, finalReceiver,
+                        false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
                         dateTime, "RECEIVER MISMATCH", slipUrl,
                         "🚨 FRAUD ALERT: Payment credited to " + finalReceiver + ", NOT your official account (" + cachedTelebirrReceiver + ")!"
                 );
@@ -1118,12 +1119,11 @@ public class MainActivity extends AppCompatActivity {
 
         // 🚨 2. UNDERPAYMENT CHECK against selected table
         if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
-            final double finalAmt = amount;
             mainHandler.post(() -> {
                 showVerificationResult(
-                        false, "TELEBIRR", reference, finalAmt, finalPayer, finalReceiver,
+                        false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
                         dateTime, "AMOUNT TOO LOW", slipUrl,
-                        String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, finalAmt, selectedOrder.total - finalAmt)
+                        String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
                 );
                 txtResultBadge.setText("UNDERPAID");
             });
@@ -1170,24 +1170,24 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            double amount = data.optDouble("amountCredited", 0.0);
-            if (amount <= 0) amount = data.optDouble("debitAmount", 0.0);
-            if (amount <= 0 && data.has("amount")) {
-                amount = parseDoubleSafe(data.optString("amount"));
+            double parsedAmount = data.optDouble("amountCredited", 0.0);
+            if (parsedAmount <= 0) parsedAmount = data.optDouble("debitAmount", 0.0);
+            if (parsedAmount <= 0 && data.has("amount")) {
+                parsedAmount = parseDoubleSafe(data.optString("amount"));
             }
+            final double amount = parsedAmount;
 
-            String payer = data.optString("debtorName", data.optString("payerName", "Customer"));
-            String receiver = data.optString("creditorName", data.optString("receiverName", cachedMerchantName));
-            String receiverAcc = data.optString("creditorAccount", data.optString("receiverAccount", ""));
-            String dateTime = data.optString("transactionDate", data.optString("date", "-"));
+            final String payer = data.optString("debtorName", data.optString("payerName", "Customer"));
+            final String receiver = data.optString("creditorName", data.optString("receiverName", cachedMerchantName));
+            final String receiverAcc = data.optString("creditorAccount", data.optString("receiverAccount", ""));
+            final String dateTime = data.optString("transactionDate", data.optString("date", "-"));
 
             // 🚨 1. Receiver Account Check
             boolean receiverMatched = matchReceiver("CBE", receiverAcc, receiver);
             if (!receiverMatched) {
-                final double finalAmt = amount;
                 mainHandler.post(() -> {
                     showVerificationResult(
-                            false, "CBE", reference, finalAmt, payer, receiver,
+                            false, "CBE", reference, amount, payer, receiver,
                             dateTime, "RECEIVER MISMATCH", slipUrl,
                             "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official CBE account (" + cachedCbeReceiver + ")!"
                     );
@@ -1198,12 +1198,11 @@ public class MainActivity extends AppCompatActivity {
 
             // 🚨 2. Underpayment Check
             if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
-                final double finalAmt = amount;
                 mainHandler.post(() -> {
                     showVerificationResult(
-                            false, "CBE", reference, finalAmt, payer, receiver,
+                            false, "CBE", reference, amount, payer, receiver,
                             dateTime, "AMOUNT TOO LOW", slipUrl,
-                            String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, finalAmt, selectedOrder.total - finalAmt)
+                            String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
                     );
                     txtResultBadge.setText("UNDERPAID");
                 });
