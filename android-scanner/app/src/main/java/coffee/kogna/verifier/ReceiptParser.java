@@ -1,0 +1,372 @@
+package coffee.kogna.verifier;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Pure parsing and validation logic for Telebirr and CBE payment receipts.
+ * Decoupled from Android runtime dependencies to allow robust JVM unit testing.
+ */
+public final class ReceiptParser {
+
+    private ReceiptParser() {}
+
+    public static class DetectedPayment {
+        public String provider = "UNKNOWN";
+        public String reference = "";
+        public String slipUrl = "";
+        public boolean isTelebirr = false;
+        public boolean isCbe = false;
+    }
+
+    public static class TelebirrReceipt {
+        public boolean isValid = false;
+        public boolean isCompleted = false;
+        public String status = "";
+        public String reference = "";
+        public double amount = 0.0;
+        public String payerName = "";
+        public String payerPhone = "";
+        public String receiverName = "";
+        public String receiverPhone = "";
+        public String dateTime = "-";
+    }
+
+    public static class CbeReceipt {
+        public boolean isValid = false;
+        public boolean isCompleted = false;
+        public String status = "";
+        public String reference = "";
+        public double amount = 0.0;
+        public String payerName = "";
+        public String payerAccount = "";
+        public String receiverName = "";
+        public String receiverAccount = "";
+        public String dateTime = "-";
+    }
+
+    /**
+     * Parse raw scan data (URL, QR code, Base64 payload, or SMS string) into payment details.
+     */
+    public static DetectedPayment detectPayment(String rawInput) {
+        DetectedPayment res = new DetectedPayment();
+        if (rawInput == null || rawInput.trim().isEmpty()) {
+            return res;
+        }
+        String clean = rawInput.trim();
+
+        // 1. CBE Modern Mobile Banking QR code / URL (mbreciept.cbe.com.et/v2-... or mb.cbe.com.et/...)
+        Matcher cbeV2Url = Pattern.compile("(?:https?://)?(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (cbeV2Url.find()) {
+            String token = cbeV2Url.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Direct v2 token
+        Matcher directV2 = Pattern.compile("^(v2-[A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (directV2.find()) {
+            String token = directV2.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 2. CBE Legacy FT URL: [?&]id=(FT[0-9A-Za-z]{10})
+        Matcher cbeFtUrl = Pattern.compile("[?&]id=(FT[0-9A-Za-z]{10})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (cbeFtUrl.find()) {
+            String ft = cbeFtUrl.group(1).toUpperCase();
+            res.provider = "CBE";
+            res.reference = ft;
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Direct FT code
+        Matcher directFt = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (directFt.find()) {
+            String ft = directFt.group(1).toUpperCase();
+            res.provider = "CBE";
+            res.reference = ft;
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Any other CBE URL
+        if (clean.toLowerCase().contains("cbe.com.et")) {
+            Matcher tokenMatch = Pattern.compile("cbe\\.com\\.et/([A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+            String token = tokenMatch.find() ? tokenMatch.group(1).replaceAll("[?#].*$", "") : clean;
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = clean.startsWith("http") ? clean : "https://" + clean;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 3. Telebirr URL: /receipt/([A-Za-z0-9_-]+)
+        Matcher tbUrl = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (tbUrl.find()) {
+            String code = tbUrl.group(1).toUpperCase();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 4. Telebirr Base64 EMVCo SuperApp QR code
+        if (clean.length() > 30 && clean.matches("^[A-Za-z0-9+/=\\s]+$")) {
+            try {
+                byte[] decoded = Base64.getDecoder().decode(clean.replaceAll("\\s+", ""));
+                String isoString = new String(decoded, StandardCharsets.ISO_8859_1);
+                Matcher emvMatch = Pattern.compile("000A([0-9a-fA-F]{20})", Pattern.CASE_INSENSITIVE).matcher(isoString);
+                if (emvMatch.find()) {
+                    String hex = emvMatch.group(1);
+                    StringBuilder ascii = new StringBuilder();
+                    for (int i = 0; i < hex.length() - 1; i += 2) {
+                        ascii.append((char) Integer.parseInt(hex.substring(i, i + 2), 16));
+                    }
+                    String code = ascii.toString().trim().toUpperCase();
+                    if (code.matches("^[A-Za-z0-9]{8,14}$")) {
+                        res.provider = "TELEBIRR";
+                        res.reference = code;
+                        res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+                        res.isTelebirr = true;
+                        return res;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 5. Amharic or English SMS text
+        Matcher smsTagMatch = Pattern.compile("(?:Transaction\\s*(?:number|no|id)|Txn\\s*ID|የግብይት\\s*ቁጥር|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (smsTagMatch.find()) {
+            String code = smsTagMatch.group(1).toUpperCase();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 6. Standalone 10-char alphanumeric reference code (e.g. DJJ7261SX7)
+        Matcher codeMatch = Pattern.compile("\\b([A-Za-z0-9]{10})\\b").matcher(clean);
+        while (codeMatch.find()) {
+            String candidate = codeMatch.group(1);
+            if (!candidate.equalsIgnoreCase("TELEBIRR") && !candidate.equalsIgnoreCase("ETHIOTELE") &&
+                !candidate.equalsIgnoreCase("COMMERCIAL") && !candidate.matches("^\\d+$") && !candidate.matches("^[A-Za-z]+$")) {
+                String code = candidate.toUpperCase();
+                res.provider = "TELEBIRR";
+                res.reference = code;
+                res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+                res.isTelebirr = true;
+                return res;
+            }
+        }
+
+        // 7. Fallback
+        String cleanedAlpha = clean.replaceAll("[^A-Za-z0-9_-]", "");
+        if (cleanedAlpha.toUpperCase().startsWith("FT")) {
+            res.provider = "CBE";
+            res.reference = cleanedAlpha.toUpperCase();
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + res.reference;
+            res.isCbe = true;
+        } else {
+            res.provider = "TELEBIRR";
+            res.reference = cleanedAlpha.toUpperCase();
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + res.reference;
+            res.isTelebirr = true;
+        }
+        return res;
+    }
+
+    /**
+     * Parse HTML returned by Telebirr web receipt endpoint.
+     */
+    public static TelebirrReceipt parseTelebirrReceiptHtml(String reference, String html) {
+        TelebirrReceipt res = new TelebirrReceipt();
+        res.reference = reference != null ? reference : "";
+
+        if (html == null || html.length() < 300 || html.contains("This request is not correct") || html.contains("not found")) {
+            return res;
+        }
+
+        // Status check: In the official HTML, the transaction status label td has no closing </td>
+        Matcher statusMatch = Pattern.compile("transaction\\s*status[\\s\\S]*?<td[^>]*>\\s*([^<]*?)\\s*<", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (statusMatch.find()) {
+            res.status = statusMatch.group(1).trim();
+            res.isCompleted = Pattern.compile("completed|success|approved", Pattern.CASE_INSENSITIVE).matcher(res.status).find();
+        }
+
+        res.payerName = extractHtmlField(html, "Payer\\s*Name");
+        res.payerPhone = extractHtmlField(html, "Payer\\s*telebirr");
+        res.receiverName = extractHtmlField(html, "Credited\\s*Party\\s*name");
+        res.receiverPhone = extractHtmlField(html, "Credited\\s*party\\s*account\\s*no");
+        if (res.receiverPhone == null || res.receiverPhone.isEmpty()) {
+            res.receiverPhone = extractHtmlField(html, "Receiver\\s*telebirr");
+        }
+
+        double parsedAmt = 0.0;
+        Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (settledMatch.find()) {
+            parsedAmt = parseDoubleSafe(settledMatch.group(1));
+        } else {
+            Matcher totalPaidMatch = Pattern.compile("(?:Total\\s*Paid\\s*Amount|ጠቅላላ\\s*የተከፈለ)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(html);
+            if (totalPaidMatch.find()) {
+                parsedAmt = parseDoubleSafe(totalPaidMatch.group(1));
+            }
+        }
+        res.amount = parsedAmt;
+
+        Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(html);
+        if (dateMatch.find()) {
+            res.dateTime = dateMatch.group(1);
+        }
+
+        res.isValid = true;
+        return res;
+    }
+
+    /**
+     * Parse JSON returned by CBE Modern mobile banking public endpoint.
+     */
+    public static CbeReceipt parseCbeJson(String fallbackToken, JSONObject data) {
+        CbeReceipt res = new CbeReceipt();
+        if (data == null) return res;
+
+        String status = data.optString("status", "");
+        res.status = status;
+        res.isCompleted = status.equalsIgnoreCase("COMPLETED") ||
+                          status.equalsIgnoreCase("SUCCESS") ||
+                          Pattern.compile("complete|success", Pattern.CASE_INSENSITIVE).matcher(status).find();
+
+        double parsedAmount = data.optDouble("amountCredited", 0.0);
+        if (parsedAmount <= 0) {
+            parsedAmount = data.optDouble("debitAmount", 0.0);
+        }
+        if (parsedAmount <= 0 && data.has("amount")) {
+            parsedAmount = parseDoubleSafe(data.optString("amount"));
+        }
+        res.amount = parsedAmount;
+
+        res.payerName = data.optString("debitAccountHolder", data.optString("payerName", "Customer"));
+        res.payerAccount = data.optString("debitAccountNo", "");
+        res.receiverName = data.optString("creditAccountHolder", data.optString("receiverName", ""));
+        res.receiverAccount = data.optString("creditAccountNo", "");
+
+        JSONArray dateTimes = data.optJSONArray("dateTimes");
+        if (dateTimes != null && dateTimes.length() > 0) {
+            res.dateTime = dateTimes.optString(0, "-");
+        } else {
+            res.dateTime = data.optString("transactionDate", data.optString("date", "-"));
+        }
+
+        res.reference = data.optString("id", fallbackToken != null ? fallbackToken : "");
+        res.isValid = true;
+        return res;
+    }
+
+    /**
+     * Safely verify if a received account or phone number matches the target account/phone,
+     * handling masked digits (e.g. "2519****2464", "1000****7818") and prefix variations.
+     */
+    public static boolean matchMaskedAccountOrPhone(String target, String received) {
+        if (target == null || target.trim().isEmpty()) return true; // No restriction configured
+        if (received == null || received.trim().isEmpty()) return false; // Target configured, but received empty
+
+        String cleanTarget = target.trim().replaceAll("\\D", "");
+        if (cleanTarget.length() < 4) return true;
+
+        String rawReceived = received.trim();
+
+        // 1. If received contains masking characters (*, X, x, #, .)
+        if (rawReceived.matches(".*[*Xx#.].*")) {
+            Matcher suffixMatcher = Pattern.compile("(\\d{3,})$").matcher(rawReceived);
+            String suffix = suffixMatcher.find() ? suffixMatcher.group(1) : "";
+
+            Matcher prefixMatcher = Pattern.compile("^(\\d+)").matcher(rawReceived);
+            String prefix = prefixMatcher.find() ? prefixMatcher.group(1) : "";
+
+            // Suffix verification: Target must end with the suffix digits
+            if (!suffix.isEmpty() && suffix.length() >= 3) {
+                if (!cleanTarget.endsWith(suffix)) {
+                    return false;
+                }
+            }
+
+            // Prefix verification: Target (or normalized target) must start with prefix
+            if (!prefix.isEmpty() && prefix.length() >= 1) {
+                String targetWithoutCountryCode = cleanTarget.replaceFirst("^251", "0");
+                String targetInternational = cleanTarget.startsWith("0") ? "251" + cleanTarget.substring(1) : cleanTarget;
+                boolean matchesPrefix = cleanTarget.startsWith(prefix)
+                        || targetWithoutCountryCode.startsWith(prefix)
+                        || targetInternational.startsWith(prefix);
+
+                if (!matchesPrefix) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // 2. If received is not masked (full or partial digits)
+        String cleanReceived = rawReceived.replaceAll("\\D", "");
+        if (cleanReceived.isEmpty()) return true;
+
+        if (cleanReceived.length() >= 4) {
+            if (cleanTarget.endsWith(cleanReceived) || cleanReceived.endsWith(cleanTarget)) {
+                return true;
+            }
+            int checkLen = Math.min(Math.min(cleanTarget.length(), cleanReceived.length()), 8);
+            if (checkLen >= 4) {
+                String tSub = cleanTarget.substring(cleanTarget.length() - checkLen);
+                String rSub = cleanReceived.substring(cleanReceived.length() - checkLen);
+                if (tSub.equals(rSub)) {
+                    return true;
+                }
+            }
+        }
+
+        return cleanTarget.contains(cleanReceived) || cleanReceived.contains(cleanTarget);
+    }
+
+    /**
+     * Safely parse double from currency strings like "1,500.50".
+     */
+    public static double parseDoubleSafe(String val) {
+        if (val == null || val.trim().isEmpty()) return 0.0;
+        try {
+            String clean = val.replaceAll(",", "").trim();
+            Matcher m = Pattern.compile("([\\d.]+)").matcher(clean);
+            if (m.find()) {
+                return Double.parseDouble(m.group(1));
+            }
+        } catch (Exception ignored) {}
+        return 0.0;
+    }
+
+    /**
+     * Extract field value from HTML table: label -> value pair.
+     */
+    public static String extractHtmlField(String html, String fieldPattern) {
+        if (html == null) return null;
+        Matcher m = Pattern.compile(fieldPattern + "[^<]*</t[dh]>\\s*<td[^>]*>([\\s\\S]*?)</td>", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (m.find()) {
+            return m.group(1).replaceAll("<[^>]+>", "").trim();
+        }
+        return null;
+    }
+}

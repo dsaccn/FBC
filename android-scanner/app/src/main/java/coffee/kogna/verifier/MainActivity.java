@@ -189,9 +189,11 @@ public class MainActivity extends AppCompatActivity {
 
     private SharedPreferences prefs;
     private OkHttpClient httpClient;
+    private OkHttpClient telebirrHttpClient;
     private ToneGenerator toneGenerator;
     private Vibrator vibrator;
     private Handler mainHandler;
+    private Runnable hedgedFallbackRunnable;
 
     // Polling runnable for real-time open orders from Cashier PC
     private final Runnable orderPollRunnable = new Runnable() {
@@ -233,15 +235,18 @@ public class MainActivity extends AppCompatActivity {
                 ConnectionSpec.CLEARTEXT
         );
         Dns fastDns = hostname -> {
-            if ("transactioninfo.ethiotelecom.et".equalsIgnoreCase(hostname)) {
-                try {
-                    return Arrays.asList(
-                            InetAddress.getByAddress("transactioninfo.ethiotelecom.et", new byte[]{(byte) 196, (byte) 188, 116, 120}),
-                            InetAddress.getByAddress("transactioninfo.ethiotelecom.et", new byte[]{(byte) 196, (byte) 188, 116, 121})
-                    );
-                } catch (UnknownHostException ignored) {}
+            try {
+                return Dns.SYSTEM.lookup(hostname);
+            } catch (UnknownHostException e) {
+                if ("transactioninfo.ethiotelecom.et".equalsIgnoreCase(hostname)) {
+                    try {
+                        return Collections.singletonList(
+                                InetAddress.getByAddress("transactioninfo.ethiotelecom.et", new byte[]{(byte) 196, (byte) 188, 116, 120})
+                        );
+                    } catch (UnknownHostException ignored) {}
+                }
+                throw e;
             }
-            return Dns.SYSTEM.lookup(hostname);
         };
 
         httpClient = new OkHttpClient.Builder()
@@ -252,6 +257,11 @@ public class MainActivity extends AppCompatActivity {
                 .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
+                .build();
+
+        telebirrHttpClient = httpClient.newBuilder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
                 .build();
 
         try {
@@ -817,141 +827,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private DetectedPayment detectPayment(String rawInput) {
+        ReceiptParser.DetectedPayment parsed = ReceiptParser.detectPayment(rawInput);
         DetectedPayment res = new DetectedPayment();
-        if (rawInput == null || rawInput.trim().isEmpty()) {
-            return res;
-        }
-        String clean = rawInput.trim();
-
-        // 1. CBE Modern Mobile Banking QR code / URL (mbreciept.cbe.com.et/v2-... or mb.cbe.com.et/...)
-        Matcher cbeV2Url = Pattern.compile("(?:https?://)?(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (cbeV2Url.find()) {
-            String token = cbeV2Url.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
-            res.provider = "CBE";
-            res.reference = token; // Exact case preserved!
-            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
-            res.isCbe = true;
-            return res;
-        }
-
-        // Direct v2 token
-        Matcher directV2 = Pattern.compile("^(v2-[A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (directV2.find()) {
-            String token = directV2.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
-            res.provider = "CBE";
-            res.reference = token;
-            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
-            res.isCbe = true;
-            return res;
-        }
-
-        // 2. CBE Legacy FT URL: [?&]id=(FT[0-9A-Za-z]{10})
-        Matcher cbeFtUrl = Pattern.compile("[?&]id=(FT[0-9A-Za-z]{10})", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (cbeFtUrl.find()) {
-            String ft = cbeFtUrl.group(1).toUpperCase();
-            res.provider = "CBE";
-            res.reference = ft;
-            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
-            res.isCbe = true;
-            return res;
-        }
-
-        // Direct FT code
-        Matcher directFt = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (directFt.find()) {
-            String ft = directFt.group(1).toUpperCase();
-            res.provider = "CBE";
-            res.reference = ft;
-            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
-            res.isCbe = true;
-            return res;
-        }
-
-        // Any other CBE URL
-        if (clean.toLowerCase().contains("cbe.com.et")) {
-            Matcher tokenMatch = Pattern.compile("cbe\\.com\\.et/([A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
-            String token = tokenMatch.find() ? tokenMatch.group(1).replaceAll("[?#].*$", "") : clean;
-            res.provider = "CBE";
-            res.reference = token;
-            res.slipUrl = clean.startsWith("http") ? clean : "https://" + clean;
-            res.isCbe = true;
-            return res;
-        }
-
-        // 3. Telebirr URL: /receipt/([A-Za-z0-9_-]+)
-        Matcher tbUrl = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (tbUrl.find()) {
-            String code = tbUrl.group(1).toUpperCase();
-            res.provider = "TELEBIRR";
-            res.reference = code;
-            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
-            res.isTelebirr = true;
-            return res;
-        }
-
-        // 4. Telebirr Base64 EMVCo SuperApp QR code
-        if (clean.length() > 30 && clean.matches("^[A-Za-z0-9+/=\\s]+$")) {
-            try {
-                byte[] decoded = Base64.decode(clean.replaceAll("\\s+", ""), Base64.DEFAULT);
-                String isoString = new String(decoded, StandardCharsets.ISO_8859_1);
-                Matcher emvMatch = Pattern.compile("000A([0-9a-fA-F]{20})", Pattern.CASE_INSENSITIVE).matcher(isoString);
-                if (emvMatch.find()) {
-                    String hex = emvMatch.group(1);
-                    StringBuilder ascii = new StringBuilder();
-                    for (int i = 0; i < hex.length() - 1; i += 2) {
-                        ascii.append((char) Integer.parseInt(hex.substring(i, i + 2), 16));
-                    }
-                    String code = ascii.toString().trim().toUpperCase();
-                    if (code.matches("^[A-Za-z0-9]{8,14}$")) {
-                        res.provider = "TELEBIRR";
-                        res.reference = code;
-                        res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
-                        res.isTelebirr = true;
-                        return res;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 5. Amharic or English SMS text
-        Matcher smsTagMatch = Pattern.compile("(?:Transaction\\s*(?:number|no|id)|Txn\\s*ID|የግብይት\\s*ቁጥር|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (smsTagMatch.find()) {
-            String code = smsTagMatch.group(1).toUpperCase();
-            res.provider = "TELEBIRR";
-            res.reference = code;
-            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
-            res.isTelebirr = true;
-            return res;
-        }
-
-        // 6. Standalone 10-char alphanumeric reference code (e.g. DJ22CN5LY2)
-        Matcher codeMatch = Pattern.compile("\\b([A-Za-z0-9]{10})\\b").matcher(clean);
-        while (codeMatch.find()) {
-            String candidate = codeMatch.group(1);
-            if (!candidate.equalsIgnoreCase("TELEBIRR") && !candidate.equalsIgnoreCase("ETHIOTELE") &&
-                !candidate.equalsIgnoreCase("COMMERCIAL") && !candidate.matches("^\\d+$") && !candidate.matches("^[A-Za-z]+$")) {
-                String code = candidate.toUpperCase();
-                res.provider = "TELEBIRR";
-                res.reference = code;
-                res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
-                res.isTelebirr = true;
-                return res;
-            }
-        }
-
-        // 7. Fallback
-        String cleanedAlpha = clean.replaceAll("[^A-Za-z0-9_-]", "");
-        if (cleanedAlpha.toUpperCase().startsWith("FT")) {
-            res.provider = "CBE";
-            res.reference = cleanedAlpha.toUpperCase();
-            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + res.reference;
-            res.isCbe = true;
-        } else {
-            res.provider = "TELEBIRR";
-            res.reference = cleanedAlpha.toUpperCase();
-            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + res.reference;
-            res.isTelebirr = true;
-        }
+        res.provider = parsed.provider;
+        res.reference = parsed.reference;
+        res.slipUrl = parsed.slipUrl;
+        res.isTelebirr = parsed.isTelebirr;
+        res.isCbe = parsed.isCbe;
         return res;
     }
 
@@ -984,9 +866,44 @@ public class MainActivity extends AppCompatActivity {
         }
 
         final AtomicBoolean isResolved = new AtomicBoolean(false);
+        final AtomicBoolean posTriggered = new AtomicBoolean(false);
+        final AtomicBoolean directFinished = new AtomicBoolean(false);
+        final AtomicBoolean posFinished = new AtomicBoolean(false);
 
-        // 📱 100% PHONE-ONLY DIRECT BANK VERIFICATION (Zero Server Latency)
-        // Direct query to Telebirr or CBE gateway from device — No PC or Cloudflare intermediary
+        final boolean isCbe = "CBE".equalsIgnoreCase(provider);
+        final boolean isCbeFt = isCbe && (reference.toUpperCase().startsWith("FT") || (slipUrl != null && slipUrl.contains("id=FT")));
+        final boolean isCbeV2 = isCbe && reference.toLowerCase().startsWith("v2-");
+        final boolean canDirectVerify = "TELEBIRR".equalsIgnoreCase(provider) || (isCbe && isCbeV2);
+
+        final Runnable triggerPosFallback = () -> {
+            if (!isResolved.get() && posTriggered.compareAndSet(false, true)) {
+                if (hedgedFallbackRunnable != null) {
+                    mainHandler.removeCallbacks(hedgedFallbackRunnable);
+                }
+                startPosRoute(payment, isResolved, posFinished, directFinished, isCbeFt);
+            }
+        };
+
+        final Runnable checkAllFailed = () -> {
+            checkAllVerificationRoutesFailed(payment, isResolved, posFinished, directFinished, isCbeFt);
+        };
+
+        if (!canDirectVerify) {
+            // CBE FT references or non-v2 CBE URLs: Direct bank verification cannot parse PDFs on device.
+            // Go straight to POS route immediately (Cashier PC parses PDF via pdf-parse).
+            directFinished.set(true);
+            triggerPosFallback.run();
+            return;
+        }
+
+        // Schedule hedged fallback: If bank gateway hasn't produced a verdict within 2s, also query POS endpoints
+        hedgedFallbackRunnable = () -> {
+            if (!isResolved.get()) {
+                triggerPosFallback.run();
+            }
+        };
+        mainHandler.postDelayed(hedgedFallbackRunnable, 2000);
+
         if ("TELEBIRR".equalsIgnoreCase(provider)) {
             Request directReq = new Request.Builder()
                     .url(slipUrl)
@@ -997,143 +914,279 @@ public class MainActivity extends AppCompatActivity {
                     .header("Connection", "keep-alive")
                     .build();
 
-            Call directCall = httpClient.newCall(directReq);
-            activeVerificationCalls.add(directCall);
-            directCall.enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    if (isResolved.compareAndSet(false, true)) {
-                        mainHandler.post(() -> {
-                            showVerificationResult(
-                                    false, "TELEBIRR", reference, 0.0, "-", "-",
-                                    "-", "GATEWAY TIMEOUT", slipUrl,
-                                    "❌ Could not reach Ethio Telecom gateway from phone. Tap 'View Official Bank Slip' below."
-                            );
-                            playBeep(false);
-                            vibrateError();
-                        });
-                    }
-                }
+            executeTelebirrDirect(1, payment, telebirrHttpClient != null ? telebirrHttpClient : httpClient,
+                    directReq, isResolved, triggerPosFallback, checkAllFailed, directFinished);
 
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    if (isResolved.get()) return;
-                    if (response.isSuccessful() && response.body() != null) {
-                        String html = response.body().string();
-                        if (html.length() > 300 && !html.contains("not found") && !html.contains("not correct")) {
-                            boolean won = evaluateInstantTelebirr(reference, html, slipUrl, isResolved);
-                            if (won) return;
-                        }
-                    }
-                    if (isResolved.compareAndSet(false, true)) {
-                        mainHandler.post(() -> {
-                            showVerificationResult(
-                                    false, "TELEBIRR", reference, 0.0, "-", "-",
-                                    "-", "SLIP NOT FOUND", slipUrl,
-                                    "❌ Slip expired, not found, or invalid on Ethio Telecom. Tap 'View Official Bank Slip' below."
-                            );
-                            playBeep(false);
-                            vibrateError();
-                        });
-                    }
-                }
-            });
-
-        } else if ("CBE".equalsIgnoreCase(provider)) {
+        } else if (isCbe && isCbeV2) {
             final String cleanToken = reference.replaceAll("[?#].*$", "").replaceAll("/+$", "");
-            String cbeUrl = cleanToken.toLowerCase().startsWith("v2-")
-                    ? "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken
-                    : (slipUrl != null && !slipUrl.isEmpty() ? slipUrl : "https://apps.cbe.com.et:100/?id=" + cleanToken);
+            String cbeUrl = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken;
 
             Request directReq = new Request.Builder()
                     .url(cbeUrl)
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
                     .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
-                    .header("Accept", "application/json, text/html")
+                    .header("Accept", "application/json")
                     .header("Connection", "keep-alive")
                     .build();
 
-            Call directCall = httpClient.newCall(directReq);
-            activeVerificationCalls.add(directCall);
-            directCall.enqueue(new Callback() {
+            executeCbeDirect(payment, directReq, cleanToken, isResolved, triggerPosFallback, checkAllFailed, directFinished);
+        }
+    }
+
+    private void executeTelebirrDirect(
+            final int attempt,
+            final DetectedPayment payment,
+            final OkHttpClient client,
+            final Request directReq,
+            final AtomicBoolean isResolved,
+            final Runnable triggerPosFallback,
+            final Runnable checkAllFailed,
+            final AtomicBoolean directFinished
+    ) {
+        if (isResolved.get()) return;
+
+        Call directCall = client.newCall(directReq);
+        activeVerificationCalls.add(directCall);
+
+        directCall.enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                if (isResolved.get()) return;
+                if (attempt < 2) {
+                    executeTelebirrDirect(attempt + 1, payment, client, directReq, isResolved, triggerPosFallback, checkAllFailed, directFinished);
+                } else {
+                    directFinished.set(true);
+                    triggerPosFallback.run();
+                    checkAllFailed.run();
+                }
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (isResolved.get()) return;
+
+                if (response.code() >= 500 && attempt < 2) {
+                    executeTelebirrDirect(attempt + 1, payment, client, directReq, isResolved, triggerPosFallback, checkAllFailed, directFinished);
+                    return;
+                }
+
+                if (response.isSuccessful() && response.body() != null) {
+                    String html = response.body().string();
+                    ReceiptParser.TelebirrReceipt receipt = ReceiptParser.parseTelebirrReceiptHtml(payment.reference, html);
+                    if (receipt.isValid && receipt.isCompleted) {
+                        boolean won = evaluateInstantTelebirr(payment.reference, receipt, html, payment.slipUrl, isResolved);
+                        if (won) return;
+                    }
+                }
+
+                directFinished.set(true);
+                triggerPosFallback.run();
+                checkAllFailed.run();
+            }
+        });
+    }
+
+    private void executeCbeDirect(
+            final DetectedPayment payment,
+            final Request directReq,
+            final String cleanToken,
+            final AtomicBoolean isResolved,
+            final Runnable triggerPosFallback,
+            final Runnable checkAllFailed,
+            final AtomicBoolean directFinished
+    ) {
+        if (isResolved.get()) return;
+
+        Call directCall = httpClient.newCall(directReq);
+        activeVerificationCalls.add(directCall);
+
+        directCall.enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                if (isResolved.get()) return;
+                directFinished.set(true);
+                triggerPosFallback.run();
+                checkAllFailed.run();
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (isResolved.get()) return;
+
+                if (response.isSuccessful() && response.body() != null) {
+                    try {
+                        String bodyStr = response.body().string();
+                        JSONObject data = new JSONObject(bodyStr);
+                        ReceiptParser.CbeReceipt receipt = ReceiptParser.parseCbeJson(cleanToken, data);
+                        if (receipt.isValid && receipt.isCompleted) {
+                            boolean won = evaluateInstantCbe(cleanToken, receipt, payment.slipUrl, isResolved);
+                            if (won) return;
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                directFinished.set(true);
+                triggerPosFallback.run();
+                checkAllFailed.run();
+            }
+        });
+    }
+
+    private void startPosRoute(
+            final DetectedPayment payment,
+            final AtomicBoolean isResolved,
+            final AtomicBoolean posFinished,
+            final AtomicBoolean directFinished,
+            final boolean isCbeFt
+    ) {
+        if (isResolved.get()) return;
+
+        List<String> targetEndpoints = new ArrayList<>();
+        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
+            targetEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+        }
+        if (!targetEndpoints.contains(DEFAULT_LOCAL_URL)) {
+            targetEndpoints.add(DEFAULT_LOCAL_URL);
+        }
+        if (!targetEndpoints.contains(DEFAULT_TUNNEL_URL)) {
+            targetEndpoints.add(DEFAULT_TUNNEL_URL);
+        }
+
+        tryVerifyPosEndpoints(targetEndpoints, 0, payment, isResolved, posFinished, directFinished, isCbeFt);
+    }
+
+    private void tryVerifyPosEndpoints(
+            final List<String> endpoints,
+            final int index,
+            final DetectedPayment payment,
+            final AtomicBoolean isResolved,
+            final AtomicBoolean posFinished,
+            final AtomicBoolean directFinished,
+            final boolean isCbeFt
+    ) {
+        if (isResolved.get()) return;
+
+        if (index >= endpoints.size()) {
+            posFinished.set(true);
+            checkAllVerificationRoutesFailed(payment, isResolved, posFinished, directFinished, isCbeFt);
+            return;
+        }
+
+        final String currentBaseUrl = endpoints.get(index);
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
+        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
+        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
+
+        try {
+            JSONObject body = new JSONObject();
+            body.put("referenceOrUrl", payment.reference);
+            body.put("provider", payment.provider);
+            if (targetOrderId != null) {
+                body.put("orderId", targetOrderId);
+                body.put("expectedAmount", expectedBill);
+            }
+
+            RequestBody requestBody = RequestBody.Companion.create(
+                    body.toString(),
+                    MediaType.Companion.parse("application/json; charset=utf-8")
+            );
+
+            Request request = new Request.Builder()
+                    .url(currentBaseUrl + "/api/verify-receipt")
+                    .header("x-scanner-token", apiKey)
+                    .post(requestBody)
+                    .build();
+
+            Call posCall = httpClient.newCall(request);
+            activeVerificationCalls.add(posCall);
+
+            posCall.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    if (isResolved.compareAndSet(false, true)) {
-                        mainHandler.post(() -> {
-                            showVerificationResult(
-                                    false, "CBE", reference, 0.0, "-", "-",
-                                    "-", "CBE TIMEOUT", slipUrl,
-                                    "❌ Could not connect to CBE gateway from phone. Tap 'View Official Bank Slip' below."
-                            );
-                            playBeep(false);
-                            vibrateError();
-                        });
-                    }
+                    tryVerifyPosEndpoints(endpoints, index + 1, payment, isResolved, posFinished, directFinished, isCbeFt);
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                     if (isResolved.get()) return;
-                    if (response.isSuccessful() && response.body() != null) {
-                        try {
-                            String bodyStr = response.body().string();
-                            if (cleanToken.toLowerCase().startsWith("v2-")) {
-                                JSONObject data = new JSONObject(bodyStr);
-                                boolean won = evaluateInstantCbe(cleanToken, data, slipUrl, isResolved);
-                                if (won) return;
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                    if (isResolved.compareAndSet(false, true)) {
-                        mainHandler.post(() -> {
-                            showVerificationResult(
-                                    false, "CBE", reference, 0.0, "-", "-",
-                                    "-", "SLIP NOT FOUND", slipUrl,
-                                    "❌ CBE transaction not found or unconfirmed. Tap 'View Official Bank Slip' below."
-                            );
-                            playBeep(false);
-                            vibrateError();
-                        });
+
+                    if (response.isSuccessful()) {
+                        activePosUrl = currentBaseUrl;
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        if (isResolved.compareAndSet(false, true)) {
+                            cancelAllVerificationCalls();
+                            mainHandler.post(() -> handleServerVerificationResponse(true, response.code(), jsonStr, payment.reference, payment.provider, payment.slipUrl, targetOrderTitle));
+                        }
+                    } else if (response.code() >= 500) {
+                        tryVerifyPosEndpoints(endpoints, index + 1, payment, isResolved, posFinished, directFinished, isCbeFt);
+                    } else {
+                        // Authoritative 4xx response from Cashier PC (Duplicate, Wrong Receiver, Underpaid, etc.)
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        if (isResolved.compareAndSet(false, true)) {
+                            cancelAllVerificationCalls();
+                            mainHandler.post(() -> handleServerVerificationResponse(false, response.code(), jsonStr, payment.reference, payment.provider, payment.slipUrl, targetOrderTitle));
+                        }
                     }
                 }
             });
+
+        } catch (Exception e) {
+            tryVerifyPosEndpoints(endpoints, index + 1, payment, isResolved, posFinished, directFinished, isCbeFt);
+        }
+    }
+
+    private void checkAllVerificationRoutesFailed(
+            final DetectedPayment payment,
+            final AtomicBoolean isResolved,
+            final AtomicBoolean posFinished,
+            final AtomicBoolean directFinished,
+            final boolean isCbeFt
+    ) {
+        if (directFinished.get() && posFinished.get()) {
+            if (isResolved.compareAndSet(false, true)) {
+                cancelAllVerificationCalls();
+                mainHandler.post(() -> {
+                    if (isCbeFt) {
+                        showVerificationResult(
+                                false, "CBE", payment.reference, 0.0, "-", "-",
+                                "-", "CBE FT SLIP", payment.slipUrl,
+                                "❌ CBE FT slips need the Cashier PC — open the official slip"
+                        );
+                    } else {
+                        showVerificationResult(
+                                false, payment.provider, payment.reference, 0.0, "-", "-",
+                                "-", "ALL ROUTES FAILED", payment.slipUrl,
+                                "❌ All verification routes timed out or failed. Tap 'View Official Bank Slip' below."
+                        );
+                    }
+                    playBeep(false);
+                    vibrateError();
+                });
+            }
         }
     }
 
     private boolean evaluateInstantTelebirr(
             final String reference,
+            final ReceiptParser.TelebirrReceipt receipt,
             final String htmlContent,
             final String slipUrl,
             final AtomicBoolean isResolved
     ) {
-        if (htmlContent == null || htmlContent.length() < 300 || htmlContent.contains("This request is not correct") || htmlContent.contains("not found")) {
-            return false;
-        }
+        final double amount = receipt.amount;
+        final String dateTime = receipt.dateTime;
 
-        String payerName = extractHtmlField(htmlContent, "Payer\\s*Name");
-        String payerPhone = extractHtmlField(htmlContent, "Payer\\s*telebirr");
-        String receiverName = extractHtmlField(htmlContent, "Credited\\s*Party\\s*name");
-        String receiverPhone = extractHtmlField(htmlContent, "Credited\\s*party\\s*account\\s*no");
-        if (receiverPhone == null) receiverPhone = extractHtmlField(htmlContent, "Receiver\\s*telebirr");
-
-        double parsedAmt = 0.0;
-        Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(htmlContent);
-        if (settledMatch.find()) {
-            parsedAmt = parseDoubleSafe(settledMatch.group(1));
-        }
-        final double amount = parsedAmt;
-
-        String parsedDateTime = "-";
-        Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(htmlContent);
-        if (dateMatch.find()) parsedDateTime = dateMatch.group(1);
-        final String dateTime = parsedDateTime;
-
-        final String finalPayer = (payerName != null && !payerName.isEmpty()) ? payerName : (payerPhone != null ? payerPhone : "Customer");
-        final String finalReceiver = (receiverName != null && !receiverName.isEmpty()) ? receiverName : (receiverPhone != null ? receiverPhone : cachedMerchantName);
+        final String finalPayer = (receipt.payerName != null && !receipt.payerName.isEmpty())
+                ? receipt.payerName
+                : (receipt.payerPhone != null && !receipt.payerPhone.isEmpty() ? receipt.payerPhone : "Customer");
+        final String finalReceiver = (receipt.receiverName != null && !receipt.receiverName.isEmpty())
+                ? receipt.receiverName
+                : (receipt.receiverPhone != null && !receipt.receiverPhone.isEmpty() ? receipt.receiverPhone : cachedMerchantName);
 
         // 🚨 1. FRAUD CHECK: Receiver Account Match
-        boolean receiverMatched = matchReceiver("TELEBIRR", receiverPhone, receiverName);
+        boolean receiverMatched = matchReceiver("TELEBIRR", receipt.receiverPhone, receipt.receiverName);
         if (!receiverMatched) {
             if (isResolved.compareAndSet(false, true)) {
                 cancelAllVerificationCalls();
@@ -1178,8 +1231,8 @@ public class MainActivity extends AppCompatActivity {
             lastVerifiedPayer = finalPayer;
             lastVerifiedReceiver = finalReceiver;
 
-            final String initialPosMsg = (selectedOrder != null) 
-                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+            final String initialPosMsg = (selectedOrder != null)
+                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..."
                     : "⚡ Syncing with Cashier PC...";
 
             mainHandler.post(() -> {
@@ -1198,28 +1251,20 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean evaluateInstantCbe(
             final String reference,
-            final JSONObject data,
+            final ReceiptParser.CbeReceipt receipt,
             final String slipUrl,
             final AtomicBoolean isResolved
     ) {
         try {
-            String status = data.optString("status", "").toUpperCase();
-            boolean isCompleted = status.contains("COMPLETED") || status.contains("SUCCESS");
-            if (!isCompleted) {
+            if (!receipt.isValid || !receipt.isCompleted) {
                 return false;
             }
 
-            double parsedAmount = data.optDouble("amountCredited", 0.0);
-            if (parsedAmount <= 0) parsedAmount = data.optDouble("debitAmount", 0.0);
-            if (parsedAmount <= 0 && data.has("amount")) {
-                parsedAmount = parseDoubleSafe(data.optString("amount"));
-            }
-            final double amount = parsedAmount;
-
-            final String payer = data.optString("debtorName", data.optString("payerName", "Customer"));
-            final String receiver = data.optString("creditorName", data.optString("receiverName", cachedMerchantName));
-            final String receiverAcc = data.optString("creditorAccount", data.optString("receiverAccount", ""));
-            final String dateTime = data.optString("transactionDate", data.optString("date", "-"));
+            final double amount = receipt.amount;
+            final String payer = (receipt.payerName != null && !receipt.payerName.isEmpty()) ? receipt.payerName : "Customer";
+            final String receiver = (receipt.receiverName != null && !receipt.receiverName.isEmpty()) ? receipt.receiverName : cachedMerchantName;
+            final String receiverAcc = receipt.receiverAccount;
+            final String dateTime = receipt.dateTime;
 
             // 🚨 1. Receiver Account Check
             boolean receiverMatched = matchReceiver("CBE", receiverAcc, receiver);
@@ -1230,7 +1275,7 @@ public class MainActivity extends AppCompatActivity {
                         showVerificationResult(
                                 false, "CBE", reference, amount, payer, receiver,
                                 dateTime, "RECEIVER MISMATCH", slipUrl,
-                                "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official CBE account (" + cachedCbeReceiver + ")!"
+                                "🚨 FRAUD ALERT: Payment credited to " + receiver + " (" + receiverAcc + "), NOT your official CBE account (" + cachedCbeReceiver + ")!"
                         );
                         txtResultBadge.setText("WRONG RECV");
                         playBeep(false);
@@ -1267,9 +1312,9 @@ public class MainActivity extends AppCompatActivity {
                 lastVerifiedPayer = payer;
                 lastVerifiedReceiver = receiver;
 
-                final String initialPosMsg = (selectedOrder != null) 
-                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
-                    : "⚡ Syncing with Cashier PC...";
+                final String initialPosMsg = (selectedOrder != null)
+                        ? "⚡ Linking to " + selectedOrder.displayTitle + "..."
+                        : "⚡ Syncing with Cashier PC...";
 
                 mainHandler.post(() -> {
                     showVerificationResult(
@@ -1287,6 +1332,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void cancelAllVerificationCalls() {
+        if (hedgedFallbackRunnable != null) {
+            mainHandler.removeCallbacks(hedgedFallbackRunnable);
+        }
         synchronized (activeVerificationCalls) {
             for (Call call : activeVerificationCalls) {
                 try {
@@ -1443,97 +1491,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void verifySlipWithServer(
-            final String reference,
-            final String provider,
-            final String htmlContent,
-            final String slipUrl
-    ) {
-        List<String> targetEndpoints = new ArrayList<>();
-        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
-            targetEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
-        }
-        if (!targetEndpoints.contains(DEFAULT_LOCAL_URL)) {
-            targetEndpoints.add(DEFAULT_LOCAL_URL);
-        }
-        if (!targetEndpoints.contains(DEFAULT_TUNNEL_URL)) {
-            targetEndpoints.add(DEFAULT_TUNNEL_URL);
-        }
-
-        tryVerifyEndpoints(targetEndpoints, 0, reference, provider, htmlContent, slipUrl);
-    }
-
-    private void tryVerifyEndpoints(
-            final List<String> endpoints,
-            final int index,
-            final String reference,
-            final String provider,
-            final String htmlContent,
-            final String slipUrl
-    ) {
-        if (index >= endpoints.size()) {
-            // All endpoints failed -> Fall back to on-device validation
-            mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
-            return;
-        }
-
-        final String currentBaseUrl = endpoints.get(index);
-        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
-        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
-        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
-        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
-
-        try {
-            JSONObject body = new JSONObject();
-            body.put("referenceOrUrl", reference);
-            body.put("provider", provider);
-            if (targetOrderId != null) {
-                body.put("orderId", targetOrderId);
-                body.put("expectedAmount", expectedBill);
-            }
-            if (htmlContent != null && htmlContent.length() > 200) {
-                body.put("htmlContent", htmlContent);
-            }
-
-            RequestBody requestBody = RequestBody.Companion.create(
-                    body.toString(),
-                    MediaType.Companion.parse("application/json; charset=utf-8")
-            );
-
-            Request request = new Request.Builder()
-                    .url(currentBaseUrl + "/api/verify-receipt")
-                    .header("x-scanner-token", apiKey)
-                    .post(requestBody)
-                    .build();
-
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    // Try next endpoint (e.g. Tunnel -> Local LAN IP, or vice versa)
-                    tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
-                }
-
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    if (response.isSuccessful()) {
-                        activePosUrl = currentBaseUrl; // Update active URL to the responsive endpoint
-                        String jsonStr = response.body() != null ? response.body().string() : "{}";
-                        mainHandler.post(() -> handleServerVerificationResponse(true, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
-                    } else if (response.code() >= 500) {
-                        // Gateway timeout or server 5xx on this endpoint -> try alternative endpoint
-                        tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
-                    } else {
-                        // Authoritative 4xx response from Cashier PC (Duplicate, Wrong Receiver, Underpaid, etc.)
-                        String jsonStr = response.body() != null ? response.body().string() : "{}";
-                        mainHandler.post(() -> handleServerVerificationResponse(false, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
-                    }
-                }
-            });
-
-        } catch (Exception e) {
-            tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
-        }
-    }
 
     private void handleServerVerificationResponse(
             boolean isHttpOk,
@@ -1705,38 +1662,8 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean matchReceiver(String provider, String receivedPhone, String receivedName) {
         if ("TELEBIRR".equalsIgnoreCase(provider)) {
-            if (cachedTelebirrReceiver == null || cachedTelebirrReceiver.trim().isEmpty()) {
-                return true; // No restriction configured
-            }
-            String cleanTarget = cachedTelebirrReceiver.replaceAll("\\D", "");
-            String target9 = cleanTarget.length() >= 9 ? cleanTarget.substring(cleanTarget.length() - 9) : cleanTarget;
-
-            if (receivedPhone != null && !receivedPhone.trim().isEmpty()) {
-                String rawRecv = receivedPhone.trim();
-                // Case 1: Masked with *, X, x
-                if (rawRecv.contains("*") || rawRecv.contains("X") || rawRecv.contains("x")) {
-                    Matcher suffixMatcher = Pattern.compile("(\\d{3,})$").matcher(rawRecv);
-                    if (suffixMatcher.find()) {
-                        String suffix = suffixMatcher.group(1);
-                        if (!target9.endsWith(suffix) && !cleanTarget.endsWith(suffix)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-
-                // Case 2: Full or unmasked digits
-                String digitsRecv = rawRecv.replaceAll("\\D", "");
-                if (digitsRecv.length() >= 9) {
-                    String recv9 = digitsRecv.substring(digitsRecv.length() - 9);
-                    if (target9.equals(recv9)) return true;
-                }
-                if (digitsRecv.length() >= 4) {
-                    if (cleanTarget.endsWith(digitsRecv) || digitsRecv.endsWith(cleanTarget) || target9.endsWith(digitsRecv)) {
-                        return true;
-                    }
-                }
-            }
+            boolean matched = ReceiptParser.matchMaskedAccountOrPhone(cachedTelebirrReceiver, receivedPhone);
+            if (matched) return true;
 
             // Check merchant name fallback
             if (receivedName != null && cachedMerchantName != null && !cachedMerchantName.trim().isEmpty()) {
@@ -1748,15 +1675,7 @@ public class MainActivity extends AppCompatActivity {
             }
             return false;
         } else if ("CBE".equalsIgnoreCase(provider)) {
-            if (cachedCbeReceiver == null || cachedCbeReceiver.trim().isEmpty()) return true;
-            String cleanTarget = cachedCbeReceiver.replaceAll("\\D", "");
-            if (receivedPhone != null && !receivedPhone.trim().isEmpty()) {
-                String digitsReceived = receivedPhone.replaceAll("\\D", "");
-                if (digitsReceived.length() >= 4) {
-                    return cleanTarget.endsWith(digitsReceived) || digitsReceived.endsWith(cleanTarget);
-                }
-            }
-            return true;
+            return ReceiptParser.matchMaskedAccountOrPhone(cachedCbeReceiver, receivedPhone);
         }
         return true;
     }
@@ -2190,25 +2109,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String extractHtmlField(String html, String fieldRegex) {
-        try {
-            Pattern p = Pattern.compile(fieldRegex + "[^<]*</t[dh]>\\s*<td[^>]*>([\\s\\S]*?)</td>", Pattern.CASE_INSENSITIVE);
-            Matcher m = p.matcher(html);
-            if (m.find()) {
-                return m.group(1).replaceAll("<[^>]+>", "").trim();
-            }
-        } catch (Exception ignored) {}
-        return null;
+        return ReceiptParser.extractHtmlField(html, fieldRegex);
     }
 
     private double parseDoubleSafe(String val) {
-        if (val == null) return 0.0;
-        try {
-            Matcher m = Pattern.compile("[\\d.]+").matcher(val.replaceAll(",", ""));
-            if (m.find()) {
-                return Double.parseDouble(m.group(0));
-            }
-        } catch (Exception ignored) {}
-        return 0.0;
+        return ReceiptParser.parseDoubleSafe(val);
     }
 
     private void playBeep(boolean success) {
