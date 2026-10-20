@@ -1,12 +1,12 @@
 {
   "name": "Kogna Verifier",
-  "short_name": "Verifier",
-  "description": "Telebirr & CBE Payment Verification for Kogna Coffee",
-  "start_url": "/scanner?key=kogna_scanner_secure_2026",
+  "short_name": "Kogna Verifier",
+  "description": "Kogna Coffee Anti-Fraud Payment Verifier",
+  "start_url": "/scanner",
   "scope": "/scanner",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#B48A1E",
+  "background_color": "#F8FAFC",
+  "theme_color": "#D4AF37",
   "orientation": "portrait",
   "icons": [
     {
@@ -22,5 +22,5 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "finance"]
+  "categories": ["business", "finance", "productivity"]
 }

@@ -21,7 +21,10 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
-  X
+  X,
+  Smartphone,
+  Download,
+  Sparkles
 } from 'lucide-react'
 
 interface VerifiedReceipt {
@@ -280,6 +283,12 @@ export default function QRScannerPage() {
   const [history, setHistory] = useState<ScanHistoryItem[]>([])
   const [showHistory, setShowHistory] = useState(false)
 
+  // App & Refresh states
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [isInstalledApp, setIsInstalledApp] = useState(false)
+  const [showAppModal, setShowAppModal] = useState(false)
+
   const html5QrCodeRef = useRef<any>(null)
   const scannerContainerId = 'kogna-qr-reader'
   const expectedAmountRef = useRef(expectedAmount)
@@ -294,6 +303,24 @@ export default function QRScannerPage() {
   const lastScannedTextRef = useRef<string | null>(null)
   const lastScannedTimeRef = useRef<number>(0)
   const mountedRef = useRef(true)
+
+  // Detect standalone app mode (PWA or Android WebView) and capture install prompt
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true ||
+        Boolean((window as any).AndroidBridge)
+      setIsInstalledApp(isStandalone)
+
+      const handleBeforeInstall = (e: any) => {
+        e.preventDefault()
+        setDeferredPrompt(e)
+      }
+      window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+      return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+    }
+  }, [])
 
   useEffect(() => {
     selectedOrderIdRef.current = selectedOrderId
@@ -981,6 +1008,42 @@ export default function QRScannerPage() {
     return new Intl.NumberFormat('en-ET', { style: 'currency', currency: 'ETB', minimumFractionDigits: 2 }).format(amount)
   }
 
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      await fetchOpenOrders()
+      setCameraError(null)
+      if (isCameraOpen && !verifying && html5QrCodeRef.current) {
+        try {
+          await stopScanner()
+          await startScanner(facingMode)
+        } catch {}
+      }
+    } catch (err) {
+      console.error('Refresh error:', err)
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500)
+    }
+  }, [isRefreshing, fetchOpenOrders, isCameraOpen, verifying, stopScanner, startScanner, facingMode])
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt()
+        const choice = await deferredPrompt.userChoice
+        if (choice.outcome === 'accepted') {
+          setIsInstalledApp(true)
+        }
+        setDeferredPrompt(null)
+      } catch {
+        setShowAppModal(true)
+      }
+    } else {
+      setShowAppModal(true)
+    }
+  }
+
   return (
     <div style={{
       minHeight: '100dvh',
@@ -996,12 +1059,16 @@ export default function QRScannerPage() {
       boxSizing: 'border-box',
       overflowX: 'hidden'
     }}>
-      {/* Laser line CSS animation */}
+      {/* Laser line CSS animation & spin */}
       <style>{`
         @keyframes kLineScan {
           0% { top: 6%; opacity: 0.85; }
           50% { top: 92%; opacity: 1; }
           100% { top: 6%; opacity: 0.85; }
+        }
+        @keyframes kSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
         .kogna-laser-line {
           position: absolute;
@@ -1021,7 +1088,7 @@ export default function QRScannerPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 'max(14px, env(safe-area-inset-top)) 18px 14px 18px',
+        padding: 'max(12px, env(safe-area-inset-top)) 16px 12px 16px',
         borderBottom: '1px solid #E2E8F0',
         background: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(12px)',
@@ -1032,7 +1099,7 @@ export default function QRScannerPage() {
         boxSizing: 'border-box',
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -1048,31 +1115,82 @@ export default function QRScannerPage() {
             <QrCode size={20} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontWeight: '800', fontSize: '16px', letterSpacing: '-0.01em', color: '#0F172A' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontWeight: '800', fontSize: '15px', letterSpacing: '-0.01em', color: '#0F172A' }}>
                 Kogna Verifier
               </span>
-              <span style={{
-                fontSize: '10px',
-                fontWeight: '800',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                padding: '2px 7px',
-                borderRadius: '6px',
-                background: '#FEF3C7',
-                color: '#B45309',
-                border: '1px solid #FCD34D'
-              }}>
-                Anti-Fraud
-              </span>
+              {isInstalledApp ? (
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: '800',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  padding: '2px 6px',
+                  borderRadius: '5px',
+                  background: '#ECFDF5',
+                  color: '#059669',
+                  border: '1px solid #A7F3D0',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}>
+                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#059669' }}></span>
+                  App
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: '800',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  padding: '2px 6px',
+                  borderRadius: '5px',
+                  background: '#FEF3C7',
+                  color: '#B45309',
+                  border: '1px solid #FCD34D'
+                }}>
+                  Anti-Fraud
+                </span>
+              )}
             </div>
             <p style={{ margin: 0, fontSize: '11px', color: '#64748B', fontWeight: '500' }}>
-              Telebirr & CBE Payment Verification
+              Telebirr & CBE Slip Verifier
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            style={{
+              background: isRefreshing ? '#FEF3C7' : '#F1F5F9',
+              border: `1px solid ${isRefreshing ? '#FCD34D' : '#E2E8F0'}`,
+              color: isRefreshing ? '#B48A1E' : '#475569',
+              width: '36px',
+              height: '36px',
+              borderRadius: '9px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              touchAction: 'manipulation',
+              transition: 'all 0.15s ease'
+            }}
+            title="Refresh open orders & scanner"
+          >
+            <RefreshCw
+              size={16}
+              style={{
+                animation: isRefreshing ? 'kSpin 0.7s linear infinite' : 'none',
+                transformOrigin: 'center'
+              }}
+            />
+          </button>
+
+          {/* Sound Mute/Unmute */}
           <button
             type="button"
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -1080,9 +1198,9 @@ export default function QRScannerPage() {
               background: '#F1F5F9',
               border: '1px solid #E2E8F0',
               color: soundEnabled ? '#B48A1E' : '#94A3B8',
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '9px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1092,8 +1210,34 @@ export default function QRScannerPage() {
             }}
             title={soundEnabled ? 'Mute audio chime' : 'Enable audio chime'}
           >
-            {soundEnabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
+
+          {/* Get App Button (if not already installed) */}
+          {!isInstalledApp && (
+            <button
+              type="button"
+              onClick={handleInstallApp}
+              style={{
+                background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                border: '1px solid #334155',
+                color: '#F8FAFC',
+                padding: '6px 10px',
+                borderRadius: '9px',
+                fontSize: '11px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+              }}
+              title="Install Scanner App on Phone"
+            >
+              <Smartphone size={13} color="#FCD34D" />
+              <span>Get App</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -2712,6 +2856,163 @@ export default function QRScannerPage() {
           </div>
         )}
       </footer>
+
+      {/* App Install & APK Download Modal */}
+      {showAppModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          zIndex: 100
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '420px',
+            padding: '24px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+            position: 'relative'
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowAppModal(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: '#F1F5F9',
+                border: 'none',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: '#64748B'
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
+                border: '1px solid #FCD34D',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#B48A1E'
+              }}>
+                <Smartphone size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: '#0F172A' }}>
+                  Use as a Dedicated App
+                </h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>
+                  Choose your preferred installation method:
+                </p>
+              </div>
+            </div>
+
+            {/* Option 1: Native Android APK */}
+            <div style={{
+              background: '#F8FAFC',
+              border: '1.5px solid #E2E8F0',
+              borderRadius: '14px',
+              padding: '16px',
+              marginBottom: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>
+                  Android Native App (APK)
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: '800', background: '#ECFDF5', color: '#059669', padding: '2px 6px', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                  ⚡ Zero-Lag
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 12px 0', lineHeight: 1.4 }}>
+                Direct on-device connection inside Ethiopia. Fastest verification, no gateway timeouts, full screen without browser bars.
+              </p>
+              <a
+                href="/KognaVerifier.apk"
+                download="KognaVerifier.apk"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  color: '#FFFFFF',
+                  padding: '11px 16px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(5,150,105,0.25)'
+                }}
+              >
+                <Download size={16} />
+                <span>Download APK (Recommended)</span>
+              </a>
+            </div>
+
+            {/* Option 2: Add to Home Screen (PWA) */}
+            <div style={{
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+              borderRadius: '14px',
+              padding: '14px'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', marginBottom: '4px' }}>
+                Add to Home Screen (Web App)
+              </div>
+              <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                Install directly from your browser without downloading APK files:
+              </p>
+              {deferredPrompt ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    deferredPrompt.prompt()
+                    const c = await deferredPrompt.userChoice
+                    if (c.outcome === 'accepted') setIsInstalledApp(true)
+                    setDeferredPrompt(null)
+                    setShowAppModal(false)
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#1E293B',
+                    color: '#F8FAFC',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  📲 Install to Home Screen Now
+                </button>
+              ) : (
+                <div style={{ fontSize: '11px', color: '#475569', background: '#F1F5F9', padding: '8px 10px', borderRadius: '6px' }}>
+                  Tap the browser menu <b>⋮</b> (or Share icon in Safari) &rarr; select <b>"Install App"</b> or <b>"Add to Home screen"</b>.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

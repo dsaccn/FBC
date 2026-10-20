@@ -178,16 +178,17 @@ export function extractTelebirrTransactionId(raw: string): string {
 async function fetchTelebirrWithRetry(url: string, maxAttempts = 2): Promise<Response> {
   let lastErr: any = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Attempt 1: 3.5s fast timeout. Attempt 2: 4.5s timeout. (Max 8s total to prevent cashier freeze)
-    const timeoutMs = attempt === 1 ? 3500 : 4500
+    // Attempt 1: 5.5s timeout. Attempt 2: 7.5s timeout. Absorbs Ethiopian network peak latency!
+    const timeoutMs = attempt === 1 ? 5500 : 7500
     try {
       const res = await fetch(url, {
         headers: {
           'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
+            'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,am;q=0.8',
           'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
         },
         signal: AbortSignal.timeout(timeoutMs),
       })
@@ -199,17 +200,17 @@ async function fetchTelebirrWithRetry(url: string, maxAttempts = 2): Promise<Res
 
       // If 5xx or server rate-limit error, wait briefly before retrying
       if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, 200))
+        await new Promise(r => setTimeout(r, 300))
       }
     } catch (err: any) {
       lastErr = err
       // On network timeout or connection reset, wait briefly and retry with a fresh socket
       if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, 250))
+        await new Promise(r => setTimeout(r, 400))
       }
     }
   }
-  throw lastErr || new Error('Ethio Telecom receipt gateway timed out (8s limit)')
+  throw lastErr || new Error('Ethio Telecom receipt gateway timed out')
 }
 
 /**
@@ -396,16 +397,36 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
   const fetchUrl = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${cleanToken}`
 
   try {
-    const res = await fetch(fetchUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'X-App-ID': 'd1292e42-7400-49de-a2d3-9731caa4c819',
-        'X-App-Version': '0a01980b-9859-1369-8198-59f403820000',
-        'Accept': 'application/json',
-      },
-      signal: AbortSignal.timeout(12000),
-    })
+    let res: Response | null = null
+    let lastErr: any = null
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const timeoutMs = attempt === 1 ? 6500 : 8500
+    try {
+      res = await fetch(fetchUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'X-App-ID': 'd1292e42-7400-49de-a2d3-9731caa4c819',
+          'X-App-Version': '0a01980b-9859-1369-8198-59f403820000',
+          'Accept': 'application/json',
+          'Connection': 'keep-alive',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+      if (res.ok || res.status === 404 || res.status === 400) {
+        break
+      }
+      if (attempt < 2) await new Promise(r => setTimeout(r, 300))
+    } catch (err: any) {
+      lastErr = err
+      if (attempt < 2) await new Promise(r => setTimeout(r, 400))
+    }
+  }
+
+  if (!res) {
+    throw lastErr || new Error('CBE gateway timed out')
+  }
 
     if (!res.ok) {
       return {
