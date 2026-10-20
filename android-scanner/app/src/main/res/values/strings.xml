@@ -1,7 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kogna Verifier</string>
     <string name="camera_permission_required">Camera permission is required to scan Telebirr and CBE QR codes.</string>
-    <string name="offline_title">Connection Unavailable</string>
-    <string name="offline_message">Unable to connect to the POS server. Please check your WiFi connection and ensure the POS machine is running.</string>
-    <string name="retry">Retry Connection</string>
+    <string name="scan_prompt">Align Telebirr or CBE QR slip inside frame</string>
+    <string name="pos_status_online">POS Online</string>
+    <string name="pos_status_standalone">Standalone</string>
+    <string name="verified_title">PAYMENT VERIFIED</string>
+    <string name="failed_title">VERIFICATION FAILED</string>
+    <string name="scan_next">SCAN NEXT RECEIPT</string>
+    <string name="view_official_slip">View Official Bank Slip</string>
+    <string name="manual_input_title">Enter Transaction Code</string>
+    <string name="settings_title">POS Connection Settings</string>
+    <string name="history_title">Today\'s Scans</string>
 </resources>

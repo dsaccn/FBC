@@ -2945,7 +2945,7 @@ export default function QRScannerPage() {
                 Direct on-device connection inside Ethiopia. Fastest verification, no gateway timeouts, full screen without browser bars.
               </p>
               <a
-                href="/KognaVerifier.apk"
+                href="https://github.com/dsaccn/FBC/releases/latest/download/KognaVerifier.apk"
                 download="KognaVerifier.apk"
                 style={{
                   display: 'flex',
