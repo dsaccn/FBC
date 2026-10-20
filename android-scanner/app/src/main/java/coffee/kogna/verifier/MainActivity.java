@@ -294,7 +294,11 @@ public class MainActivity extends AppCompatActivity {
                 public void run() {
                     HttpURLConnection conn = null;
                     try {
-                        URL url = new URL(targetUrl);
+                        String fullUrl = targetUrl != null ? targetUrl.trim() : "";
+                        if (!fullUrl.startsWith("http://") && !fullUrl.startsWith("https://")) {
+                            fullUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + fullUrl;
+                        }
+                        URL url = new URL(fullUrl);
                         conn = (HttpURLConnection) url.openConnection();
                         conn.setRequestMethod("GET");
                         conn.setConnectTimeout(9000);

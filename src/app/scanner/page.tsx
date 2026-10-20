@@ -76,6 +76,56 @@ export interface OpenOrder {
   verifiedAt?: string | null
 }
 
+/**
+ * Universal extractor for Ethiopian payment transaction IDs:
+ * - Telebirr SuperApp Base64 QR code (EMVCo with 000A[20 hex chars] -> ASCII)
+ * - Telebirr receipt URLs (e.g. /receipt/DJJ7261SX7)
+ * - CBE reference numbers (FT...)
+ * - Plain 10-char alphanumeric codes (DJJ7261SX7)
+ */
+function extractCleanTransactionId(raw: string): string {
+  const clean = (raw || '').trim()
+  if (!clean) return ''
+
+  // 1. Direct URL match: /receipt/([A-Za-z0-9_-]+)
+  const urlMatch = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
+  if (urlMatch) return urlMatch[1].toUpperCase()
+
+  // 2. Base64 Telebirr QR payload (length > 30, base64 chars)
+  if (clean.length > 30 && /^[A-Za-z0-9+/=]+$/.test(clean)) {
+    try {
+      const binStr = typeof window !== 'undefined' && typeof window.atob === 'function'
+        ? window.atob(clean)
+        : (typeof Buffer !== 'undefined' ? Buffer.from(clean, 'base64').toString('binary') : '')
+
+      const emvMatch = binStr.match(/000A([0-9a-fA-F]{20})/i)
+      if (emvMatch) {
+        const hex = emvMatch[1]
+        let ascii = ''
+        for (let i = 0; i < hex.length; i += 2) {
+          ascii += String.fromCharCode(parseInt(hex.substr(i, 2), 16))
+        }
+        if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
+          return ascii.toUpperCase()
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Look for explicit Telebirr 10-char code (e.g. DJJ7261SX7)
+  const codeMatch = clean.match(/\b([A-Z0-9]{10})\b/i)
+  if (codeMatch && !/^(TELEBIRR|ETHIOTELE|COMMERCIAL)/i.test(codeMatch[1])) {
+    return codeMatch[1].toUpperCase()
+  }
+
+  // 4. CBE FT transaction match: FT...
+  const cbeMatch = clean.match(/\b(FT[A-Za-z0-9]{8,18})\b/i)
+  if (cbeMatch) return cbeMatch[1].toUpperCase()
+
+  // 5. Fallback clean alphanumeric
+  return clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+}
+
 export default function QRScannerPage() {
   const [mode, setMode] = useState<'camera' | 'manual'>('camera')
   const [manualCode, setManualCode] = useState('')
@@ -384,11 +434,11 @@ export default function QRScannerPage() {
 
         // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
         let htmlContent: string | undefined = htmlOverride
+        const candidateId = extractCleanTransactionId(clean)
+
         if (!htmlContent && typeof (window as any).AndroidBridge?.fetchReceipt === 'function') {
           try {
-            const txnIdMatch = clean.match(/\b([A-Za-z0-9]{8,14})\b/)
-            const candidateId = txnIdMatch ? txnIdMatch[1] : ''
-            if (candidateId && !clean.toUpperCase().startsWith('FT')) {
+            if (candidateId && !candidateId.toUpperCase().startsWith('FT') && candidateId !== 'UNKNOWN' && candidateId.length >= 8 && candidateId.length <= 14) {
               htmlContent = await new Promise<string>((resolve) => {
                 const cbId = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
                 const timer = setTimeout(() => {
@@ -426,7 +476,7 @@ export default function QRScannerPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              referenceOrUrl: clean,
+              referenceOrUrl: candidateId || clean,
               provider: prov,
               accountDigits: accountDigits || undefined,
               expectedAmount: expAmt || undefined,
