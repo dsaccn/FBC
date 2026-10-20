@@ -264,8 +264,8 @@ public class MainActivity extends AppCompatActivity {
                         URL url = new URL(targetUrl);
                         conn = (HttpURLConnection) url.openConnection();
                         conn.setRequestMethod("GET");
-                        conn.setConnectTimeout(6500);
-                        conn.setReadTimeout(6500);
+                        conn.setConnectTimeout(9000);
+                        conn.setReadTimeout(9000);
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                         conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
                         conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9,am;q=0.8");
