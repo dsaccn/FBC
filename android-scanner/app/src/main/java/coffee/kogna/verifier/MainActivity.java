@@ -8,6 +8,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
@@ -152,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isVerifying = false;
     private String lastVerifiedUrl = "";
     private Call currentActiveCall = null;
-    private String activePosUrl = DEFAULT_TUNNEL_URL;
+    private String activePosUrl = DEFAULT_LOCAL_URL;
 
     // Last scanned verified data for post-scan table linking
     private String lastVerifiedRef = "";
@@ -565,8 +566,8 @@ public class MainActivity extends AppCompatActivity {
         if (savedUrl != null && !savedUrl.trim().isEmpty()) {
             candidates.add(savedUrl.trim().replaceAll("/+$", ""));
         }
-        candidates.add(DEFAULT_TUNNEL_URL); // https://scanner.kogna.coffee
-        candidates.add(DEFAULT_LOCAL_URL);  // http://192.168.1.5:3000
+        candidates.add(DEFAULT_LOCAL_URL);  // http://192.168.1.5:3000 (Local Wi-Fi 2ms FIRST!)
+        candidates.add(DEFAULT_TUNNEL_URL); // https://scanner.kogna.coffee (Tunnel failover)
 
         probeCandidates(candidates, 0, apiKey, showToast);
     }
@@ -1006,8 +1007,15 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // ⚡ Direct on-device fetch with 2-attempt fast retry (Option B inside Ethiopia)
         fetchDeviceSlipWithRetry(slipUrl, 1, 2, htmlContent -> {
-            verifySlipWithServer(transactionId, "TELEBIRR", htmlContent, slipUrl);
+            if (htmlContent != null && htmlContent.length() > 300) {
+                // 🚀 Instant on-device verification & display (< 1 second!)
+                handleInstantTelebirrVerification(transactionId, htmlContent, slipUrl);
+            } else {
+                // If device couldn't fetch HTML, query Cashier PC server as fallback
+                verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
+            }
         });
     }
 
@@ -1016,7 +1024,362 @@ public class MainActivity extends AppCompatActivity {
         final String slipUrl = payment.slipUrl;
         lastVerifiedUrl = slipUrl;
 
-        verifySlipWithServer(tokenId, "CBE", null, slipUrl);
+        if (tokenId != null && tokenId.toLowerCase().startsWith("v2-")) {
+            // ⚡ Modern CBE V2 token: Query CBE API directly on device (< 400ms!)
+            fetchCbeSlipDirectly(tokenId, slipUrl);
+        } else {
+            // Legacy FT code or web slip: Query Cashier PC server
+            verifySlipWithServer(tokenId, "CBE", null, slipUrl);
+        }
+    }
+
+    private void fetchCbeSlipDirectly(final String tokenId, final String slipUrl) {
+        final String cleanToken = tokenId.replaceAll("[?#].*$", "").replaceAll("/+$", "");
+        String url = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken;
+
+        Request request = new Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
+                .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
+                .header("Accept", "application/json")
+                .header("Connection", "Keep-Alive")
+                .build();
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                // Fall back to Cashier PC server
+                verifySlipWithServer(cleanToken, "CBE", null, slipUrl);
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful() && response.body() != null) {
+                    try {
+                        String jsonStr = response.body().string();
+                        JSONObject data = new JSONObject(jsonStr);
+                        handleInstantCbeVerification(cleanToken, data, slipUrl);
+                        return;
+                    } catch (Exception ignored) {}
+                }
+                // Non-200 or parsing error -> fall back to Cashier PC
+                verifySlipWithServer(cleanToken, "CBE", null, slipUrl);
+            }
+        });
+    }
+
+    private void handleInstantTelebirrVerification(
+            final String reference,
+            final String htmlContent,
+            final String slipUrl
+    ) {
+        if (htmlContent.contains("This request is not correct") || htmlContent.contains("not found") || htmlContent.length() < 300) {
+            mainHandler.post(() -> showVerificationResult(
+                    false, "TELEBIRR", reference, 0.0, "-", "-",
+                    "-", "INVALID SLIP", slipUrl, "❌ Slip expired or not found on Ethio Telecom"
+            ));
+            return;
+        }
+
+        String payerName = extractHtmlField(htmlContent, "Payer\\s*Name");
+        String payerPhone = extractHtmlField(htmlContent, "Payer\\s*telebirr");
+        String receiverName = extractHtmlField(htmlContent, "Credited\\s*Party\\s*name");
+        String receiverPhone = extractHtmlField(htmlContent, "Credited\\s*party\\s*account\\s*no");
+        if (receiverPhone == null) receiverPhone = extractHtmlField(htmlContent, "Receiver\\s*telebirr");
+
+        double amount = 0.0;
+        Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(htmlContent);
+        if (settledMatch.find()) {
+            amount = parseDoubleSafe(settledMatch.group(1));
+        }
+
+        String dateTime = "-";
+        Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(htmlContent);
+        if (dateMatch.find()) dateTime = dateMatch.group(1);
+
+        final String finalPayer = (payerName != null && !payerName.isEmpty()) ? payerName : (payerPhone != null ? payerPhone : "Customer");
+        final String finalReceiver = (receiverName != null && !receiverName.isEmpty()) ? receiverName : (receiverPhone != null ? receiverPhone : cachedMerchantName);
+
+        // 🚨 1. FRAUD CHECK: Receiver Account Match
+        boolean receiverMatched = matchReceiver("TELEBIRR", receiverPhone, receiverName);
+        if (!receiverMatched) {
+            final double finalAmt = amount;
+            mainHandler.post(() -> {
+                showVerificationResult(
+                        false, "TELEBIRR", reference, finalAmt, finalPayer, finalReceiver,
+                        dateTime, "RECEIVER MISMATCH", slipUrl,
+                        "🚨 FRAUD ALERT: Payment credited to " + finalReceiver + ", NOT your official account (" + cachedTelebirrReceiver + ")!"
+                );
+                txtResultBadge.setText("WRONG RECV");
+            });
+            return;
+        }
+
+        // 🚨 2. UNDERPAYMENT CHECK against selected table
+        if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
+            final double finalAmt = amount;
+            mainHandler.post(() -> {
+                showVerificationResult(
+                        false, "TELEBIRR", reference, finalAmt, finalPayer, finalReceiver,
+                        dateTime, "AMOUNT TOO LOW", slipUrl,
+                        String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, finalAmt, selectedOrder.total - finalAmt)
+                );
+                txtResultBadge.setText("UNDERPAID");
+            });
+            return;
+        }
+
+        lastVerifiedRef = reference;
+        lastVerifiedProvider = "TELEBIRR";
+        lastVerifiedAmount = amount;
+        lastVerifiedPayer = finalPayer;
+        lastVerifiedReceiver = finalReceiver;
+
+        final double verifiedAmount = amount;
+        final String verifiedTime = dateTime;
+        final String initialPosMsg = (selectedOrder != null) 
+                ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+                : "⚡ Syncing with Cashier PC...";
+
+        // 🚀 SHOW GREEN GENUINE CARD IMMEDIATELY ON PHONE (< 1s)!
+        mainHandler.post(() -> {
+            showVerificationResult(
+                    true, "TELEBIRR", reference, verifiedAmount, finalPayer, finalReceiver,
+                    verifiedTime, null, slipUrl, initialPosMsg
+            );
+        });
+
+        // 🌐 Asynchronously sync with POS in background (Local LAN 2ms or Tunnel)
+        syncVerifiedSlipInBackground(reference, "TELEBIRR", htmlContent, slipUrl, verifiedAmount, finalPayer, finalReceiver);
+    }
+
+    private void handleInstantCbeVerification(
+            final String reference,
+            final JSONObject data,
+            final String slipUrl
+    ) {
+        try {
+            String status = data.optString("status", "").toUpperCase();
+            boolean isCompleted = status.contains("COMPLETED") || status.contains("SUCCESS");
+            if (!isCompleted) {
+                mainHandler.post(() -> showVerificationResult(
+                        false, "CBE", reference, 0.0, "-", "-",
+                        "-", "UNCONFIRMED STATUS", slipUrl, "CBE status: " + status
+                ));
+                return;
+            }
+
+            double amount = data.optDouble("amountCredited", 0.0);
+            if (amount <= 0) amount = data.optDouble("debitAmount", 0.0);
+            if (amount <= 0 && data.has("amount")) {
+                amount = parseDoubleSafe(data.optString("amount"));
+            }
+
+            String payer = data.optString("debtorName", data.optString("payerName", "Customer"));
+            String receiver = data.optString("creditorName", data.optString("receiverName", cachedMerchantName));
+            String receiverAcc = data.optString("creditorAccount", data.optString("receiverAccount", ""));
+            String dateTime = data.optString("transactionDate", data.optString("date", "-"));
+
+            // 🚨 1. Receiver Account Check
+            boolean receiverMatched = matchReceiver("CBE", receiverAcc, receiver);
+            if (!receiverMatched) {
+                final double finalAmt = amount;
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            false, "CBE", reference, finalAmt, payer, receiver,
+                            dateTime, "RECEIVER MISMATCH", slipUrl,
+                            "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official CBE account (" + cachedCbeReceiver + ")!"
+                    );
+                    txtResultBadge.setText("WRONG RECV");
+                });
+                return;
+            }
+
+            // 🚨 2. Underpayment Check
+            if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
+                final double finalAmt = amount;
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            false, "CBE", reference, finalAmt, payer, receiver,
+                            dateTime, "AMOUNT TOO LOW", slipUrl,
+                            String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, finalAmt, selectedOrder.total - finalAmt)
+                    );
+                    txtResultBadge.setText("UNDERPAID");
+                });
+                return;
+            }
+
+            lastVerifiedRef = reference;
+            lastVerifiedProvider = "CBE";
+            lastVerifiedAmount = amount;
+            lastVerifiedPayer = payer;
+            lastVerifiedReceiver = receiver;
+
+            final double verifiedAmount = amount;
+            final String verifiedTime = dateTime;
+            final String initialPosMsg = (selectedOrder != null) 
+                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+                    : "⚡ Syncing with Cashier PC...";
+
+            // 🚀 SHOW GREEN GENUINE CARD IMMEDIATELY ON PHONE (< 1s)!
+            mainHandler.post(() -> {
+                showVerificationResult(
+                        true, "CBE", reference, verifiedAmount, payer, receiver,
+                        verifiedTime, null, slipUrl, initialPosMsg
+                );
+            });
+
+            // 🌐 Asynchronously sync with POS in background
+            syncVerifiedSlipInBackground(reference, "CBE", null, slipUrl, verifiedAmount, payer, receiver);
+
+        } catch (Exception e) {
+            verifySlipWithServer(reference, "CBE", null, slipUrl);
+        }
+    }
+
+    private void syncVerifiedSlipInBackground(
+            final String reference,
+            final String provider,
+            final String htmlContent,
+            final String slipUrl,
+            final double amount,
+            final String payer,
+            final String receiver
+    ) {
+        List<String> targetEndpoints = new ArrayList<>();
+        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
+            targetEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+        }
+        if (!targetEndpoints.contains(DEFAULT_LOCAL_URL)) {
+            targetEndpoints.add(DEFAULT_LOCAL_URL); // http://192.168.1.5:3000 FIRST!
+        }
+        if (!targetEndpoints.contains(DEFAULT_TUNNEL_URL)) {
+            targetEndpoints.add(DEFAULT_TUNNEL_URL); // TUNNEL SECOND!
+        }
+
+        tryAsyncBackgroundSync(targetEndpoints, 0, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
+    }
+
+    private void tryAsyncBackgroundSync(
+            final List<String> endpoints,
+            final int index,
+            final String reference,
+            final String provider,
+            final String htmlContent,
+            final String slipUrl,
+            final double amount,
+            final String payer,
+            final String receiver
+    ) {
+        if (index >= endpoints.size()) {
+            // Cashier PC currently unreachable
+            mainHandler.post(() -> {
+                if (cardResult != null && cardResult.getVisibility() == View.VISIBLE && reference.equals(lastVerifiedRef)) {
+                    txtResultPosMatch.setText("📱 Verified Genuine on Device (Cashier PC Offline)");
+                }
+            });
+            return;
+        }
+
+        final String currentBaseUrl = endpoints.get(index);
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
+        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
+        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
+
+        try {
+            JSONObject body = new JSONObject();
+            body.put("referenceOrUrl", reference);
+            body.put("provider", provider);
+            if (targetOrderId != null) {
+                body.put("orderId", targetOrderId);
+                body.put("expectedAmount", expectedBill);
+            }
+            if (htmlContent != null && htmlContent.length() > 200) {
+                body.put("htmlContent", htmlContent);
+            }
+
+            RequestBody requestBody = RequestBody.Companion.create(
+                    body.toString(),
+                    MediaType.Companion.parse("application/json; charset=utf-8")
+            );
+
+            Request request = new Request.Builder()
+                    .url(currentBaseUrl + "/api/verify-receipt")
+                    .header("x-scanner-token", apiKey)
+                    .post(requestBody)
+                    .build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    tryAsyncBackgroundSync(endpoints, index + 1, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        activePosUrl = currentBaseUrl;
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        mainHandler.post(() -> {
+                            try {
+                                JSONObject json = new JSONObject(jsonStr);
+                                boolean isDuplicate = json.optBoolean("isDuplicate", false);
+                                if (isDuplicate) {
+                                    txtResultBadge.setText("DUPLICATE");
+                                    txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                                    txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                                    txtResultPosMatch.setText("🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
+                                    playBeep(false);
+                                    vibrateError();
+                                    return;
+                                }
+
+                                JSONObject orderMatch = json.optJSONObject("orderMatch");
+                                if (orderMatch != null && orderMatch.optBoolean("matched", false)) {
+                                    String orderName = orderMatch.optString("orderName", targetOrderTitle != null ? targetOrderTitle : "Table");
+                                    txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", orderName));
+                                    playBeep(true);
+                                    clearSelectedOrder();
+                                    fetchOpenOrders(false);
+                                    layoutPostScanTablePicker.setVisibility(View.GONE);
+                                } else {
+                                    txtResultPosMatch.setText("✅ Recorded on Cashier PC");
+                                    if (!currentOpenOrders.isEmpty()) {
+                                        layoutPostScanTablePicker.setVisibility(View.VISIBLE);
+                                        populatePostScanTableButtons();
+                                    }
+                                }
+                            } catch (Exception ex) {
+                                txtResultPosMatch.setText("✅ Recorded on Cashier PC");
+                            }
+                        });
+                    } else if (response.code() >= 500) {
+                        tryAsyncBackgroundSync(endpoints, index + 1, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
+                    } else {
+                        // 4xx error (e.g. authoritative duplicate or mismatch from server)
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        mainHandler.post(() -> {
+                            try {
+                                JSONObject json = new JSONObject(jsonStr);
+                                boolean isDuplicate = json.optBoolean("isDuplicate", false);
+                                if (isDuplicate) {
+                                    txtResultBadge.setText("DUPLICATE");
+                                    txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                                    txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                                    txtResultPosMatch.setText("🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
+                                    playBeep(false);
+                                    vibrateError();
+                                }
+                            } catch (Exception ignored) {}
+                        });
+                    }
+                }
+            });
+        } catch (Exception e) {
+            tryAsyncBackgroundSync(endpoints, index + 1, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
+        }
     }
 
     private void verifySlipWithServer(
@@ -1467,7 +1830,17 @@ public class MainActivity extends AppCompatActivity {
             hideLoading();
             isVerifying = false;
 
+            cardResult.setAlpha(0f);
+            cardResult.setScaleX(0.9f);
+            cardResult.setScaleY(0.9f);
             cardResult.setVisibility(View.VISIBLE);
+            cardResult.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(260)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.15f))
+                    .start();
 
             if (isSuccess) {
                 playBeep(true);
@@ -1509,7 +1882,17 @@ public class MainActivity extends AppCompatActivity {
                 txtResultPosMatch.setText(posMatchMessage);
             }
 
-            txtResultProvider.setText(provider);
+            if ("TELEBIRR".equalsIgnoreCase(provider)) {
+                txtResultProvider.setText("TELEBIRR");
+                txtResultProvider.setTextColor(Color.parseColor("#38BDF8"));
+            } else if ("CBE".equalsIgnoreCase(provider)) {
+                txtResultProvider.setText("COMMERCIAL BANK OF ETHIOPIA");
+                txtResultProvider.setTextColor(Color.parseColor("#A855F7"));
+            } else {
+                txtResultProvider.setText(provider);
+                txtResultProvider.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
+            }
+
             lastVerifiedUrl = slipUrl;
 
             updateTodaySummary();
