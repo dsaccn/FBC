@@ -159,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isVerifying = false;
     private String lastVerifiedUrl = "";
     private Call currentActiveCall = null;
-    private final List<Call> activeRaceCalls = Collections.synchronizedList(new ArrayList<>());
+    private final List<Call> activeVerificationCalls = Collections.synchronizedList(new ArrayList<>());
     private String activePosUrl = DEFAULT_LOCAL_URL;
 
     // Last scanned verified data for post-scan table linking
@@ -408,7 +408,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnCancelLoading.setOnClickListener(v -> {
-            cancelAllRaceCalls();
+            cancelAllVerificationCalls();
             if (currentActiveCall != null) {
                 currentActiveCall.cancel();
             }
@@ -964,12 +964,12 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             DetectedPayment payment = detectPayment(payload);
-            startParallelRaceVerification(payment);
+            startDirectPhoneVerification(payment);
         }).start();
     }
 
-    private void startParallelRaceVerification(final DetectedPayment payment) {
-        cancelAllRaceCalls();
+    private void startDirectPhoneVerification(final DetectedPayment payment) {
+        cancelAllVerificationCalls();
         final String reference = payment.reference;
         final String provider = payment.provider;
         final String slipUrl = payment.slipUrl;
@@ -985,171 +985,123 @@ public class MainActivity extends AppCompatActivity {
 
         final AtomicBoolean isResolved = new AtomicBoolean(false);
 
-        // Gather all candidate POS endpoints for parallel query
-        final List<String> posEndpoints = new ArrayList<>();
-        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
-            posEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
-        }
-        if (!posEndpoints.contains(DEFAULT_LOCAL_URL)) {
-            posEndpoints.add(DEFAULT_LOCAL_URL);
-        }
-        if (!posEndpoints.contains(DEFAULT_TUNNEL_URL)) {
-            posEndpoints.add(DEFAULT_TUNNEL_URL);
-        }
+        // 📱 100% PHONE-ONLY DIRECT BANK VERIFICATION (Zero Server Latency)
+        // Direct query to Telebirr or CBE gateway from device — No PC or Cloudflare intermediary
+        if ("TELEBIRR".equalsIgnoreCase(provider)) {
+            Request directReq = new Request.Builder()
+                    .url(slipUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
+                    .header("Cache-Control", "no-cache")
+                    .header("Connection", "keep-alive")
+                    .build();
 
-        final boolean hasDirectBank = ("TELEBIRR".equalsIgnoreCase(provider) && slipUrl != null && !slipUrl.isEmpty())
-                || ("CBE".equalsIgnoreCase(provider) && reference.toLowerCase().startsWith("v2-"));
-
-        int totalRacers = posEndpoints.size() + (hasDirectBank ? 1 : 0);
-        final AtomicInteger remainingRacers = new AtomicInteger(totalRacers);
-
-        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
-        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
-        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
-        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
-
-        // 🏎️ RACER 1: Direct On-Device Bank Gateway Query (Local Ethiopian Gateway)
-        if (hasDirectBank) {
-            if ("TELEBIRR".equalsIgnoreCase(provider)) {
-                Request directReq = new Request.Builder()
-                        .url(slipUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                        .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
-                        .header("Connection", "Keep-Alive")
-                        .build();
-
-                Call directCall = httpClient.newCall(directReq);
-                activeRaceCalls.add(directCall);
-                directCall.enqueue(new Callback() {
-                    @Override
-                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                        onRacerDone(remainingRacers, isResolved, payment, "Direct device connection failed: " + e.getMessage());
+            Call directCall = httpClient.newCall(directReq);
+            activeVerificationCalls.add(directCall);
+            directCall.enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    if (isResolved.compareAndSet(false, true)) {
+                        mainHandler.post(() -> {
+                            showVerificationResult(
+                                    false, "TELEBIRR", reference, 0.0, "-", "-",
+                                    "-", "GATEWAY TIMEOUT", slipUrl,
+                                    "❌ Could not reach Ethio Telecom gateway from phone. Tap 'View Official Bank Slip' below."
+                            );
+                            playBeep(false);
+                            vibrateError();
+                        });
                     }
-
-                    @Override
-                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                        if (isResolved.get()) return;
-                        if (response.isSuccessful() && response.body() != null) {
-                            String html = response.body().string();
-                            if (html.length() > 300 && !html.contains("not found") && !html.contains("not correct")) {
-                                boolean won = evaluateInstantTelebirrRace(reference, html, slipUrl, isResolved);
-                                if (won) return;
-                            }
-                        }
-                        onRacerDone(remainingRacers, isResolved, payment, "Direct slip not verified");
-                    }
-                });
-            } else if ("CBE".equalsIgnoreCase(provider)) {
-                final String cleanToken = reference.replaceAll("[?#].*$", "").replaceAll("/+$", "");
-                String cbeUrl = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken;
-                Request directReq = new Request.Builder()
-                        .url(cbeUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                        .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
-                        .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
-                        .header("Accept", "application/json")
-                        .header("Connection", "Keep-Alive")
-                        .build();
-
-                Call directCall = httpClient.newCall(directReq);
-                activeRaceCalls.add(directCall);
-                directCall.enqueue(new Callback() {
-                    @Override
-                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                        onRacerDone(remainingRacers, isResolved, payment, "Direct CBE query failed: " + e.getMessage());
-                    }
-
-                    @Override
-                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                        if (isResolved.get()) return;
-                        if (response.isSuccessful() && response.body() != null) {
-                            try {
-                                String jsonStr = response.body().string();
-                                JSONObject data = new JSONObject(jsonStr);
-                                boolean won = evaluateInstantCbeRace(cleanToken, data, slipUrl, isResolved);
-                                if (won) return;
-                            } catch (Exception ignored) {}
-                        }
-                        onRacerDone(remainingRacers, isResolved, payment, "Direct CBE slip not verified");
-                    }
-                });
-            }
-        }
-
-        // 🏎️ RACER 2 & 3: Cashier PC Local LAN & Cloudflare Tunnel in Parallel!
-        for (final String endpoint : posEndpoints) {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("referenceOrUrl", reference);
-                body.put("provider", provider);
-                if (targetOrderId != null) {
-                    body.put("orderId", targetOrderId);
-                    body.put("expectedAmount", expectedBill);
                 }
 
-                Request posReq = new Request.Builder()
-                        .url(endpoint + "/api/verify-receipt")
-                        .header("x-scanner-token", apiKey)
-                        .post(RequestBody.Companion.create(body.toString(), MediaType.Companion.parse("application/json; charset=utf-8")))
-                        .build();
-
-                Call posCall = httpClient.newCall(posReq);
-                activeRaceCalls.add(posCall);
-                posCall.enqueue(new Callback() {
-                    @Override
-                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                        onRacerDone(remainingRacers, isResolved, payment, "POS error at " + endpoint);
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    if (isResolved.get()) return;
+                    if (response.isSuccessful() && response.body() != null) {
+                        String html = response.body().string();
+                        if (html.length() > 300 && !html.contains("not found") && !html.contains("not correct")) {
+                            boolean won = evaluateInstantTelebirr(reference, html, slipUrl, isResolved);
+                            if (won) return;
+                        }
                     }
+                    if (isResolved.compareAndSet(false, true)) {
+                        mainHandler.post(() -> {
+                            showVerificationResult(
+                                    false, "TELEBIRR", reference, 0.0, "-", "-",
+                                    "-", "SLIP NOT FOUND", slipUrl,
+                                    "❌ Slip expired, not found, or invalid on Ethio Telecom. Tap 'View Official Bank Slip' below."
+                            );
+                            playBeep(false);
+                            vibrateError();
+                        });
+                    }
+                }
+            });
 
-                    @Override
-                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                        if (isResolved.get()) return;
-                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+        } else if ("CBE".equalsIgnoreCase(provider)) {
+            final String cleanToken = reference.replaceAll("[?#].*$", "").replaceAll("/+$", "");
+            String cbeUrl = cleanToken.toLowerCase().startsWith("v2-")
+                    ? "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken
+                    : (slipUrl != null && !slipUrl.isEmpty() ? slipUrl : "https://apps.cbe.com.et:100/?id=" + cleanToken);
+
+            Request directReq = new Request.Builder()
+                    .url(cbeUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
+                    .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
+                    .header("Accept", "application/json, text/html")
+                    .header("Connection", "keep-alive")
+                    .build();
+
+            Call directCall = httpClient.newCall(directReq);
+            activeVerificationCalls.add(directCall);
+            directCall.enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    if (isResolved.compareAndSet(false, true)) {
+                        mainHandler.post(() -> {
+                            showVerificationResult(
+                                    false, "CBE", reference, 0.0, "-", "-",
+                                    "-", "CBE TIMEOUT", slipUrl,
+                                    "❌ Could not connect to CBE gateway from phone. Tap 'View Official Bank Slip' below."
+                            );
+                            playBeep(false);
+                            vibrateError();
+                        });
+                    }
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    if (isResolved.get()) return;
+                    if (response.isSuccessful() && response.body() != null) {
                         try {
-                            JSONObject json = new JSONObject(jsonStr);
-                            boolean isDuplicate = json.optBoolean("isDuplicate", false) || json.optBoolean("duplicate", false);
-                            if (isDuplicate) {
-                                if (isResolved.compareAndSet(false, true)) {
-                                    cancelAllRaceCalls();
-                                    mainHandler.post(() -> {
-                                        txtResultBadge.setText("DUPLICATE");
-                                        txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-                                        txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-                                        showVerificationResult(
-                                                false, provider, reference, 0.0, "-", "-",
-                                                "-", "DUPLICATE SLIP", slipUrl,
-                                                "🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!"
-                                        );
-                                        playBeep(false);
-                                        vibrateError();
-                                    });
-                                }
-                                return;
-                            }
-
-                            boolean isSuccess = json.optBoolean("success", false);
-                            JSONObject receipt = json.optJSONObject("receipt");
-                            if (isSuccess && receipt != null && receipt.optBoolean("success", false)) {
-                                if (isResolved.compareAndSet(false, true)) {
-                                    cancelAllRaceCalls();
-                                    activePosUrl = endpoint;
-                                    mainHandler.post(() -> handleServerVerificationResponse(true, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
-                                }
-                                return;
+                            String bodyStr = response.body().string();
+                            if (cleanToken.toLowerCase().startsWith("v2-")) {
+                                JSONObject data = new JSONObject(bodyStr);
+                                boolean won = evaluateInstantCbe(cleanToken, data, slipUrl, isResolved);
+                                if (won) return;
                             }
                         } catch (Exception ignored) {}
-
-                        onRacerDone(remainingRacers, isResolved, payment, "POS verification rejected at " + endpoint);
                     }
-                });
-            } catch (Exception e) {
-                onRacerDone(remainingRacers, isResolved, payment, "POS request creation failed");
-            }
+                    if (isResolved.compareAndSet(false, true)) {
+                        mainHandler.post(() -> {
+                            showVerificationResult(
+                                    false, "CBE", reference, 0.0, "-", "-",
+                                    "-", "SLIP NOT FOUND", slipUrl,
+                                    "❌ CBE transaction not found or unconfirmed. Tap 'View Official Bank Slip' below."
+                            );
+                            playBeep(false);
+                            vibrateError();
+                        });
+                    }
+                }
+            });
         }
     }
 
-    private boolean evaluateInstantTelebirrRace(
+    private boolean evaluateInstantTelebirr(
             final String reference,
             final String htmlContent,
             final String slipUrl,
@@ -1184,7 +1136,7 @@ public class MainActivity extends AppCompatActivity {
         boolean receiverMatched = matchReceiver("TELEBIRR", receiverPhone, receiverName);
         if (!receiverMatched) {
             if (isResolved.compareAndSet(false, true)) {
-                cancelAllRaceCalls();
+                cancelAllVerificationCalls();
                 mainHandler.post(() -> {
                     showVerificationResult(
                             false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
@@ -1202,7 +1154,7 @@ public class MainActivity extends AppCompatActivity {
         // 🚨 2. UNDERPAYMENT CHECK against selected table
         if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
             if (isResolved.compareAndSet(false, true)) {
-                cancelAllRaceCalls();
+                cancelAllVerificationCalls();
                 mainHandler.post(() -> {
                     showVerificationResult(
                             false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
@@ -1217,9 +1169,9 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
 
-        // 🏆 THIS RACER WON! Show genuine green card immediately!
+        // 🏆 DIRECT PHONE VERIFICATION VERIFIED! Show genuine green card immediately!
         if (isResolved.compareAndSet(false, true)) {
-            cancelAllRaceCalls();
+            cancelAllVerificationCalls();
             lastVerifiedRef = reference;
             lastVerifiedProvider = "TELEBIRR";
             lastVerifiedAmount = amount;
@@ -1244,7 +1196,7 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    private boolean evaluateInstantCbeRace(
+    private boolean evaluateInstantCbe(
             final String reference,
             final JSONObject data,
             final String slipUrl,
@@ -1273,7 +1225,7 @@ public class MainActivity extends AppCompatActivity {
             boolean receiverMatched = matchReceiver("CBE", receiverAcc, receiver);
             if (!receiverMatched) {
                 if (isResolved.compareAndSet(false, true)) {
-                    cancelAllRaceCalls();
+                    cancelAllVerificationCalls();
                     mainHandler.post(() -> {
                         showVerificationResult(
                                 false, "CBE", reference, amount, payer, receiver,
@@ -1291,7 +1243,7 @@ public class MainActivity extends AppCompatActivity {
             // 🚨 2. Underpayment Check
             if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
                 if (isResolved.compareAndSet(false, true)) {
-                    cancelAllRaceCalls();
+                    cancelAllVerificationCalls();
                     mainHandler.post(() -> {
                         showVerificationResult(
                                 false, "CBE", reference, amount, payer, receiver,
@@ -1306,9 +1258,9 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
-            // 🏆 THIS RACER WON! Show genuine green card immediately!
+            // 🏆 DIRECT PHONE VERIFICATION VERIFIED! Show genuine green card immediately!
             if (isResolved.compareAndSet(false, true)) {
-                cancelAllRaceCalls();
+                cancelAllVerificationCalls();
                 lastVerifiedRef = reference;
                 lastVerifiedProvider = "CBE";
                 lastVerifiedAmount = amount;
@@ -1316,8 +1268,8 @@ public class MainActivity extends AppCompatActivity {
                 lastVerifiedReceiver = receiver;
 
                 final String initialPosMsg = (selectedOrder != null) 
-                        ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
-                        : "⚡ Syncing with Cashier PC...";
+                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+                    : "⚡ Syncing with Cashier PC...";
 
                 mainHandler.post(() -> {
                     showVerificationResult(
@@ -1334,39 +1286,16 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    private void onRacerDone(
-            final AtomicInteger remainingRacers,
-            final AtomicBoolean isResolved,
-            final DetectedPayment payment,
-            final String reason
-    ) {
-        if (isResolved.get()) return;
-        if (remainingRacers.decrementAndGet() <= 0) {
-            if (isResolved.compareAndSet(false, true)) {
-                cancelAllRaceCalls();
-                mainHandler.post(() -> {
-                    showVerificationResult(
-                            false, payment.provider, payment.reference, 0.0, "-", "-",
-                            "-", "ALL REQUESTS TIMED OUT", payment.slipUrl,
-                            "❌ All verification routes timed out. Tap 'View Official Slip' below to inspect slip directly."
-                    );
-                    playBeep(false);
-                    vibrateError();
-                });
-            }
-        }
-    }
-
-    private void cancelAllRaceCalls() {
-        synchronized (activeRaceCalls) {
-            for (Call call : activeRaceCalls) {
+    private void cancelAllVerificationCalls() {
+        synchronized (activeVerificationCalls) {
+            for (Call call : activeVerificationCalls) {
                 try {
                     if (!call.isCanceled()) {
                         call.cancel();
                     }
                 } catch (Exception ignored) {}
             }
-            activeRaceCalls.clear();
+            activeVerificationCalls.clear();
         }
     }
 

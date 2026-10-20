@@ -51,27 +51,29 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.4.0-scanner
-          name: "Kogna Verifier App v2.4.0 (Parallel Multi-Request Racing Engine & Direct DNS)"
+          tag_name: v2.5.0-scanner
+          name: "Kogna Verifier App v2.5.0 (100% Phone-Only Direct Bank Verification)"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.4.0
+            ## 📱 Kogna Verifier Android App v2.5.0
 
-            ### 🏎️ Parallel Multi-Request Racing Engine ("Fastest Route Wins"):
-            - **Hedged Multi-Request Racing**: When a receipt QR is scanned, the app fires multiple parallel requests simultaneously:
-              1. **Direct On-Device Bank Gateway**: Queries Telebirr or CBE directly from the phone.
-              2. **Local Cashier PC**: Queries `http://192.168.1.5:3000` via café Wi-Fi in parallel.
-              3. **Cloudflare Tunnel**: Queries `https://scanner.kogna.coffee` via LTE in parallel.
-            - **Sub-Second Display (< 500ms)**: Whichever racer receives a verified response first **wins immediately**, pops the genuine green card with overshoot spring animations, and cancels the remaining calls.
-            - **Eliminated Ethio Telecom Gateway Timeout**: Integrated authoritative direct IP DNS resolution (`196.188.116.120`) inside OkHttp, eliminating 5-second DNS hangs on Ethiopian cellular networks.
-            - **Zero False Failures**: If one network drops packets or hits a gateway lag, the other racers in flight automatically rescue the verification with zero user intervention.
-            - **Background Order & Table Sync**: Asynchronously syncs the slip and links open table orders on the Cashier PC without blocking the UI.
+            ### ⚡ 100% Phone-Only Direct Bank Verification:
+            - **Removed Intermediate Verification Racers**:
+              - Completely removed Racer 2 (Local Wi-Fi Cashier PC) and Racer 3 (Cloudflare Tunnel) from the payment verification step.
+              - The phone queries bank gateways directly without waiting for or touching any intermediate servers.
+            - **Direct Telebirr & CBE Gateway Connections**:
+              - **Telebirr**: Phone queries `https://transactioninfo.ethiotelecom.et/receipt/{ref}` directly using authoritative direct IP DNS (`196.188.116.120`), completely bypassing DNS lookup lags.
+              - **CBE**: Phone queries `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/{ref}` directly using public bank mobile API headers.
+            - **Instant Verified Card Display (< 500ms)**:
+              - Verified genuine result card renders immediately on device with spring animations and merchant account security checks.
+            - **Non-Blocking Background POS Sync**:
+              - Order linking and table status updates are dispatched asynchronously in the background to the Cashier PC without blocking the phone or cashier.
 
             ### 📥 Download & Install:
             1. Download **`KognaVerifier.apk`** below to your Android device.
             2. Tap to install (allow "Install unknown apps" if prompted).
-            3. Enjoy instant, fail-proof payment verification!
+            3. Enjoy instant, fail-proof phone-only direct payment verification!
           files: build-output/KognaVerifier.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
