@@ -8,11 +8,9 @@ echo =========================================================
 echo.
 
 taskkill /f /im cloudflared.exe >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [OK] Cloudflare tunnel stopped successfully.
-) else (
-    echo [INFO] Cloudflare tunnel is not currently running.
-)
+sc stop cloudflared >nul 2>&1
+sc config cloudflared start= disabled >nul 2>&1
+echo [OK] Cloudflare tunnel stopped & service disabled successfully.
 
 echo.
 echo =========================================================

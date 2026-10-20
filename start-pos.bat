@@ -67,18 +67,9 @@ if %errorlevel% equ 0 (
     )
 )
 
-:: 4. Start Cloudflare mobile tunnel for phone scanner if present
-if exist "%~dp0bin\cloudflared.exe" (
-    tasklist /fi "imagename eq cloudflared.exe" 2>nul | findstr /i "cloudflared.exe" >nul 2>&1
-    if errorlevel 1 (
-        echo [OK] Starting Cloudflare mobile tunnel for phone scanner...
-        start "" wscript.exe "%~dp0scripts\run_tunnel.vbs"
-    ) else (
-        echo [OK] Cloudflare mobile tunnel is already running.
-    )
-) else (
-    echo [INFO] bin\cloudflared.exe not found. Running in local Wi-Fi mode.
-)
+:: 4. Ensure legacy tunnel process is stopped
+taskkill /f /im cloudflared.exe >nul 2>&1
+echo [OK] Running in fast local Wi-Fi mode.
 
 :: 5. Open the browser to the POS
 echo Opening http://localhost:3000 in your browser...

@@ -75,12 +75,10 @@ if exist "%DESKTOP%" (
     echo    Desktop shortcut 'Stop Kogna POS' created.
 )
 
-:: Configure Cloudflare Tunnel service if cloudflared is present
-if exist "%POS_DIR%bin\cloudflared.exe" (
-    "%POS_DIR%bin\cloudflared.exe" service install eyJhIjoiNTEwZjkyMDE2MmEwZWFmMjc4YTlmMDY1ZmI3ZjJjOTAiLCJ0IjoiYTA2MmY4MDgtMDFiMy00OWUwLWIwNjgtMjAyOGZlMDE2NTI3IiwicyI6Ik1tTXhPVGRsWTJVdE1HSXpZeTAwTnpBNUxXRmxNamt0TXpReU1USmtZemxqTUdNMyJ9 >nul 2>&1
-    sc start cloudflared >nul 2>&1
-    echo    Cloudflare Mobile Scanner Service: Installed ^& Started: OK
-)
+:: Ensure legacy cloudflare service is disabled
+sc stop cloudflared >nul 2>&1
+sc config cloudflared start= disabled >nul 2>&1
+taskkill /f /im cloudflared.exe >nul 2>&1
 
 echo    Auto-Start on boot (Silent): Configured successfully!
 echo.
