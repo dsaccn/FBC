@@ -164,7 +164,8 @@ model Ingredient {
   id           String   @id @default(cuid())
   name         String
   unit         String
-  quantity     Float    @default(0)
+  quantity     Float    @default(0) // Store Quantity
+  barQuantity  Float    @default(0) // Bar Quantity
   costPerUnit  Float    @default(0) // Bought / cost price per unit
   minThreshold Float    @default(0)
   createdAt    DateTime @default(now())

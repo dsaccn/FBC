@@ -27,19 +27,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Ingredient not found' }, { status: 404 })
       }
 
-      const prevQty = ing.quantity
+      const isBar = location === 'BAR'
+      const prevQty = isBar ? Number(ing.barQuantity || 0) : Number(ing.quantity || 0)
       const newQty = Math.max(0, prevQty - qty)
       const costPerUnit = ing.costPerUnit || 0
       const totalCost = Math.round(qty * costPerUnit * 100) / 100
 
       const updated = await prisma.ingredient.update({
         where: { id: itemId },
-        data: { quantity: newQty },
+        data: isBar ? { barQuantity: newQty } : { quantity: newQty },
       })
 
       const log = await prisma.inventoryLog.create({
         data: {
-          itemName: ing.name,
+          itemName: `${ing.name} (${location})`,
           type: 'INGREDIENT',
           action: `WASTE: ${reasonTag}`,
           quantity: qty,
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
           itemName: ing.name,
           itemType: 'INGREDIENT',
           itemId: ing.id,
-          location: null,
+          location: location || 'STORE',
           quantity: qty,
           unit: ing.unit || null,
           costPerUnit,

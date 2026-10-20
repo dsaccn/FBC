@@ -299,6 +299,7 @@ export async function pushIngredientToCloud(i: {
   name: string
   unit: string
   quantity: number
+  barQuantity?: number
   costPerUnit?: number
   minThreshold: number
   createdAt: Date
@@ -307,18 +308,42 @@ export async function pushIngredientToCloud(i: {
   try {
     const pg = getPool()
     await pg.query(
-      `INSERT INTO "Ingredient" (id, name, unit, quantity, "costPerUnit", "minThreshold", "createdAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO "Ingredient" (id, name, unit, quantity, "barQuantity", "costPerUnit", "minThreshold", "createdAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE SET
          name           = EXCLUDED.name,
          unit           = EXCLUDED.unit,
          quantity       = EXCLUDED.quantity,
+         "barQuantity"  = EXCLUDED."barQuantity",
          "costPerUnit"  = EXCLUDED."costPerUnit",
          "minThreshold" = EXCLUDED."minThreshold"`,
-      [i.id, i.name, i.unit, i.quantity, i.costPerUnit ?? 0, i.minThreshold, i.createdAt]
+      [i.id, i.name, i.unit, i.quantity, i.barQuantity ?? 0, i.costPerUnit ?? 0, i.minThreshold, i.createdAt]
     )
   } catch (err: any) {
     console.warn('[SyncEngine] pushIngredientToCloud error (offline?):', err?.message)
+  }
+}
+
+/**
+ * Push ingredient stock update directly to Neon immediately.
+ */
+export async function pushIngredientStockToCloud(id: string, quantity: number, barQuantity?: number): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+    if (barQuantity !== undefined) {
+      await pg.query(
+        `UPDATE "Ingredient" SET quantity = $1, "barQuantity" = $2 WHERE id = $3`,
+        [quantity, barQuantity, id]
+      )
+    } else {
+      await pg.query(
+        `UPDATE "Ingredient" SET quantity = $1 WHERE id = $2`,
+        [quantity, id]
+      )
+    }
+  } catch (err: any) {
+    console.warn('[SyncEngine] pushIngredientStockToCloud error (offline?):', err?.message)
   }
 }
 
@@ -784,7 +809,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     // 2. Ingredients
     try {
       const { rows: cloudIngs } = await pg.query(
-        `SELECT id, name, unit, quantity, "costPerUnit", "minThreshold", "createdAt" FROM "Ingredient"`
+        `SELECT id, name, unit, quantity, "barQuantity", "costPerUnit", "minThreshold", "createdAt" FROM "Ingredient"`
       )
 
       for (const i of cloudIngs) {
@@ -798,6 +823,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
                 name: i.name,
                 unit: i.unit,
                 quantity: Number(i.quantity),
+                barQuantity: Number(i.barQuantity || 0),
                 costPerUnit: Number(i.costPerUnit || 0),
                 minThreshold: Number(i.minThreshold),
                 createdAt: new Date(i.createdAt),
@@ -810,13 +836,14 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
                 name: i.name,
                 unit: i.unit,
                 quantity: Number(i.quantity),
+                barQuantity: Number(i.barQuantity || 0),
                 minThreshold: Number(i.minThreshold),
                 createdAt: new Date(i.createdAt),
               },
             })
           }
         } else {
-          // Existing ingredient: sync details from cloud including inventory quantity
+          // Existing ingredient: sync details from cloud including inventory quantity and barQuantity
           try {
             await prisma.ingredient.update({
               where: { id: i.id },
@@ -824,6 +851,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
                 name: i.name,
                 unit: i.unit,
                 quantity: Number(i.quantity),
+                barQuantity: Number(i.barQuantity || 0),
                 costPerUnit: Number(i.costPerUnit || 0),
                 minThreshold: Number(i.minThreshold),
               },
@@ -835,6 +863,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
                 name: i.name,
                 unit: i.unit,
                 quantity: Number(i.quantity),
+                barQuantity: Number(i.barQuantity || 0),
                 minThreshold: Number(i.minThreshold),
               },
             })

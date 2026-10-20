@@ -16,6 +16,7 @@
     "clear:orders": "node scripts/clear_orders_keep_menu_inventory.js",
     "clear:offline": "npx tsx scripts/clear_offline.ts",
     "clear:cloud": "npx tsx scripts/clear_cloud.ts",
+    "clear:stock": "node scripts/clear_ingredients_and_store_stock.js",
     "postinstall": "prisma generate"
   },
   "prisma": {

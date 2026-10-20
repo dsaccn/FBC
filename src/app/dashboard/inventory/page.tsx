@@ -7,7 +7,7 @@ import { toast } from '@/components/ToastProvider'
 
 interface Category { id: string; name: string; type: string }
 interface MenuItem { id: string; name: string; price: number; stockQuantity: number; barQuantity: number; costPrice: number; lowStockThreshold: number; available: boolean; category?: Category | null; parentItemId?: string | null; unitMultiplier: number; parentItem?: { id: string; name: string } | null; recipes?: any[] }
-interface Ingredient { id: string; name: string; unit: string; quantity: number; costPerUnit?: number; minThreshold: number }
+interface Ingredient { id: string; name: string; unit: string; quantity: number; barQuantity: number; costPerUnit?: number; minThreshold: number }
 
 function getEffectiveItemCost(item: MenuItem): { cost: number; isRecipe: boolean } {
   let recipeCost = 0
@@ -59,7 +59,7 @@ export default function InventoryPage() {
   const [ingSearchQuery, setIngSearchQuery] = useState('')
   const [filterIng, setFilterIng] = useState('')
   const [editIng, setEditIng] = useState<Ingredient | null>(null)
-  const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', costPerUnit: '0', minThreshold: '0' })
+  const [ingForm, setIngForm] = useState({ name: '', unit: 'grams', quantity: '0', barQuantity: '0', costPerUnit: '0', minThreshold: '0' })
   const [showIngForm, setShowIngForm] = useState(false)
   const [ingError, setIngError] = useState('')
   const [adjustIngTarget, setAdjustIngTarget] = useState<Ingredient | null>(null)
@@ -67,6 +67,9 @@ export default function InventoryPage() {
   const [adjustIngCost, setAdjustIngCost] = useState('')
   const [adjustIngMode, setAdjustIngMode] = useState<'add' | 'set'>('add')
   const [adjustIngSaving, setAdjustIngSaving] = useState(false)
+  const [transferIngTarget, setTransferIngTarget] = useState<Ingredient | null>(null)
+  const [transferIngQty, setTransferIngQty] = useState('')
+  const [transferIngSaving, setTransferIngSaving] = useState(false)
   
   // Stock logging state
   const [logs, setLogs] = useState<any[]>([])
@@ -322,7 +325,7 @@ export default function InventoryPage() {
   // Ingredient functions
   function openNewIng() {
     setEditIng(null)
-    setIngForm({ name: '', unit: 'grams', quantity: '0', costPerUnit: '0', minThreshold: '0' })
+    setIngForm({ name: '', unit: 'grams', quantity: '0', barQuantity: '0', costPerUnit: '0', minThreshold: '0' })
     setIngError('')
     setShowIngForm(true)
   }
@@ -333,11 +336,43 @@ export default function InventoryPage() {
       name: ing.name,
       unit: ing.unit,
       quantity: String(ing.quantity),
+      barQuantity: String(ing.barQuantity || 0),
       costPerUnit: String(ing.costPerUnit || 0),
       minThreshold: String(ing.minThreshold),
     })
     setIngError('')
     setShowIngForm(true)
+  }
+
+  async function handleTransferIng(qtyOverride?: number) {
+    const qty = qtyOverride !== undefined ? qtyOverride : parseFloat(transferIngQty)
+    if (!transferIngTarget || !qty || isNaN(qty) || qty <= 0) return
+    if (qty > transferIngTarget.quantity) {
+      alert(`Cannot transfer ${qty} ${transferIngTarget.unit}. Only ${transferIngTarget.quantity} available in store.`)
+      return
+    }
+    setTransferIngSaving(true)
+    try {
+      const res = await fetch(`/api/inventory/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredientId: transferIngTarget.id, quantity: qty }),
+      })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}))
+        alert(error || 'Failed to transfer ingredient')
+        return
+      }
+      toast.success(`Transferred ${qty} ${transferIngTarget.unit} of ${transferIngTarget.name} to Bar`)
+      setTransferIngTarget(null)
+      setTransferIngQty('')
+      loadIngredients(true)
+      loadLogs(true)
+    } catch {
+      toast.error('Network error during transfer')
+    } finally {
+      setTransferIngSaving(false)
+    }
   }
 
 
@@ -410,6 +445,7 @@ export default function InventoryPage() {
       name: ingForm.name.trim(),
       unit: ingForm.unit,
       quantity: parseFloat(ingForm.quantity) || 0,
+      barQuantity: parseFloat(ingForm.barQuantity) || 0,
       costPerUnit: parseFloat(ingForm.costPerUnit) || 0,
       minThreshold: parseFloat(ingForm.minThreshold) || 0,
     }
@@ -953,7 +989,9 @@ export default function InventoryPage() {
                   <tr style={{ background: 'var(--black-hover)' }}>
                     <th style={{ padding: '10px 10px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Ingredient</th>
                     <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Unit</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>In Stock</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: 'var(--gold)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(201,168,76,0.06)' }}>Store Qty</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: 'var(--success-light)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(82,183,136,0.06)' }}>Bar Qty</th>
+                    <th style={{ padding: '10px 6px', textAlign: 'center', fontSize: '11px', color: '#60a5fa', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', background: 'rgba(59,130,246,0.06)' }}>Total Qty</th>
                     <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Cost / Unit</th>
                     <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Stock Value</th>
                     <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Status</th>
@@ -963,7 +1001,7 @@ export default function InventoryPage() {
                 <tbody>
                   {loadingIngs ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                           <RefreshCw size={15} className="animate-spin" />
                           <span>Loading ingredients...</span>
@@ -972,19 +1010,22 @@ export default function InventoryPage() {
                     </tr>
                   ) : ingsError ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--danger-light)' }}>
                         <div style={{ marginBottom: '10px', fontSize: '13px' }}>⚠ {ingsError}</div>
                         <button className="btn btn-outline btn-sm" onClick={() => loadIngredients()}>Try Again</button>
                       </td>
                     </tr>
                   ) : filteredIngredients.length === 0 ? (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
                     </td></tr>
                   ) : filteredIngredients.map(ing => {
-                    const isLow = ing.quantity <= ing.minThreshold
+                    const storeQty = Number(ing.quantity || 0)
+                    const barQty = Number(ing.barQuantity || 0)
+                    const totalQty = storeQty + barQty
+                    const isLow = totalQty <= ing.minThreshold
                     const costVal = Number(ing.costPerUnit || 0)
-                    const totalVal = Math.round(ing.quantity * costVal * 100) / 100
+                    const totalVal = Math.round(totalQty * costVal * 100) / 100
                     return (
                       <tr key={ing.id} style={{ borderTop: '1px solid var(--black-border)', background: isLow ? 'rgba(230,57,70,0.03)' : 'transparent' }}>
                         <td style={{ padding: '9px 10px', fontWeight: '500' }}>
@@ -992,11 +1033,22 @@ export default function InventoryPage() {
                           <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{ing.name}</span>
                         </td>
                         <td style={{ padding: '9px 8px', fontSize: '12px', color: 'var(--text-secondary)' }}>{ing.unit}</td>
-                        <td style={{ padding: '9px 8px', textAlign: 'center' }}>
-                          <span style={{ fontWeight: '700', fontSize: '14px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
-                            {ing.quantity}
-                          </span>
+
+                        {/* Store Qty Cell - Shaded */}
+                        <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(201,168,76,0.03)', borderLeft: '1px solid rgba(201,168,76,0.1)', borderRight: '1px solid rgba(201,168,76,0.1)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>{storeQty}</span>
                         </td>
+
+                        {/* Bar Qty Cell - Shaded */}
+                        <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(82,183,136,0.03)', borderRight: '1px solid rgba(82,183,136,0.1)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '14px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>{barQty}</span>
+                        </td>
+
+                        {/* Total Qty Cell - Shaded */}
+                        <td style={{ padding: '9px 6px', textAlign: 'center', background: 'rgba(59,130,246,0.03)', borderRight: '1px solid rgba(59,130,246,0.1)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '14px', color: isLow ? 'var(--danger-light)' : 'var(--text-primary)' }}>{totalQty}</span>
+                        </td>
+
                         <td style={{ padding: '9px 8px', textAlign: 'right', fontSize: '12px' }}>
                           {costVal > 0 ? (
                             <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{costVal.toFixed(2)}</span>
@@ -1025,6 +1077,17 @@ export default function InventoryPage() {
                         <td style={{ padding: '9px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
                             <button
+                              className="btn btn-gold btn-sm"
+                              style={{ fontSize: '12px', padding: '4px 10px', height: 'auto', minHeight: 'unset', lineHeight: '1.2' }}
+                              onClick={() => {
+                                setTransferIngTarget(ing)
+                                setTransferIngQty('')
+                              }}
+                              title="Transfer from Store to Bar"
+                            >
+                              Transfer to Bar
+                            </button>
+                            <button
                               className="btn btn-outline btn-sm"
                               style={{ padding: '4px 9px', fontSize: '12px', height: 'auto', minHeight: 'unset', lineHeight: '1.2' }}
                               onClick={() => {
@@ -1035,7 +1098,7 @@ export default function InventoryPage() {
                               }}
                               title="Update Store Stock"
                             >
-                              Update
+                              Update Store
                             </button>
                             <button className="btn btn-outline btn-sm" style={{ padding: '4px 7px', height: 'auto', minHeight: 'unset' }} onClick={() => openEditIng(ing)} title="Edit ingredient">
                               <Pencil size={12} />
@@ -1072,9 +1135,12 @@ export default function InventoryPage() {
                 {ingredients.length === 0 ? <>No ingredients yet. Click <strong>Add Ingredient</strong> to start.</> : 'No ingredients found.'}
               </div>
             ) : filteredIngredients.map(ing => {
-              const isLow = ing.quantity <= ing.minThreshold
+              const storeQty = Number(ing.quantity || 0)
+              const barQty = Number(ing.barQuantity || 0)
+              const totalQty = storeQty + barQty
+              const isLow = totalQty <= ing.minThreshold
               const costVal = Number(ing.costPerUnit || 0)
-              const totalVal = Math.round(ing.quantity * costVal * 100) / 100
+              const totalVal = Math.round(totalQty * costVal * 100) / 100
               return (
                 <div
                   key={ing.id}
@@ -1101,27 +1167,39 @@ export default function InventoryPage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '13px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '13px', background: 'var(--black-hover)', padding: '10px', borderRadius: '8px', border: '1px solid var(--black-border)' }}>
                     <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>In Stock</span>
-                      <span style={{ fontWeight: '700', fontSize: '15px', color: isLow ? 'var(--danger-light)' : 'var(--success-light)' }}>
-                        {ing.quantity} {ing.unit}
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Store Qty</span>
+                      <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--gold)' }}>
+                        {storeQty} {ing.unit}
                       </span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Min Alert</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Bar Qty</span>
+                      <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--success-light)' }}>
+                        {barQty} {ing.unit}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Total</span>
+                      <span style={{ fontWeight: '700', fontSize: '15px', color: isLow ? 'var(--danger-light)' : 'var(--text-primary)' }}>
+                        {totalQty} {ing.unit}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Min Alert</span>
                       <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>{ing.minThreshold} {ing.unit}</span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Cost / Unit</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Cost / Unit</span>
                       <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                        {costVal > 0 ? `${costVal.toFixed(2)} ETB` : '-'}
+                        {costVal > 0 ? `${costVal.toFixed(2)}` : '-'}
                       </span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', display: 'block' }}>Stock Value</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', display: 'block', fontWeight: '600' }}>Value</span>
                       <span style={{ fontWeight: '700', color: 'var(--gold-light)' }}>
-                        {costVal > 0 ? `${totalVal.toFixed(2)} ETB` : '-'}
+                        {costVal > 0 ? `${totalVal.toFixed(2)}` : '-'}
                       </span>
                     </div>
                   </div>
@@ -1129,17 +1207,28 @@ export default function InventoryPage() {
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                     <button
                       className="btn btn-gold btn-sm"
-                      style={{ flex: 2, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
+                      style={{ flex: 1.5, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
+                      onClick={() => {
+                        setTransferIngTarget(ing)
+                        setTransferIngQty('')
+                      }}
+                    >
+                      Transfer to Bar
+                    </button>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      style={{ flex: 1.5, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
                       onClick={() => {
                         setAdjustIngTarget(ing)
                         setAdjustIngQty('')
+                        setAdjustIngCost(ing.costPerUnit ? String(ing.costPerUnit) : '')
                         setAdjustIngMode('add')
                       }}
                     >
                       Update Store
                     </button>
-                    <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px' }} onClick={() => openEditIng(ing)}>
-                      <Pencil size={13} /> Edit
+                    <button className="btn btn-outline btn-sm" style={{ padding: '10px 12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px' }} onClick={() => openEditIng(ing)}>
+                      <Pencil size={13} />
                     </button>
                     <button className="btn btn-ghost btn-sm" style={{ padding: '10px 12px', color: 'var(--danger-light)', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => deleteIngredient(ing.id)}>
                       <Trash2 size={14} />
@@ -1498,6 +1587,68 @@ export default function InventoryPage() {
         </div></Portal>
       )}
 
+      {/* Transfer Ingredient to Bar Modal */}
+      {transferIngTarget && (
+        <Portal><div className="modal-overlay" onClick={() => setTransferIngTarget(null)}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Transfer to Bar</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{transferIngTarget.name}</strong> <br/>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Store Qty: <b style={{ color: 'var(--gold)' }}>{transferIngTarget.quantity} {transferIngTarget.unit}</b> | Bar Qty: <b style={{ color: 'var(--success-light)' }}>{transferIngTarget.barQuantity || 0} {transferIngTarget.unit}</b>
+              </span>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label className="input-label" style={{ marginBottom: 0 }}>Quantity to move from Store to Bar ({transferIngTarget.unit})</label>
+              {transferIngTarget.quantity > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--gold)', border: '1px solid rgba(212,175,55,0.4)', borderRadius: '6px' }}
+                  onClick={() => setTransferIngQty(String(transferIngTarget.quantity))}
+                >
+                  ⚡ All ({transferIngTarget.quantity})
+                </button>
+              )}
+            </div>
+            <input
+              className="input"
+              type="number"
+              step="any"
+              placeholder={transferIngTarget.quantity > 0 ? `e.g. ${transferIngTarget.quantity}` : '0 available in store'}
+              value={transferIngQty}
+              onChange={e => setTransferIngQty(e.target.value)}
+              autoFocus
+              style={{ marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-gold"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => handleTransferIng(transferIngTarget.quantity)}
+                  disabled={transferIngTarget.quantity <= 0 || transferIngSaving}
+                  title={`Transfer all ${transferIngTarget.quantity} ${transferIngTarget.unit} to bar`}
+                >
+                  ⚡ Transfer All ({transferIngTarget.quantity})
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                  onClick={() => handleTransferIng()}
+                  disabled={!transferIngQty || parseFloat(transferIngQty) <= 0 || parseFloat(transferIngQty) > transferIngTarget.quantity || transferIngSaving}
+                >
+                  {transferIngSaving ? 'Transferring...' : `Transfer ${transferIngQty && parseFloat(transferIngQty) > 0 ? `(${transferIngQty})` : ''}`}
+                </button>
+              </div>
+              <button type="button" className="btn btn-ghost" onClick={() => setTransferIngTarget(null)}>Cancel</button>
+            </div>
+          </div>
+        </div></Portal>
+      )}
+
       {/* Ingredient Add/Edit Modal */}
       {showIngForm && (
         <Portal><div className="modal-overlay" onClick={() => setShowIngForm(false)}>
@@ -1518,16 +1669,20 @@ export default function InventoryPage() {
                 </select>
               </div>
               <div>
-                <label className="input-label">Current Stock</label>
-                <input className="input" type="number" value={ingForm.quantity} onChange={e => setIngForm(f => ({ ...f, quantity: e.target.value }))} />
+                <label className="input-label">Low Stock Alert At</label>
+                <input className="input" type="number" step="any" value={ingForm.minThreshold} onChange={e => setIngForm(f => ({ ...f, minThreshold: e.target.value }))} />
               </div>
               <div>
+                <label className="input-label">Store Stock</label>
+                <input className="input" type="number" step="any" value={ingForm.quantity} onChange={e => setIngForm(f => ({ ...f, quantity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="input-label">Bar Stock</label>
+                <input className="input" type="number" step="any" value={ingForm.barQuantity} onChange={e => setIngForm(f => ({ ...f, barQuantity: e.target.value }))} />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
                 <label className="input-label">Cost / Bought Price (ETB)</label>
                 <input className="input" type="number" step="any" placeholder="e.g. 2.00 or 1500" value={ingForm.costPerUnit} onChange={e => setIngForm(f => ({ ...f, costPerUnit: e.target.value }))} />
-              </div>
-              <div>
-                <label className="input-label">Low Stock Alert At</label>
-                <input className="input" type="number" value={ingForm.minThreshold} onChange={e => setIngForm(f => ({ ...f, minThreshold: e.target.value }))} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
@@ -1541,10 +1696,10 @@ export default function InventoryPage() {
       {/* Ingredient Stock Adjust Modal */}
       {adjustIngTarget && (
         <Portal><div className="modal-overlay" onClick={() => setAdjustIngTarget(null)}>
-          <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>Update Store Stock</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-              {adjustIngTarget.name} — Current Store Stock: <b style={{ color: 'var(--gold)' }}>{adjustIngTarget.quantity} {adjustIngTarget.unit}</b>
+              {adjustIngTarget.name} — Store: <b style={{ color: 'var(--gold)' }}>{adjustIngTarget.quantity} {adjustIngTarget.unit}</b> | Bar: <b style={{ color: 'var(--success-light)' }}>{adjustIngTarget.barQuantity || 0} {adjustIngTarget.unit}</b>
             </p>
 
             {/* Mode Selector */}

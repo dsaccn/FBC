@@ -36,6 +36,9 @@ export async function POST(req: Request) {
     if (body.quantity !== undefined && body.quantity !== null) {
       body.quantity = Number(body.quantity)
     }
+    if (body.barQuantity !== undefined && body.barQuantity !== null) {
+      body.barQuantity = Number(body.barQuantity)
+    }
     if (body.minThreshold !== undefined && body.minThreshold !== null) {
       body.minThreshold = Number(body.minThreshold)
     }

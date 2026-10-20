@@ -12,6 +12,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.quantity !== undefined && body.quantity !== null) {
       body.quantity = Number(body.quantity)
     }
+    if (body.barQuantity !== undefined && body.barQuantity !== null) {
+      body.barQuantity = Number(body.barQuantity)
+    }
     if (body.minThreshold !== undefined && body.minThreshold !== null) {
       body.minThreshold = Number(body.minThreshold)
     }

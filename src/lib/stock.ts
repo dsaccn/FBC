@@ -196,7 +196,7 @@ async function deductIngredients(items: OrderStockItem[]) {
   })
   if (recipes.length === 0) return
 
-  const deductions = new Map<string, { current: number; needed: number }>()
+  const deductions = new Map<string, { currentStore: number; currentBar: number; needed: number }>()
   for (const recipe of recipes) {
     const orderedItem = items.find((i) => i.menuItemId === recipe.menuItemId)
     if (!orderedItem) continue
@@ -205,17 +205,29 @@ async function deductIngredients(items: OrderStockItem[]) {
     if (entry) {
       entry.needed += needed
     } else {
-      deductions.set(recipe.ingredientId, { current: recipe.ingredient.quantity, needed })
+      deductions.set(recipe.ingredientId, {
+        currentStore: Number(recipe.ingredient.quantity || 0),
+        currentBar: Number(recipe.ingredient.barQuantity || 0),
+        needed,
+      })
     }
   }
 
   await Promise.all(
-    Array.from(deductions.entries()).map(([ingredientId, { current, needed }]) =>
-      prisma.ingredient.update({
+    Array.from(deductions.entries()).map(([ingredientId, { currentStore, currentBar, needed }]) => {
+      // Deduct from Bar first; if bar is empty or insufficient, deduct remaining from Store
+      const deductFromBar = Math.min(currentBar, needed)
+      const remainingNeeded = needed - deductFromBar
+      const newBar = Math.max(0, currentBar - deductFromBar)
+      const newStore = Math.max(0, currentStore - remainingNeeded)
+      return prisma.ingredient.update({
         where: { id: ingredientId },
-        data: { quantity: Math.max(0, current - needed) },
+        data: {
+          barQuantity: newBar,
+          quantity: newStore,
+        },
       })
-    )
+    })
   )
 }
 
@@ -241,7 +253,7 @@ async function restoreIngredients(items: OrderStockItem[]) {
     Array.from(restorations.entries()).map(([ingredientId, restoreQty]) =>
       prisma.ingredient.update({
         where: { id: ingredientId },
-        data: { quantity: { increment: restoreQty } },
+        data: { barQuantity: { increment: restoreQty } },
       })
     )
   )
