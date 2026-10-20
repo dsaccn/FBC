@@ -20,6 +20,19 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Auto-kill any hung or orphaned Git background processes
+taskkill /f /im git.exe >nul 2>&1
+taskkill /f /im git-remote-https.exe >nul 2>&1
+
+:: Auto-clean any stale Git lock files (e.g. from previous aborted runs or crashes)
+if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
+if exist ".git\FETCH_HEAD.lock" del /f /q ".git\FETCH_HEAD.lock" >nul 2>&1
+if exist ".git\HEAD.lock" del /f /q ".git\HEAD.lock" >nul 2>&1
+if exist ".git\config.lock" del /f /q ".git\config.lock" >nul 2>&1
+if exist ".git" (
+    for /r ".git" %%F in (*.lock) do del /f /q "%%F" >nul 2>&1
+)
+
 :: Ensure Git allows operations in this directory
 git config --global --add safe.directory "%CD%" >nul 2>&1
 git config --global --add safe.directory "*" >nul 2>&1
@@ -40,6 +53,12 @@ if not exist ".git" (
 
 echo.
 echo [2/5] Downloading latest code updates from GitHub...
+:: Pre-fetch cleanup in case an editor or background task touched the index
+if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
+if exist ".git\FETCH_HEAD.lock" del /f /q ".git\FETCH_HEAD.lock" >nul 2>&1
+if exist ".git" (
+    for /r ".git" %%F in (*.lock) do del /f /q "%%F" >nul 2>&1
+)
 git fetch origin main
 if %errorlevel% neq 0 (
     echo.
@@ -52,6 +71,10 @@ if %errorlevel% neq 0 (
 )
 
 :: Sync code cleanly to the latest commit
+if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
+if exist ".git" (
+    for /r ".git" %%F in (*.lock) do del /f /q "%%F" >nul 2>&1
+)
 git reset --hard origin/main
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to apply latest code.

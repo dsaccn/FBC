@@ -42,6 +42,11 @@ icacls "%~dp0prisma" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
 :: 3. Automatic Code Update Check (seamlessly pulls GitHub code edits if online)
 where git >nul 2>&1
 if %errorlevel% equ 0 (
+    if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
+    if exist ".git\FETCH_HEAD.lock" del /f /q ".git\FETCH_HEAD.lock" >nul 2>&1
+    if exist ".git" (
+        for /r ".git" %%F in (*.lock) do del /f /q "%%F" >nul 2>&1
+    )
     git fetch origin main --quiet >nul 2>&1
     if %errorlevel% equ 0 (
         for /f %%i in ('git rev-list HEAD..origin/main --count 2^>nul') do (
@@ -51,6 +56,7 @@ if %errorlevel% equ 0 (
                 echo  [UPDATE DETECTED] %%i new code edit(s) found on GitHub!
                 echo  Updating POS application automatically...
                 echo =========================================================
+                if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
                 call git pull origin main --quiet
                 call npx prisma generate
                 call npm run build
