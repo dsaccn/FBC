@@ -392,7 +392,7 @@ export async function verifyTelebirrReceipt(
  * Official endpoint: https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/{id}
  */
 export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedReceipt> {
-  const cleanToken = cleanReference(tokenId).replace(/^https?:\/\/mbreciept\.cbe\.com\.et\//i, '')
+  const cleanToken = cleanReference(tokenId).replace(/^https?:\/\/(?:mbrecie?pt|mb)\.cbe\.com\.et\//i, '')
   const fetchUrl = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${cleanToken}`
 
   try {
@@ -463,14 +463,16 @@ export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedR
       rawText: `${data.debitAccountHolder || ''} -> ${data.creditAccountHolder || ''} (${amountVal} ETB, Ref: ${data.id || cleanToken})`,
     }
   } catch (err: any) {
+    const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
     return {
       success: false,
       provider: 'CBE',
       reference: cleanToken,
       currency: 'ETB',
-      status: 'FAILED',
-      errorMessage: err.name === 'TimeoutError' || err.message?.includes('timeout')
-        ? 'CBE server timed out. Please check your internet connection.'
+      status: isTimeout ? 'PENDING' : 'FAILED',
+      isTimeout,
+      errorMessage: isTimeout
+        ? 'CBE server timed out. Tap "Open Official CBE Slip in Browser" below.'
         : `CBE verification error: ${err.message || String(err)}`,
     }
   }
@@ -508,6 +510,7 @@ export function isValidBankUrl(rawUrl: string): boolean {
       'apps.cbe.com.et',
       'mb.cbe.com.et',
       'mbreciept.cbe.com.et',
+      'mbreceipt.cbe.com.et',
       'ethiotelecom.et',
       'transactioninfo.ethiotelecom.et',
     ]
@@ -539,7 +542,7 @@ export async function verifyCbeReceipt(
   }
 
   // 1. Check for modern CBE mobile banking receipt link or token (mbreciept.cbe.com.et/{token} or v2-{token})
-  const modernMatch = clean.match(/(?:mbreciept\.cbe\.com\.et\/|^)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i)
+  const modernMatch = clean.match(/(?:(?:mbrecie?pt|mb)\.cbe\.com\.et\/|^)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i)
   if (modernMatch) {
     const tokenId = modernMatch[1]
     return verifyModernCbeReceipt(tokenId)
@@ -722,9 +725,9 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
   const isCbe =
     provider === 'CBE' ||
     clean.toUpperCase().startsWith('FT') ||
-    clean.includes('cbe.com.et') ||
+    /cbe\.com\.et/i.test(clean) ||
     clean.startsWith('v2-') ||
-    clean.includes('mbreciept')
+    /mbrecie?pt/i.test(clean)
 
   const extractedTelebirrId = extractTelebirrTransactionId(clean)
   const isTelebirr =

@@ -77,21 +77,105 @@ export interface OpenOrder {
 }
 
 /**
- * Universal extractor for Ethiopian payment transaction IDs:
+/**
+ * Universal detector and extractor for Ethiopian payment receipts:
+ * - Modern CBE Mobile Banking QR codes (https://mbreciept.cbe.com.et/v2-... preserving case)
+ * - Modern CBE direct tokens (v2-...)
+ * - Legacy CBE FT codes & URLs (https://apps.cbe.com.et:100/?id=FT... or FT...)
+ * - Telebirr URLs (https://transactioninfo.ethiotelecom.et/receipt/...)
  * - Telebirr SuperApp Base64 QR code (EMVCo with 000A[20 hex chars] -> ASCII)
- * - Telebirr receipt URLs (e.g. /receipt/DJJ7261SX7)
- * - CBE reference numbers (FT...)
- * - Plain 10-char alphanumeric codes (DJJ7261SX7)
+ * - Telebirr 10-char alphanumeric codes (DJJ7261SX7)
  */
-function extractCleanTransactionId(raw: string): string {
+export interface DetectedTransaction {
+  provider: 'TELEBIRR' | 'CBE' | 'UNKNOWN'
+  reference: string
+  officialUrl?: string
+  isTelebirrCandidate: boolean
+}
+
+function detectProviderAndCleanRef(
+  raw: string,
+  defaultProvider: 'AUTO' | 'TELEBIRR' | 'CBE' = 'AUTO'
+): DetectedTransaction {
   const clean = (raw || '').trim()
-  if (!clean) return ''
+  if (!clean) {
+    return {
+      provider: defaultProvider === 'AUTO' ? 'UNKNOWN' : defaultProvider,
+      reference: '',
+      isTelebirrCandidate: false,
+    }
+  }
 
-  // 1. Direct URL match: /receipt/([A-Za-z0-9_-]+)
-  const urlMatch = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
-  if (urlMatch) return urlMatch[1].toUpperCase()
+  // 1. CBE Modern Mobile Banking QR code / URL / Token (case-sensitive token preserved!)
+  const cbeV2UrlMatch = clean.match(/(?:https?:\/\/)?(?:mbrecie?pt|mb)\.cbe\.com\.et\/(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i)
+  if (cbeV2UrlMatch) {
+    const token = cbeV2UrlMatch[1] // DO NOT uppercase!
+    return {
+      provider: 'CBE',
+      reference: token,
+      officialUrl: `https://mbreciept.cbe.com.et/${token}`,
+      isTelebirrCandidate: false,
+    }
+  }
 
-  // 2. Base64 Telebirr QR payload (length > 30, base64 chars)
+  const directV2Match = clean.match(/^(v2-[A-Za-z0-9_-]{8,})/i)
+  if (directV2Match) {
+    return {
+      provider: 'CBE',
+      reference: directV2Match[1],
+      officialUrl: `https://mbreciept.cbe.com.et/${directV2Match[1]}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // 2. CBE Legacy FT code or URL
+  const cbeFtUrlMatch = clean.match(/[?&]id=(FT[0-9A-Za-z]{10})/i)
+  if (cbeFtUrlMatch) {
+    const ftCode = cbeFtUrlMatch[1].toUpperCase()
+    return {
+      provider: 'CBE',
+      reference: ftCode,
+      officialUrl: `https://apps.cbe.com.et:100/?id=${ftCode}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  const directFtMatch = clean.match(/\b(FT[0-9A-Za-z]{10})\b/i)
+  if (directFtMatch) {
+    const ftCode = directFtMatch[1].toUpperCase()
+    return {
+      provider: 'CBE',
+      reference: ftCode,
+      officialUrl: `https://apps.cbe.com.et:100/?id=${ftCode}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // Any other CBE URL
+  if (/cbe\.com\.et/i.test(clean)) {
+    const tokenMatch = clean.match(/cbe\.com\.et\/([A-Za-z0-9_-]{8,})/i)
+    const token = tokenMatch ? tokenMatch[1] : clean
+    return {
+      provider: 'CBE',
+      reference: token,
+      officialUrl: clean.startsWith('http') ? clean : `https://${clean}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // 3. Telebirr URL: /receipt/([A-Za-z0-9_-]+)
+  const telebirrUrlMatch = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
+  if (telebirrUrlMatch) {
+    const code = telebirrUrlMatch[1].toUpperCase()
+    return {
+      provider: 'TELEBIRR',
+      reference: code,
+      officialUrl: `https://transactioninfo.ethiotelecom.et/receipt/${code}`,
+      isTelebirrCandidate: true,
+    }
+  }
+
+  // 4. Telebirr Base64 SuperApp QR code
   if (clean.length > 30 && /^[A-Za-z0-9+/=]+$/.test(clean)) {
     try {
       const binStr = typeof window !== 'undefined' && typeof window.atob === 'function'
@@ -106,24 +190,63 @@ function extractCleanTransactionId(raw: string): string {
           ascii += String.fromCharCode(parseInt(hex.substr(i, 2), 16))
         }
         if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
-          return ascii.toUpperCase()
+          const code = ascii.toUpperCase()
+          return {
+            provider: 'TELEBIRR',
+            reference: code,
+            officialUrl: `https://transactioninfo.ethiotelecom.et/receipt/${code}`,
+            isTelebirrCandidate: true,
+          }
         }
       }
     } catch {}
   }
 
-  // 3. Look for explicit Telebirr 10-char code (e.g. DJJ7261SX7)
-  const codeMatch = clean.match(/\b([A-Z0-9]{10})\b/i)
-  if (codeMatch && !/^(TELEBIRR|ETHIOTELE|COMMERCIAL)/i.test(codeMatch[1])) {
-    return codeMatch[1].toUpperCase()
+  // 5. Explicit Telebirr 10-char code (e.g. DJJ7261SX7)
+  const codeMatch = clean.match(/\b([A-Za-z0-9]{10})\b/i)
+  if (
+    codeMatch &&
+    !/^(TELEBIRR|ETHIOTELE|COMMERCIAL)/i.test(codeMatch[1]) &&
+    !/^[0-9]+$/.test(codeMatch[1]) &&
+    !/^[A-Za-z]+$/.test(codeMatch[1])
+  ) {
+    const code = codeMatch[1].toUpperCase()
+    return {
+      provider: 'TELEBIRR',
+      reference: code,
+      officialUrl: `https://transactioninfo.ethiotelecom.et/receipt/${code}`,
+      isTelebirrCandidate: true,
+    }
   }
 
-  // 4. CBE FT transaction match: FT...
-  const cbeMatch = clean.match(/\b(FT[A-Za-z0-9]{8,18})\b/i)
-  if (cbeMatch) return cbeMatch[1].toUpperCase()
+  // 6. Manual override or Fallback
+  if (defaultProvider === 'CBE') {
+    const isV2 = clean.startsWith('v2-')
+    return {
+      provider: 'CBE',
+      reference: isV2 ? clean : clean.toUpperCase(),
+      officialUrl: isV2 ? `https://mbreciept.cbe.com.et/${clean}` : `https://apps.cbe.com.et:100/?id=${clean}`,
+      isTelebirrCandidate: false,
+    }
+  }
 
-  // 5. Fallback clean alphanumeric
-  return clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+  if (defaultProvider === 'TELEBIRR') {
+    const code = clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+    return {
+      provider: 'TELEBIRR',
+      reference: code,
+      officialUrl: `https://transactioninfo.ethiotelecom.et/receipt/${code}`,
+      isTelebirrCandidate: true,
+    }
+  }
+
+  // Generic fallback
+  const fallbackCode = clean.replace(/[^A-Za-z0-9_-]/g, '')
+  return {
+    provider: 'UNKNOWN',
+    reference: fallbackCode,
+    isTelebirrCandidate: false,
+  }
 }
 
 export default function QRScannerPage() {
@@ -415,44 +538,47 @@ export default function QRScannerPage() {
     let isUnder = false
     let isSuccess = false
 
+    const detected = detectProviderAndCleanRef(clean, prov)
+    const effectiveProvider = prov !== 'AUTO' ? prov : (detected.provider !== 'UNKNOWN' ? detected.provider : 'AUTO')
+    const candidateId = detected.reference || clean
+
     try {
       // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
       let htmlContent: string | undefined = htmlOverride
-      const candidateId = extractCleanTransactionId(clean)
 
-        if (!htmlContent && typeof (window as any).AndroidBridge?.fetchReceipt === 'function') {
-          try {
-            if (candidateId && !candidateId.toUpperCase().startsWith('FT') && candidateId !== 'UNKNOWN' && candidateId.length >= 8 && candidateId.length <= 14) {
-              htmlContent = await new Promise<string>((resolve) => {
-                const cbId = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
-                const timer = setTimeout(() => {
-                  delete (window as any)[cbId]
-                  resolve('')
-                }, 9000)
-                ;(window as any)[cbId] = (success: boolean, result: string) => {
-                  clearTimeout(timer)
-                  delete (window as any)[cbId]
-                  if (success && typeof result === 'string' && result.length > 200) {
-                    resolve(result)
-                  } else {
-                    resolve('')
-                  }
-                }
-                try {
-                  ;(window as any).AndroidBridge.fetchReceipt(
-                    `https://transactioninfo.ethiotelecom.et/receipt/${candidateId}`,
-                    cbId
-                  )
-                } catch {
-                  clearTimeout(timer)
+      if (!htmlContent && detected.isTelebirrCandidate && typeof (window as any).AndroidBridge?.fetchReceipt === 'function') {
+        try {
+          if (candidateId && candidateId.length >= 8 && candidateId.length <= 14) {
+            htmlContent = await new Promise<string>((resolve) => {
+              const cbId = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
+              const timer = setTimeout(() => {
+                delete (window as any)[cbId]
+                resolve('')
+              }, 9000)
+              ;(window as any)[cbId] = (success: boolean, result: string) => {
+                clearTimeout(timer)
+                delete (window as any)[cbId]
+                if (success && typeof result === 'string' && result.length > 200) {
+                  resolve(result)
+                } else {
                   resolve('')
                 }
-              })
-            }
-          } catch (bridgeErr) {
-            console.warn('[Scanner] AndroidBridge fetch error:', bridgeErr)
+              }
+              try {
+                ;(window as any).AndroidBridge.fetchReceipt(
+                  `https://transactioninfo.ethiotelecom.et/receipt/${candidateId}`,
+                  cbId
+                )
+              } catch {
+                clearTimeout(timer)
+                resolve('')
+              }
+            })
           }
+        } catch (bridgeErr) {
+          console.warn('[Scanner] AndroidBridge fetch error:', bridgeErr)
         }
+      }
 
       const activeOrderId = selectedOrderIdRef.current || undefined
       const res = await fetch('/api/verify-receipt', {
@@ -460,7 +586,7 @@ export default function QRScannerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           referenceOrUrl: candidateId || clean,
-          provider: prov,
+          provider: effectiveProvider,
           accountDigits: accountDigits || undefined,
           expectedAmount: expAmt || undefined,
           orderId: activeOrderId,
@@ -534,14 +660,12 @@ export default function QRScannerPage() {
         }
         setHistory(prev => [historyEntry, ...prev.slice(0, 19)])
       } else {
-        const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
-          ? 'CBE'
-          : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : (prov === 'AUTO' ? 'UNKNOWN' : prov))
+        const detectedProv = detected.provider !== 'UNKNOWN' ? detected.provider : (prov === 'AUTO' ? 'UNKNOWN' : prov)
 
         const failReceipt: VerifiedReceipt = {
           success: false,
           provider: finalReceiptPayload?.provider || detectedProv,
-          reference: finalReceiptPayload?.reference || clean,
+          reference: finalReceiptPayload?.reference || candidateId || clean,
           currency: finalReceiptPayload?.currency || 'ETB',
           status: isGatewayDelay ? 'PENDING' : (finalReceiptPayload?.status || 'FAILED'),
           isTimeout: isGatewayDelay,
@@ -556,7 +680,7 @@ export default function QRScannerPage() {
           payerAccountOrPhone: finalReceiptPayload?.payerAccountOrPhone,
           amount: typeof finalReceiptPayload?.amount === 'number' ? finalReceiptPayload.amount : undefined,
           dateTime: finalReceiptPayload?.dateTime,
-          errorMessage: finalResultData?.error || finalReceiptPayload?.errorMessage || (isGatewayDelay ? 'Ethio Telecom receipt gateway timed out. Tap "Open Official Slip in Browser" below.' : 'Receipt verification server could not validate this transaction.'),
+          errorMessage: finalResultData?.error || finalReceiptPayload?.errorMessage || (isGatewayDelay ? (detectedProv === 'CBE' ? 'CBE receipt gateway timed out. Tap "Open Official CBE Slip in Browser" below.' : 'Ethio Telecom receipt gateway timed out. Tap "Open Official Slip in Browser" below.') : 'Receipt verification server could not validate this transaction.'),
         }
 
         setVerifiedResult(failReceipt)
@@ -565,19 +689,17 @@ export default function QRScannerPage() {
         triggerHaptic(false)
       }
     } catch (err: any) {
-      const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
-        ? 'CBE'
-        : (clean.toLowerCase().includes('telebirr') || clean.toLowerCase().includes('ethiotelecom') ? 'TELEBIRR' : 'UNKNOWN')
+      const detectedProv = detected.provider !== 'UNKNOWN' ? detected.provider : 'UNKNOWN'
       const isNetTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
       const netErrorReceipt: VerifiedReceipt = {
         success: false,
         provider: detectedProv,
-        reference: clean,
+        reference: candidateId || clean,
         currency: 'ETB',
         status: isNetTimeout ? 'PENDING' : 'FAILED',
         isTimeout: isNetTimeout,
         errorMessage: isNetTimeout
-          ? 'Network timed out connecting to bank. Tap "Open Official Slip in Browser" below.'
+          ? `Network timed out connecting to ${detectedProv === 'CBE' ? 'CBE' : (detectedProv === 'TELEBIRR' ? 'Ethio Telecom' : 'bank')}. Tap "Open Official Slip in Browser" below.`
           : (err.message || 'Network connection failed while verifying with bank server.'),
       }
       setVerifiedResult(netErrorReceipt)
@@ -1587,7 +1709,9 @@ export default function QRScannerPage() {
                           ? verifiedResult.reference
                           : (verifiedResult.provider === 'TELEBIRR'
                             ? `https://transactioninfo.ethiotelecom.et/receipt/${verifiedResult.reference}`
-                            : `https://apps.cbe.com.et:100/?id=${verifiedResult.reference}`)
+                            : (verifiedResult.reference.startsWith('v2-')
+                              ? `https://mbreciept.cbe.com.et/${verifiedResult.reference}`
+                              : `https://apps.cbe.com.et:100/?id=${verifiedResult.reference}`))
                       }
                       target="_blank"
                       rel="noopener noreferrer"
@@ -1679,7 +1803,7 @@ export default function QRScannerPage() {
                         }}
                       >
                         <RefreshCw size={14} color="#64748B" />
-                        <span>Re-check Ethio Telecom Gateway Now</span>
+                        <span>Re-check {verifiedResult.provider === 'CBE' ? 'CBE' : (verifiedResult.provider === 'TELEBIRR' ? 'Ethio Telecom' : 'Bank')} Gateway Now</span>
                       </button>
                     </div>
                   )}

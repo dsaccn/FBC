@@ -43,6 +43,12 @@ export function extractTransactionReference(raw: string | null | undefined): str
   const cbeUrl = str.match(/[?&]id=(FT[0-9A-Z]{10})/i)
   if (cbeUrl) return cbeUrl[1].toUpperCase()
 
+  // 3. Modern CBE Mobile Banking v2 token: v2-[A-Za-z0-9_-]{8,} or mbrecie?pt.cbe.com.et/(v2-...)
+  const cbeV2Match = str.match(/(?:(?:mbrecie?pt|mb)\.cbe\.com\.et\/|^)(v2-[A-Za-z0-9_-]+)/i)
+  if (cbeV2Match) {
+    return cbeV2Match[1] // Preserve exact token casing!
+  }
+
   // 3. Structured tag in notes or SMS: "[CBE Ref: FT26290B9PKK]" or "Transaction number: DJJ7261SX7" or "Txn ID: DJJ7261SX7"
   const tagMatch = str.match(/(?:CBE|Telebirr|Digital|Slip)?\s*Ref(?:erence)?(?:\s*No)?:\s*([A-Za-z0-9_-]{6,32})/i) ||
                    str.match(/(?:Transaction\s*(?:number|no|id)|Txn\s*ID|የግብይት\s*ቁጥር|Receipt\s*(?:no|number)|Code)[:\s]+([A-Za-z0-9]{8,14})/i)
