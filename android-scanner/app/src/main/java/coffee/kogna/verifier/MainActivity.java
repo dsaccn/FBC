@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private SwipeRefreshLayout swipeRefreshLayout;
-    private ProgressBar progressBar;
+    private LinearLayout splashLayout;
     private LinearLayout errorLayout;
     private Button btnRetry;
 
@@ -55,7 +55,7 @@ public class MainActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.webView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
-        progressBar = findViewById(R.id.progressBar);
+        splashLayout = findViewById(R.id.splashLayout);
         errorLayout = findViewById(R.id.errorLayout);
         btnRetry = findViewById(R.id.btnRetry);
 
@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
 
         String defaultUserAgent = settings.getUserAgentString();
         settings.setUserAgentString(defaultUserAgent + " KognaVerifierApp/1.0");
@@ -129,17 +129,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 request.deny();
             }
-
-            @Override
-            public void onProgressChanged(WebView view, int newProgress) {
-                if (newProgress < 100) {
-                    progressBar.setVisibility(View.VISIBLE);
-                    progressBar.setProgress(newProgress);
-                } else {
-                    progressBar.setVisibility(View.GONE);
-                    swipeRefreshLayout.setRefreshing(false);
-                }
-            }
         });
 
         webView.setWebViewClient(new WebViewClient() {
@@ -156,9 +145,22 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (splashLayout != null && splashLayout.getVisibility() == View.VISIBLE) {
+                    splashLayout.animate()
+                        .alpha(0f)
+                        .setDuration(250)
+                        .withEndAction(() -> splashLayout.setVisibility(View.GONE));
+                }
+                swipeRefreshLayout.setRefreshing(false);
+            }
+
+            @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
                 if (request != null && request.isForMainFrame()) {
+                    if (splashLayout != null) splashLayout.setVisibility(View.GONE);
                     if (!triedFallback) {
                         triedFallback = true;
                         webView.loadUrl(FALLBACK_URL);

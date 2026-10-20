@@ -65,14 +65,47 @@
 
     </LinearLayout>
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- Native App Splash Overlay (Hides browser-like loading completely) -->
+    <LinearLayout
+        android:id="@+id/splashLayout"
         android:layout_width="match_parent"
-        android:layout_height="4dp"
-        android:indeterminate="false"
-        android:max="100"
-        android:progressTint="@color/gold"
-        android:visibility="gone" />
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:background="#0F172A"
+        android:padding="24dp"
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="☕"
+            android:textSize="64sp"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Kogna Verifier"
+            android:textColor="#D4AF37"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Anti-Fraud Payment Verifier"
+            android:textColor="#94A3B8"
+            android:textSize="13sp"
+            android:layout_marginBottom="28dp" />
+
+        <ProgressBar
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:indeterminateTint="#D4AF37" />
+
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
