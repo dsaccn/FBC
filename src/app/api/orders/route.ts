@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { backgroundSync } from '@/lib/sync-engine'
+import { backgroundSync, startBackgroundPullLoop } from '@/lib/sync-engine'
 import { deductOrderStock } from '@/lib/stock'
 import { parseDateFilter } from '@/lib/date-utils'
+
+// Ensure local POS PC auto-pulls cloud order updates continuously
+if (typeof process !== 'undefined' && !process.env.VERCEL) {
+  startBackgroundPullLoop(5000)
+}
 
 
 export async function GET(req: Request) {

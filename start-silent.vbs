@@ -6,8 +6,10 @@ WshShell.CurrentDirectory = posDir
 ' Strip read-only attributes and grant write permissions to database
 WshShell.Run "cmd.exe /c ""attrib -r -s -h """ & posDir & "\prisma\*""" & " /s /d & attrib -r -s -h """ & posDir & "\prisma\kogna.db*""""", 0, True
 
-' Ensure legacy tunnel process is stopped
-WshShell.Run "cmd.exe /c ""taskkill /f /im cloudflared.exe >nul 2>&1""", 0, True
+' Start Cloudflare Tunnel silently for mobile phone scanner
+If fso.FileExists(posDir & "\bin\cloudflared.exe") Then
+    WshShell.Run "cmd.exe /c """ & posDir & "\scripts\run_tunnel.bat""", 0, False
+End If
 
 
 ' 0 = Hide window completely. Runs server silently in the background.

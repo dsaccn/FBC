@@ -18,6 +18,7 @@ import { prisma } from '@/lib/prisma'
 import { Pool as PgPool, types as pgTypes } from 'pg'
 import fs from 'fs'
 import path from 'path'
+import { broadcastVerificationEvent } from '@/lib/scanner-events'
 
 const TOMBSTONES_FILE = process.env.VERCEL
   ? path.join('/tmp', '.deleted_users.json')
@@ -526,7 +527,7 @@ let _backgroundPullTimer: NodeJS.Timeout | null = null
  * Autonomous background pull loop for local POS server.
  * Ensures orders created on Vercel or cloud are synced down to SQLite automatically.
  */
-export function startBackgroundPullLoop(intervalMs = 10000): void {
+export function startBackgroundPullLoop(intervalMs = 5000): void {
   if (process.env.VERCEL) return
   if (_backgroundPullTimer) return
 
@@ -543,6 +544,11 @@ export function startBackgroundPullLoop(intervalMs = 10000): void {
   if (typeof _backgroundPullTimer.unref === 'function') {
     _backgroundPullTimer.unref()
   }
+}
+
+// Auto-start background pull loop on local server so payments and orders sync continuously
+if (typeof process !== 'undefined' && !process.env.VERCEL) {
+  startBackgroundPullLoop(5000)
 }
 
 /**
@@ -1385,7 +1391,8 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
     // - Any orders currently OPEN locally (to check if they became PAID/CANCELLED)
     // - Any orders updated in the last 60 days (to catch orders and reports data)
     const { rows: cloudOrders } = await pg.query(
-      `SELECT id, "tableId", "waiterId", status, "createdAt", "updatedAt"
+      `SELECT id, "tableId", "waiterId", status, "createdAt", "updatedAt",
+              "verifiedRef", "verifiedProvider", "verifiedAmount", "verifiedPayer", "verifiedReceiver", "verifiedAt"
        FROM "Order"
        WHERE status = 'OPEN'
           OR id = ANY($1)
@@ -1407,7 +1414,7 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             continue
           }
 
-          // Insert the order
+          // Insert the order with verification fields
           await prisma.order.create({
             data: {
               id: co.id,
@@ -1416,9 +1423,31 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
               status: co.status,
               createdAt: new Date(co.createdAt),
               updatedAt: new Date(co.updatedAt),
+              verifiedRef: co.verifiedRef ?? null,
+              verifiedProvider: co.verifiedProvider ?? null,
+              verifiedAmount: co.verifiedAmount != null ? Number(co.verifiedAmount) : null,
+              verifiedPayer: co.verifiedPayer ?? null,
+              verifiedReceiver: co.verifiedReceiver ?? null,
+              verifiedAt: co.verifiedAt ? new Date(co.verifiedAt) : null,
               pendingSync: false, // already exists on cloud
             },
           })
+
+          // If attached payment exists on cloud order, broadcast immediately
+          if (co.verifiedRef) {
+            const table = await prisma.table.findUnique({ where: { id: co.tableId }, select: { number: true } })
+            broadcastVerificationEvent({
+              type: 'ORDER_VERIFIED',
+              orderId: co.id,
+              tableNumber: table?.number,
+              reference: co.verifiedRef,
+              provider: co.verifiedProvider || 'AUTO',
+              amount: co.verifiedAmount != null ? Number(co.verifiedAmount) : undefined,
+              payerName: co.verifiedPayer || undefined,
+              receiverName: co.verifiedReceiver || undefined,
+              timestamp: co.verifiedAt ? new Date(co.verifiedAt).toISOString() : new Date().toISOString(),
+            })
+          }
 
           // Pull order items for this order
           const { rows: cloudItems } = await pg.query(
@@ -1501,6 +1530,54 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
 
           pulled.orders++
         } else {
+          // ── Synchronize phone payment attachment from cloud to offline PC ──────
+          const cloudRef = co.verifiedRef ? String(co.verifiedRef).trim().toUpperCase() : null
+          const localRef = localOrder.verifiedRef ? String(localOrder.verifiedRef).trim().toUpperCase() : null
+          const cloudAmount = co.verifiedAmount != null ? Number(co.verifiedAmount) : null
+          const localAmount = localOrder.verifiedAmount != null ? Number(localOrder.verifiedAmount) : null
+          const cloudProvider = co.verifiedProvider ?? null
+
+          const verificationChanged =
+            cloudRef !== localRef ||
+            cloudAmount !== localAmount ||
+            cloudProvider !== localOrder.verifiedProvider
+
+          if (verificationChanged && (cloudRef || !localOrder.pendingSync)) {
+            await prisma.order.update({
+              where: { id: co.id },
+              data: {
+                verifiedRef: cloudRef,
+                verifiedProvider: cloudProvider,
+                verifiedAmount: cloudAmount,
+                verifiedPayer: co.verifiedPayer ?? null,
+                verifiedReceiver: co.verifiedReceiver ?? null,
+                verifiedAt: co.verifiedAt ? new Date(co.verifiedAt) : null,
+              },
+            })
+
+            // Broadcast real-time SSE event to local cashier screen in 0ms!
+            if (cloudRef && cloudRef !== localRef) {
+              const table = await prisma.table.findUnique({ where: { id: co.tableId }, select: { number: true } })
+              broadcastVerificationEvent({
+                type: 'ORDER_VERIFIED',
+                orderId: co.id,
+                tableNumber: table?.number,
+                reference: cloudRef,
+                provider: cloudProvider || 'AUTO',
+                amount: cloudAmount ?? undefined,
+                payerName: co.verifiedPayer || undefined,
+                receiverName: co.verifiedReceiver || undefined,
+                timestamp: co.verifiedAt ? new Date(co.verifiedAt).toISOString() : new Date().toISOString(),
+              })
+            } else if (!cloudRef && localRef) {
+              broadcastVerificationEvent({
+                type: 'ORDER_CLEARED',
+                orderId: co.id,
+                timestamp: new Date().toISOString(),
+              })
+            }
+          }
+
           // If cloud has closed the order (PAID or CANCELLED), cloud terminal status ALWAYS wins!
           const cloudTerminal = co.status === 'PAID' || co.status === 'CANCELLED'
           const localTerminal = localOrder.status === 'PAID' || localOrder.status === 'CANCELLED'
@@ -1982,12 +2059,32 @@ export async function syncToCloud(): Promise<SyncResult> {
           )
         }
         await pg.query(
-          `INSERT INTO "Order" (id, "tableId", "waiterId", status, "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6)
+          `INSERT INTO "Order" (id, "tableId", "waiterId", status, "createdAt", "updatedAt",
+                                "verifiedRef", "verifiedProvider", "verifiedAmount", "verifiedPayer", "verifiedReceiver", "verifiedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            ON CONFLICT (id) DO UPDATE SET
-             status      = EXCLUDED.status,
-             "updatedAt" = EXCLUDED."updatedAt"`,
-          [o.id, o.tableId, o.waiterId, o.status, toUtcIso(o.createdAt), toUtcIso(o.updatedAt)]
+             status             = EXCLUDED.status,
+             "updatedAt"        = EXCLUDED."updatedAt",
+             "verifiedRef"      = COALESCE(EXCLUDED."verifiedRef", "Order"."verifiedRef"),
+             "verifiedProvider" = COALESCE(EXCLUDED."verifiedProvider", "Order"."verifiedProvider"),
+             "verifiedAmount"   = COALESCE(EXCLUDED."verifiedAmount", "Order"."verifiedAmount"),
+             "verifiedPayer"    = COALESCE(EXCLUDED."verifiedPayer", "Order"."verifiedPayer"),
+             "verifiedReceiver" = COALESCE(EXCLUDED."verifiedReceiver", "Order"."verifiedReceiver"),
+             "verifiedAt"       = COALESCE(EXCLUDED."verifiedAt", "Order"."verifiedAt")`,
+          [
+            o.id,
+            o.tableId,
+            o.waiterId,
+            o.status,
+            toUtcIso(o.createdAt),
+            toUtcIso(o.updatedAt),
+            o.verifiedRef ?? null,
+            o.verifiedProvider ?? null,
+            o.verifiedAmount ?? null,
+            o.verifiedPayer ?? null,
+            o.verifiedReceiver ?? null,
+            toUtcIso(o.verifiedAt),
+          ]
         )
         const tableStatus = o.status === 'OPEN' ? 'OCCUPIED' : 'FREE'
         await pg.query('UPDATE "Table" SET status = $1 WHERE id = $2', [tableStatus, o.tableId])

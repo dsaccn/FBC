@@ -116,7 +116,8 @@ export async function POST(req: Request) {
                  "verifiedAmount" = $3, 
                  "verifiedPayer" = $4, 
                  "verifiedReceiver" = $5, 
-                 "verifiedAt" = $6 
+                 "verifiedAt" = $6,
+                 "updatedAt" = NOW() 
              WHERE id = $7`,
             [cleanRef, finalProvider, isNaN(finalAmount) ? null : finalAmount, finalPayer, finalReceiver, verifiedDate, orderId]
           )
@@ -215,7 +216,8 @@ export async function DELETE(req: Request) {
                  "verifiedAmount" = NULL, 
                  "verifiedPayer" = NULL, 
                  "verifiedReceiver" = NULL, 
-                 "verifiedAt" = NULL 
+                 "verifiedAt" = NULL,
+                 "updatedAt" = NOW() 
              WHERE id = $1`,
             [orderId]
           )

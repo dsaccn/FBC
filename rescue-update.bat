@@ -58,7 +58,6 @@ echo.
 :: ============================================================
 echo [3/6] Cleaning locked log and temp files...
 if exist "logs\tunnel.log" del /f /q "logs\tunnel.log" >nul 2>&1
-if exist "bin\cloudflared.exe" del /f /q "bin\cloudflared.exe" >nul 2>&1
 if exist "bin\cloudflared.tmp" del /f /q "bin\cloudflared.tmp" >nul 2>&1
 if exist "prisma\*.db-journal" del /f /q "prisma\*.db-journal" >nul 2>&1
 echo       Locked files cleaned.
