@@ -44,7 +44,9 @@ public class MainActivity extends AppCompatActivity {
     private PermissionRequest activePermissionRequest;
 
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 1001;
-    private static final String TARGET_URL = "https://scanner.kogna.coffee/scanner?key=kogna_scanner_secure_2026";
+    private static final String TARGET_URL = "https://www.kogna.coffee/scanner?key=kogna_scanner_secure_2026";
+    private static final String FALLBACK_URL = "https://scanner.kogna.coffee/scanner?key=kogna_scanner_secure_2026";
+    private boolean triedFallback = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -154,6 +156,11 @@ public class MainActivity extends AppCompatActivity {
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
                 if (request != null && request.isForMainFrame()) {
+                    if (!triedFallback) {
+                        triedFallback = true;
+                        webView.loadUrl(FALLBACK_URL);
+                        return;
+                    }
                     webView.setVisibility(View.GONE);
                     errorLayout.setVisibility(View.VISIBLE);
                     swipeRefreshLayout.setRefreshing(false);
@@ -168,6 +175,7 @@ public class MainActivity extends AppCompatActivity {
             errorLayout.setVisibility(View.VISIBLE);
             return;
         }
+        triedFallback = false;
         webView.loadUrl(TARGET_URL);
     }
 
