@@ -51,6 +51,7 @@ prisma/payment-settings.json
 *.zip
 *.msi
 *.exe
+*.apk
 /bin/
 
 # Agent and IDE local directories
