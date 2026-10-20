@@ -650,9 +650,10 @@ public class MainActivity extends AppCompatActivity {
             layoutOrdersList.removeAllViews();
             if (currentOpenOrders.isEmpty()) {
                 txtNoOrdersNotice.setVisibility(View.VISIBLE);
-                layoutOrdersList.addView(txtNoOrdersNotice);
+                layoutOrdersList.setVisibility(View.GONE);
             } else {
                 txtNoOrdersNotice.setVisibility(View.GONE);
+                layoutOrdersList.setVisibility(View.VISIBLE);
                 LayoutInflater inflater = LayoutInflater.from(this);
 
                 for (final OpenOrder order : currentOpenOrders) {
@@ -713,6 +714,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleOrderSelection(OpenOrder order) {
+        // If a verified receipt is currently shown on the screen, touching any table directly attaches the payment!
+        if (cardResult != null && cardResult.getVisibility() == View.VISIBLE && lastVerifiedRef != null && !lastVerifiedRef.isEmpty()) {
+            linkVerifiedReceiptToOrder(order);
+            return;
+        }
+
         if (selectedOrder != null && selectedOrder.id.equals(order.id)) {
             clearSelectedOrder();
         } else {
@@ -1089,38 +1096,43 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void populatePostScanTableButtons() {
-        layoutPostScanTableButtons.removeAllViews();
-        if (currentOpenOrders.isEmpty()) {
-            TextView none = new TextView(this);
-            none.setText("No open tables on Cashier PC");
-            none.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
-            none.setTextSize(12);
-            layoutPostScanTableButtons.addView(none);
-            return;
-        }
+        mainHandler.post(() -> {
+            if (layoutPostScanTableButtons == null) return;
+            layoutPostScanTableButtons.removeAllViews();
+            if (currentOpenOrders.isEmpty()) {
+                TextView none = new TextView(MainActivity.this);
+                none.setText("No open tables on Cashier PC");
+                none.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.text_secondary));
+                none.setTextSize(12);
+                layoutPostScanTableButtons.addView(none);
+                return;
+            }
 
-        for (final OpenOrder order : currentOpenOrders) {
-            Button btn = new Button(this);
-            btn.setText(String.format(Locale.US, "%s (%.0f ETB)", order.displayTitle, order.total));
-            btn.setBackgroundResource(R.drawable.bg_order_chip);
-            btn.setTextColor(ContextCompat.getColor(this, R.color.gold));
-            btn.setTextSize(11);
-            btn.setPadding(24, 12, 24, 12);
+            for (final OpenOrder order : currentOpenOrders) {
+                TextView chip = new TextView(MainActivity.this);
+                chip.setText(String.format(Locale.US, "%s (%.0f ETB)", order.displayTitle, order.total));
+                chip.setBackgroundResource(R.drawable.bg_order_chip);
+                chip.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
+                chip.setTextSize(12);
+                chip.setPadding(30, 16, 30, 16);
+                chip.setClickable(true);
+                chip.setFocusable(true);
 
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-            );
-            lp.setMargins(0, 0, 16, 0);
-            btn.setLayoutParams(lp);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+                lp.setMargins(0, 0, 16, 0);
+                chip.setLayoutParams(lp);
 
-            btn.setOnClickListener(v -> linkVerifiedReceiptToOrder(order));
-            layoutPostScanTableButtons.addView(btn);
-        }
+                chip.setOnClickListener(v -> linkVerifiedReceiptToOrder(order));
+                layoutPostScanTableButtons.addView(chip);
+            }
+        });
     }
 
     private void linkVerifiedReceiptToOrder(final OpenOrder targetOrder) {
-        if (lastVerifiedRef.isEmpty()) {
+        if (lastVerifiedRef == null || lastVerifiedRef.isEmpty()) {
             Toast.makeText(this, "No verified receipt to link", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -1143,8 +1155,9 @@ public class MainActivity extends AppCompatActivity {
                     MediaType.Companion.parse("application/json; charset=utf-8")
             );
 
+            String basePosUrl = (activePosUrl != null && !activePosUrl.trim().isEmpty()) ? activePosUrl : DEFAULT_TUNNEL_URL;
             Request request = new Request.Builder()
-                    .url(activePosUrl.replaceAll("/+$", "") + "/api/scanner/verify-order")
+                    .url(basePosUrl.replaceAll("/+$", "") + "/api/scanner/verify-order")
                     .header("x-scanner-token", apiKey)
                     .post(requestBody)
                     .build();
@@ -1154,39 +1167,42 @@ public class MainActivity extends AppCompatActivity {
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     mainHandler.post(() -> {
                         hideLoading();
-                        Toast.makeText(MainActivity.this, "Network error linking to " + targetOrder.displayTitle, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "Network error linking to " + targetOrder.displayTitle + ": " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     });
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    hideLoading();
-                    String jsonStr = response.body() != null ? response.body().string() : "{}";
-                    try {
-                        JSONObject res = new JSONObject(jsonStr);
-                        if (res.optBoolean("success", false)) {
-                            mainHandler.post(() -> {
+                    final String jsonStr = response.body() != null ? response.body().string() : "{}";
+                    final boolean isSuccess = response.isSuccessful();
+
+                    mainHandler.post(() -> {
+                        hideLoading();
+                        try {
+                            JSONObject res = new JSONObject(jsonStr);
+                            if (isSuccess && res.optBoolean("success", false)) {
                                 playBeep(true);
+                                vibrateSuccess();
                                 txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", targetOrder.displayTitle));
                                 layoutPostScanTablePicker.setVisibility(View.GONE);
                                 clearSelectedOrder();
                                 fetchOpenOrders(false);
-                            });
-                        } else {
-                            final String err = res.optString("error", "Failed to link order");
-                            mainHandler.post(() -> {
+                                Toast.makeText(MainActivity.this, "✅ Marked Paid on Cashier PC for " + targetOrder.displayTitle, Toast.LENGTH_SHORT).show();
+                            } else {
+                                final String err = res.optString("error", "Failed to link order (HTTP " + response.code() + ")");
                                 playBeep(false);
+                                vibrateError();
                                 Toast.makeText(MainActivity.this, "⚠️ " + err, Toast.LENGTH_LONG).show();
-                            });
+                            }
+                        } catch (Exception ex) {
+                            Toast.makeText(MainActivity.this, "Error parsing link response: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
                         }
-                    } catch (Exception ex) {
-                        mainHandler.post(() -> Toast.makeText(MainActivity.this, "Error parsing link response", Toast.LENGTH_SHORT).show());
-                    }
+                    });
                 }
             });
 
         } catch (Exception e) {
-            hideLoading();
+            mainHandler.post(this::hideLoading);
         }
     }
 
@@ -1205,73 +1221,79 @@ public class MainActivity extends AppCompatActivity {
             String slipUrl,
             String posMatchMessage
     ) {
-        hideLoading();
-        isVerifying = false;
+        mainHandler.post(() -> {
+            hideLoading();
+            isVerifying = false;
 
-        cardResult.setVisibility(View.VISIBLE);
+            cardResult.setVisibility(View.VISIBLE);
 
-        if (isSuccess) {
-            playBeep(true);
-            vibrateSuccess();
+            if (isSuccess) {
+                playBeep(true);
+                vibrateSuccess();
 
-            imgResultIcon.setImageResource(R.drawable.ic_verified_check);
-            txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.verified_title));
-            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_green));
+                imgResultIcon.setImageResource(R.drawable.ic_verified_check);
+                txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.verified_title));
+                txtResultStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
 
-            txtResultBadge.setText("GENUINE");
-            txtResultBadge.setBackgroundResource(R.drawable.badge_status_green);
-            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_green));
+                txtResultBadge.setText("GENUINE");
+                txtResultBadge.setBackgroundResource(R.drawable.badge_status_green);
+                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
 
-            txtResultAmount.setText(String.format(Locale.US, "%.2f ETB", amount));
-            txtResultPayer.setText(payer);
-            txtResultReceiver.setText(receiver);
-            txtResultRef.setText(reference);
-            txtResultDate.setText(dateTime);
-            txtResultPosMatch.setText(posMatchMessage);
+                txtResultAmount.setText(String.format(Locale.US, "%.2f ETB", amount));
+                txtResultPayer.setText(payer);
+                txtResultReceiver.setText(receiver);
+                txtResultRef.setText(reference);
+                txtResultDate.setText(dateTime);
+                txtResultPosMatch.setText(posMatchMessage);
 
-            saveToHistory(reference, provider, amount, payer, dateTime, true);
-        } else {
-            playBeep(false);
-            vibrateError();
+                saveToHistory(reference, provider, amount, payer, dateTime, true);
+            } else {
+                playBeep(false);
+                vibrateError();
 
-            imgResultIcon.setImageResource(R.drawable.ic_error_cross);
-            txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.failed_title));
-            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+                imgResultIcon.setImageResource(R.drawable.ic_error_cross);
+                txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.failed_title));
+                txtResultStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
 
-            txtResultBadge.setText("FAILED");
-            txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+                txtResultBadge.setText("FAILED");
+                txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
 
-            txtResultAmount.setText(amount > 0 ? String.format(Locale.US, "%.2f ETB", amount) : "0.00 ETB");
-            txtResultPayer.setText(payer);
-            txtResultReceiver.setText(receiver);
-            txtResultRef.setText(reference);
-            txtResultDate.setText(dateTime != null ? dateTime : "-");
-            txtResultPosMatch.setText(posMatchMessage);
-        }
+                txtResultAmount.setText(amount > 0 ? String.format(Locale.US, "%.2f ETB", amount) : "0.00 ETB");
+                txtResultPayer.setText(payer);
+                txtResultReceiver.setText(receiver);
+                txtResultRef.setText(reference);
+                txtResultDate.setText(dateTime != null ? dateTime : "-");
+                txtResultPosMatch.setText(posMatchMessage);
+            }
 
-        txtResultProvider.setText(provider);
-        lastVerifiedUrl = slipUrl;
+            txtResultProvider.setText(provider);
+            lastVerifiedUrl = slipUrl;
 
-        updateTodaySummary();
+            updateTodaySummary();
+        });
     }
 
     private void resetScannerToActive() {
-        cardResult.setVisibility(View.GONE);
-        layoutPostScanTablePicker.setVisibility(View.GONE);
-        hideLoading();
-        isVerifying = false;
-        if (!isWebViewMode) barcodeView.resume();
-        fetchOpenOrders(false);
+        mainHandler.post(() -> {
+            cardResult.setVisibility(View.GONE);
+            layoutPostScanTablePicker.setVisibility(View.GONE);
+            hideLoading();
+            isVerifying = false;
+            if (!isWebViewMode) barcodeView.resume();
+            fetchOpenOrders(false);
+        });
     }
 
-    private void showLoading(String message) {
-        txtLoadingMsg.setText(message);
-        loadingOverlay.setVisibility(View.VISIBLE);
+    private void showLoading(final String message) {
+        mainHandler.post(() -> {
+            txtLoadingMsg.setText(message);
+            loadingOverlay.setVisibility(View.VISIBLE);
+        });
     }
 
     private void hideLoading() {
-        loadingOverlay.setVisibility(View.GONE);
+        mainHandler.post(() -> loadingOverlay.setVisibility(View.GONE));
     }
 
     // ==========================================

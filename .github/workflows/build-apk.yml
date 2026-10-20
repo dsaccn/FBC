@@ -51,12 +51,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.2.0-scanner
-          name: "Kogna Verifier App v2.2.0 (Receiver Check & Table Linking)"
+          tag_name: v2.2.1-scanner
+          name: "Kogna Verifier App v2.2.1 (Crash Fix & Direct Table Link)"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.2.0
+            ## 📱 Kogna Verifier Android App v2.2.1
 
             ### 🛡️ Critical Updates & Features:
             - **Strict Receiver Verification**: Cross-references Telebirr and CBE receiver phone/account numbers with official store settings. Fraudulent receipts or payments sent to other accounts are immediately flagged with `❌ RECEIVER MISMATCH` and rejected!
