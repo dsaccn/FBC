@@ -10,7 +10,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="POS &amp; Sync Settings"
+        android:text="Cashier PC Connection"
         android:textColor="@color/gold"
         android:textSize="18sp"
         android:textStyle="bold" />
@@ -19,15 +19,59 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Set cloud server or local Wi-Fi POS address (e.g. http://192.168.1.15:3000)."
+        android:text="Connects this phone directly to your Cashier PC to view open tables and sync orders."
         android:textColor="@color/text_secondary"
         android:textSize="13sp" />
+
+    <!-- Quick Preset Buttons -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="Quick Presets:"
+        android:textColor="@color/gold_light"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnPresetTunnel"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_weight="1"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:text="Cloud Tunnel"
+            android:textColor="@color/gold"
+            android:textSize="11sp"
+            app:strokeColor="@color/gold" />
+
+        <Button
+            android:id="@+id/btnPresetLocal"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:text="Local Wi-Fi"
+            android:textColor="@color/gold"
+            android:textSize="11sp"
+            app:strokeColor="@color/gold" />
+    </LinearLayout>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="POS Server URL"
+        android:layout_marginTop="14dp"
+        android:text="Cashier PC URL"
         android:textColor="@color/gold_light"
         android:textSize="13sp"
         android:textStyle="bold" />
@@ -38,7 +82,7 @@
         android:layout_height="50dp"
         android:layout_marginTop="6dp"
         android:background="@drawable/badge_chip"
-        android:hint="https://www.kogna.coffee"
+        android:hint="https://scanner.kogna.coffee"
         android:inputType="textUri"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
@@ -75,9 +119,9 @@
         android:layout_height="44dp"
         android:layout_marginTop="14dp"
         android:background="@drawable/btn_gold_outline"
-        android:text="TEST SERVER CONNECTION"
+        android:text="TEST CONNECTION &amp; FIND OPEN ORDERS"
         android:textColor="@color/gold"
-        android:textSize="13sp"
+        android:textSize="12sp"
         app:backgroundTint="@null" />
 
     <LinearLayout
@@ -102,7 +146,7 @@
             android:layout_marginStart="12dp"
             android:layout_weight="1.5"
             android:background="@drawable/btn_gold"
-            android:text="SAVE SETTINGS"
+            android:text="SAVE &amp; CONNECT"
             android:textColor="@color/bg_dark"
             android:textStyle="bold"
             app:backgroundTint="@null" />

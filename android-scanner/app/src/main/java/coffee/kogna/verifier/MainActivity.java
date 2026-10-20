@@ -55,6 +55,7 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -79,7 +80,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_API_KEY = "pos_api_key";
     private static final String KEY_HISTORY = "scan_history_json";
 
-    private static final String DEFAULT_POS_URL = "https://www.kogna.coffee";
+    // Cashier PC Default Endpoints (Cloudflare Tunnel & Local Café Wi-Fi IP)
+    private static final String DEFAULT_TUNNEL_URL = "https://scanner.kogna.coffee";
+    private static final String DEFAULT_LOCAL_URL = "http://192.168.1.5:3000";
     private static final String DEFAULT_API_KEY = "kogna_scanner_secure_2026";
 
     // UI Elements
@@ -93,6 +96,14 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton btnManual;
     private ImageButton btnSettings;
     private Button btnHistory;
+
+    // Open Orders Section
+    private TextView txtOpenOrdersHeader;
+    private LinearLayout bannerSelectedOrder;
+    private TextView txtSelectedOrderTitle;
+    private Button btnDeselectOrder;
+    private LinearLayout layoutOrdersList;
+    private TextView txtNoOrdersNotice;
 
     // Loading Overlay
     private View loadingOverlay;
@@ -120,12 +131,35 @@ public class MainActivity extends AppCompatActivity {
     private boolean isVerifying = false;
     private String lastVerifiedUrl = "";
     private Call currentActiveCall = null;
+    private String activePosUrl = DEFAULT_TUNNEL_URL;
+
+    // Open Orders Data
+    private static class OpenOrder {
+        String id;
+        String tableId;
+        String displayTitle;
+        double total;
+        int itemsCount;
+        boolean isVerified;
+    }
+
+    private final List<OpenOrder> currentOpenOrders = new ArrayList<>();
+    private OpenOrder selectedOrder = null;
 
     private SharedPreferences prefs;
     private OkHttpClient httpClient;
     private ToneGenerator toneGenerator;
     private Vibrator vibrator;
     private Handler mainHandler;
+
+    // Polling runnable for real-time open orders from Cashier PC
+    private final Runnable orderPollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            fetchOpenOrders(false);
+            mainHandler.postDelayed(this, 4000);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -142,15 +176,15 @@ public class MainActivity extends AppCompatActivity {
         startLaserAnimation();
 
         checkCameraPermission();
-        testPosConnection(false);
+        discoverAndConnectCashierPc(false);
         updateTodaySummary();
     }
 
     private void setupHttpAndAudio() {
         httpClient = new OkHttpClient.Builder()
                 .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(12, TimeUnit.SECONDS)
+                .connectTimeout(6, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build();
 
@@ -172,6 +206,13 @@ public class MainActivity extends AppCompatActivity {
         btnManual = findViewById(R.id.btnManual);
         btnSettings = findViewById(R.id.btnSettings);
         btnHistory = findViewById(R.id.btnHistory);
+
+        txtOpenOrdersHeader = findViewById(R.id.txtOpenOrdersHeader);
+        bannerSelectedOrder = findViewById(R.id.bannerSelectedOrder);
+        txtSelectedOrderTitle = findViewById(R.id.txtSelectedOrderTitle);
+        btnDeselectOrder = findViewById(R.id.btnDeselectOrder);
+        layoutOrdersList = findViewById(R.id.layoutOrdersList);
+        txtNoOrdersNotice = findViewById(R.id.txtNoOrdersNotice);
 
         loadingOverlay = findViewById(R.id.loadingOverlay);
         txtLoadingMsg = findViewById(R.id.txtLoadingMsg);
@@ -200,6 +241,7 @@ public class MainActivity extends AppCompatActivity {
         btnSettings.setOnClickListener(v -> showSettingsDialog());
         btnHistory.setOnClickListener(v -> showHistoryDialog());
 
+        btnDeselectOrder.setOnClickListener(v -> clearSelectedOrder());
         btnScanNext.setOnClickListener(v -> resetScannerToActive());
 
         btnViewOfficial.setOnClickListener(v -> {
@@ -278,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
         rotate.setInterpolator(new LinearInterpolator());
         btnRefresh.startAnimation(rotate);
 
-        testPosConnection(true);
+        discoverAndConnectCashierPc(true);
         resetScannerToActive();
     }
 
@@ -308,22 +350,230 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         barcodeView.resume();
-        testPosConnection(false);
+        discoverAndConnectCashierPc(false);
+        mainHandler.post(orderPollRunnable);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        mainHandler.removeCallbacks(orderPollRunnable);
         barcodeView.pause();
         if (isFlashOn) toggleFlashlight();
     }
 
     @Override
     protected void onDestroy() {
+        mainHandler.removeCallbacks(orderPollRunnable);
         if (toneGenerator != null) {
             toneGenerator.release();
         }
         super.onDestroy();
+    }
+
+    // ==========================================
+    // 🌐 CASHIER PC AUTO-DISCOVERY & CONNECTION
+    // ==========================================
+
+    private void discoverAndConnectCashierPc(final boolean showToast) {
+        String savedUrl = prefs.getString(KEY_POS_URL, "");
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+
+        List<String> candidates = new ArrayList<>();
+        if (savedUrl != null && !savedUrl.trim().isEmpty()) {
+            candidates.add(savedUrl.trim().replaceAll("/+$", ""));
+        }
+        candidates.add(DEFAULT_TUNNEL_URL); // https://scanner.kogna.coffee
+        candidates.add(DEFAULT_LOCAL_URL);  // http://192.168.1.5:3000
+
+        probeCandidates(candidates, 0, apiKey, showToast);
+    }
+
+    private void probeCandidates(final List<String> candidates, final int index, final String apiKey, final boolean showToast) {
+        if (index >= candidates.size()) {
+            mainHandler.post(() -> {
+                txtPosStatus.setText("● Standalone (PC Offline)");
+                txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
+                if (showToast) {
+                    Toast.makeText(MainActivity.this, "Cannot reach Cashier PC. Tap ⚙️ to configure.", Toast.LENGTH_SHORT).show();
+                }
+            });
+            return;
+        }
+
+        final String testUrl = candidates.get(index);
+        String probeEndpoint = testUrl + "/api/scanner/orders?key=" + apiKey;
+
+        Request request = new Request.Builder()
+                .url(probeEndpoint)
+                .header("x-scanner-token", apiKey)
+                .build();
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                // Try next candidate
+                probeCandidates(candidates, index + 1, apiKey, showToast);
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    String jsonStr = response.body() != null ? response.body().string() : "{}";
+                    mainHandler.post(() -> {
+                        activePosUrl = testUrl;
+                        txtPosStatus.setText("● Cashier PC Connected");
+                        txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
+                        if (showToast) {
+                            Toast.makeText(MainActivity.this, "Connected to Cashier PC!", Toast.LENGTH_SHORT).show();
+                        }
+                        parseAndRenderOrders(jsonStr);
+                    });
+                } else {
+                    probeCandidates(candidates, index + 1, apiKey, showToast);
+                }
+            }
+        });
+    }
+
+    private void fetchOpenOrders(final boolean notifyErrors) {
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        String endpoint = activePosUrl.replaceAll("/+$", "") + "/api/scanner/orders?key=" + apiKey + "&_t=" + System.currentTimeMillis();
+
+        Request request = new Request.Builder()
+                .url(endpoint)
+                .header("x-scanner-token", apiKey)
+                .build();
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                if (notifyErrors) {
+                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "Failed to fetch orders: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                }
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    String json = response.body() != null ? response.body().string() : "{}";
+                    mainHandler.post(() -> parseAndRenderOrders(json));
+                }
+            }
+        });
+    }
+
+    private void parseAndRenderOrders(String jsonStr) {
+        try {
+            JSONObject json = new JSONObject(jsonStr);
+            if (!json.optBoolean("success", false)) return;
+
+            JSONArray arr = json.optJSONArray("orders");
+            currentOpenOrders.clear();
+
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject obj = arr.getJSONObject(i);
+                    OpenOrder order = new OpenOrder();
+                    order.id = obj.optString("id");
+                    order.tableId = obj.optString("tableId");
+                    order.displayTitle = obj.optString("displayTitle", "Table");
+                    order.total = obj.optDouble("total", 0.0);
+                    order.itemsCount = obj.optInt("itemsCount", 0);
+                    order.isVerified = obj.optBoolean("isVerified", false);
+                    currentOpenOrders.add(order);
+                }
+            }
+
+            // Update header count
+            txtOpenOrdersHeader.setText(String.format(Locale.US, "OPEN ORDERS (%d)", currentOpenOrders.size()));
+
+            // Render order cards
+            layoutOrdersList.removeAllViews();
+            if (currentOpenOrders.isEmpty()) {
+                txtNoOrdersNotice.setVisibility(View.VISIBLE);
+                layoutOrdersList.addView(txtNoOrdersNotice);
+            } else {
+                txtNoOrdersNotice.setVisibility(View.GONE);
+                LayoutInflater inflater = LayoutInflater.from(this);
+
+                for (final OpenOrder order : currentOpenOrders) {
+                    View cardView = inflater.inflate(R.layout.item_open_order, layoutOrdersList, false);
+
+                    TextView txtTitle = cardView.findViewById(R.id.txtOrderTitle);
+                    TextView txtTotal = cardView.findViewById(R.id.txtOrderTotal);
+                    TextView txtCount = cardView.findViewById(R.id.txtOrderItemsCount);
+                    TextView txtVerifiedBadge = cardView.findViewById(R.id.txtOrderVerifiedBadge);
+
+                    txtTitle.setText(order.displayTitle);
+                    txtTotal.setText(String.format(Locale.US, "%.2f ETB", order.total));
+                    txtCount.setText(String.format(Locale.US, "%d item%s", order.itemsCount, order.itemsCount == 1 ? "" : "s"));
+
+                    if (order.isVerified) {
+                        txtVerifiedBadge.setVisibility(View.VISIBLE);
+                    } else {
+                        txtVerifiedBadge.setVisibility(View.GONE);
+                    }
+
+                    // Selection state styling
+                    if (selectedOrder != null && selectedOrder.id.equals(order.id)) {
+                        cardView.setBackgroundResource(R.drawable.bg_order_chip_selected);
+                    } else {
+                        cardView.setBackgroundResource(R.drawable.bg_order_chip);
+                    }
+
+                    cardView.setOnClickListener(v -> toggleOrderSelection(order));
+                    layoutOrdersList.addView(cardView);
+                }
+            }
+
+            // Check if selected order was removed or completed on POS
+            if (selectedOrder != null) {
+                boolean stillOpen = false;
+                for (OpenOrder o : currentOpenOrders) {
+                    if (o.id.equals(selectedOrder.id)) {
+                        selectedOrder = o; // Update totals
+                        stillOpen = true;
+                        break;
+                    }
+                }
+                if (!stillOpen) {
+                    clearSelectedOrder();
+                } else {
+                    updateSelectedOrderBanner();
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void toggleOrderSelection(OpenOrder order) {
+        if (selectedOrder != null && selectedOrder.id.equals(order.id)) {
+            clearSelectedOrder();
+        } else {
+            selectedOrder = order;
+            updateSelectedOrderBanner();
+            playBeep(true);
+        }
+        // Refresh card backgrounds
+        fetchOpenOrders(false);
+    }
+
+    private void updateSelectedOrderBanner() {
+        if (selectedOrder != null) {
+            bannerSelectedOrder.setVisibility(View.VISIBLE);
+            txtSelectedOrderTitle.setText(String.format(Locale.US, "🎯 Linked to %s (Bill: %.2f ETB)", selectedOrder.displayTitle, selectedOrder.total));
+        } else {
+            bannerSelectedOrder.setVisibility(View.GONE);
+        }
+    }
+
+    private void clearSelectedOrder() {
+        selectedOrder = null;
+        bannerSelectedOrder.setVisibility(View.GONE);
+        fetchOpenOrders(false);
     }
 
     // ==========================================
@@ -340,7 +590,6 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             String cleaned = payload.trim();
 
-            // Detect provider
             boolean isCbe = cleaned.toUpperCase().startsWith("FT") ||
                     cleaned.toLowerCase().contains("cbe.com.et") ||
                     cleaned.startsWith("v2-") ||
@@ -449,7 +698,7 @@ public class MainActivity extends AppCompatActivity {
                     finalDate, null, slipUrl
             );
 
-            // Sync with local POS machine in background
+            // Sync with Cashier PC in background
             syncVerificationWithPos(transactionId, "TELEBIRR", finalAmount, finalPayer, finalReceiver, html);
         });
     }
@@ -572,9 +821,13 @@ public class MainActivity extends AppCompatActivity {
             txtResultReceiver.setText(receiver);
             txtResultRef.setText(reference);
             txtResultDate.setText(dateTime);
-            txtResultPosMatch.setText("⚡ Checking open POS orders...");
 
-            // Save to local scan history
+            if (selectedOrder != null) {
+                txtResultPosMatch.setText(String.format(Locale.US, "⚡ Attaching to %s (Bill: %.2f ETB)...", selectedOrder.displayTitle, selectedOrder.total));
+            } else {
+                txtResultPosMatch.setText("⚡ Auto-matching open table on Cashier PC...");
+            }
+
             saveToHistory(reference, provider, amount, payer, dateTime, true);
         } else {
             playBeep(false);
@@ -603,7 +856,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Asynchronously sync verified receipt with local/cloud POS server
+     * Asynchronously sync verified receipt with Cashier PC
      */
     private void syncVerificationWithPos(
             final String reference,
@@ -613,16 +866,36 @@ public class MainActivity extends AppCompatActivity {
             final String receiver,
             final String htmlContent
     ) {
-        String posUrl = prefs.getString(KEY_POS_URL, DEFAULT_POS_URL);
-        if (posUrl == null || posUrl.trim().isEmpty()) {
-            posUrl = DEFAULT_POS_URL;
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+
+        // Determine if an order is selected or auto-matchable
+        String orderIdToAttach = null;
+        String targetTitle = "Order";
+
+        if (selectedOrder != null) {
+            orderIdToAttach = selectedOrder.id;
+            targetTitle = selectedOrder.displayTitle;
+        } else {
+            // Check for exact amount match among open orders
+            for (OpenOrder o : currentOpenOrders) {
+                if (Math.abs(o.total - amount) < 0.5) {
+                    orderIdToAttach = o.id;
+                    targetTitle = o.displayTitle;
+                    break;
+                }
+            }
         }
+
+        final String finalTargetTitle = targetTitle;
 
         try {
             JSONObject body = new JSONObject();
             body.put("referenceOrUrl", reference);
             body.put("provider", provider);
             body.put("expectedAmount", amount);
+            if (orderIdToAttach != null) {
+                body.put("orderId", orderIdToAttach);
+            }
             if (htmlContent != null) {
                 body.put("htmlContent", htmlContent);
             }
@@ -633,35 +906,27 @@ public class MainActivity extends AppCompatActivity {
             );
 
             Request request = new Request.Builder()
-                    .url(posUrl.replaceAll("/+$", "") + "/api/verify-receipt")
+                    .url(activePosUrl.replaceAll("/+$", "") + "/api/verify-receipt")
+                    .header("x-scanner-token", apiKey)
                     .post(requestBody)
                     .build();
 
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    mainHandler.post(() -> txtResultPosMatch.setText("📱 Standalone Verified (POS Offline)"));
+                    mainHandler.post(() -> txtResultPosMatch.setText("📱 Standalone Verified (Cashier PC Offline)"));
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                     if (response.isSuccessful()) {
-                        try {
-                            String respStr = response.body() != null ? response.body().string() : "{}";
-                            JSONObject respJson = new JSONObject(respStr);
-                            JSONObject linkedOrder = respJson.optJSONObject("linkedOrder");
-
-                            if (linkedOrder != null) {
-                                String tableNo = linkedOrder.optString("tableNumber", "?");
-                                mainHandler.post(() -> txtResultPosMatch.setText("✅ Matched Table #" + tableNo + " (Order Paid)"));
-                            } else {
-                                mainHandler.post(() -> txtResultPosMatch.setText("⚡ Sent to Cashier POS (Ready to link)"));
-                            }
-                        } catch (Exception ex) {
-                            mainHandler.post(() -> txtResultPosMatch.setText("✅ Synced with POS"));
-                        }
+                        mainHandler.post(() -> {
+                            txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", finalTargetTitle));
+                            clearSelectedOrder();
+                            fetchOpenOrders(false);
+                        });
                     } else {
-                        mainHandler.post(() -> txtResultPosMatch.setText("📱 Standalone Verified"));
+                        mainHandler.post(() -> txtResultPosMatch.setText("⚡ Sent to Cashier PC"));
                     }
                 }
             });
@@ -675,6 +940,7 @@ public class MainActivity extends AppCompatActivity {
         hideLoading();
         isVerifying = false;
         barcodeView.resume();
+        fetchOpenOrders(false);
     }
 
     private void showLoading(String message) {
@@ -701,7 +967,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         EditText inputCode = dialogView.findViewById(R.id.inputCode);
-        RadioGroup radioProvider = dialogView.findViewById(R.id.radioProvider);
         Button btnVerify = dialogView.findViewById(R.id.btnVerifyManual);
         Button btnCancel = dialogView.findViewById(R.id.btnCancelManual);
 
@@ -731,44 +996,67 @@ public class MainActivity extends AppCompatActivity {
 
         EditText inputPosUrl = dialogView.findViewById(R.id.inputPosUrl);
         EditText inputApiKey = dialogView.findViewById(R.id.inputApiKey);
+        Button btnPresetTunnel = dialogView.findViewById(R.id.btnPresetTunnel);
+        Button btnPresetLocal = dialogView.findViewById(R.id.btnPresetLocal);
         Button btnSave = dialogView.findViewById(R.id.btnSaveSettings);
         Button btnTest = dialogView.findViewById(R.id.btnTestSettings);
         Button btnClose = dialogView.findViewById(R.id.btnCloseSettings);
 
-        inputPosUrl.setText(prefs.getString(KEY_POS_URL, DEFAULT_POS_URL));
+        inputPosUrl.setText(prefs.getString(KEY_POS_URL, activePosUrl));
         inputApiKey.setText(prefs.getString(KEY_API_KEY, DEFAULT_API_KEY));
 
+        btnPresetTunnel.setOnClickListener(v -> inputPosUrl.setText(DEFAULT_TUNNEL_URL));
+        btnPresetLocal.setOnClickListener(v -> inputPosUrl.setText(DEFAULT_LOCAL_URL));
+
         btnTest.setOnClickListener(v -> {
-            String testUrl = inputPosUrl.getText().toString().trim();
-            btnTest.setText("Testing...");
-            Request req = new Request.Builder().url(testUrl.replaceAll("/+$", "") + "/api/health").build();
+            String testUrl = inputPosUrl.getText().toString().trim().replaceAll("/+$", "");
+            String key = inputApiKey.getText().toString().trim();
+            btnTest.setText("Testing Connection...");
+
+            Request req = new Request.Builder()
+                    .url(testUrl + "/api/scanner/orders?key=" + key)
+                    .header("x-scanner-token", key)
+                    .build();
+
             httpClient.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     mainHandler.post(() -> {
-                        btnTest.setText("Test Failed");
+                        btnTest.setText("Connection Failed");
                         Toast.makeText(MainActivity.this, "Cannot connect: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     });
                 }
 
                 @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) {
-                    mainHandler.post(() -> {
-                        btnTest.setText("Success (OK)");
-                        Toast.makeText(MainActivity.this, "Connected successfully!", Toast.LENGTH_SHORT).show();
-                    });
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        mainHandler.post(() -> {
+                            btnTest.setText("Connected (OK)");
+                            Toast.makeText(MainActivity.this, "Cashier PC connected! Open orders retrieved.", Toast.LENGTH_SHORT).show();
+                            parseAndRenderOrders(body);
+                        });
+                    } else {
+                        mainHandler.post(() -> {
+                            btnTest.setText("HTTP " + response.code());
+                            Toast.makeText(MainActivity.this, "Server responded with error " + response.code(), Toast.LENGTH_SHORT).show();
+                        });
+                    }
                 }
             });
         });
 
         btnSave.setOnClickListener(v -> {
+            String newUrl = inputPosUrl.getText().toString().trim();
+            String newKey = inputApiKey.getText().toString().trim();
             prefs.edit()
-                    .putString(KEY_POS_URL, inputPosUrl.getText().toString().trim())
-                    .putString(KEY_API_KEY, inputApiKey.getText().toString().trim())
+                    .putString(KEY_POS_URL, newUrl)
+                    .putString(KEY_API_KEY, newKey)
                     .apply();
+            activePosUrl = newUrl;
             dialog.dismiss();
-            testPosConnection(true);
-            Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show();
+            discoverAndConnectCashierPc(true);
+            Toast.makeText(this, "Settings saved. Connecting...", Toast.LENGTH_SHORT).show();
         });
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
@@ -854,41 +1142,6 @@ public class MainActivity extends AppCompatActivity {
             }
             txtTodaySummary.setText(String.format(Locale.US, "Today: %d receipts • %.2f ETB", arr.length(), total));
         } catch (Exception ignored) {}
-    }
-
-    private void testPosConnection(boolean showToast) {
-        String posUrl = prefs.getString(KEY_POS_URL, DEFAULT_POS_URL);
-        Request request = new Request.Builder()
-                .url(posUrl.replaceAll("/+$", "") + "/api/health")
-                .build();
-
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                mainHandler.post(() -> {
-                    txtPosStatus.setText("● Standalone");
-                    txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
-                    if (showToast) {
-                        Toast.makeText(MainActivity.this, "Operating Standalone (Offline Mode)", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) {
-                mainHandler.post(() -> {
-                    if (response.isSuccessful()) {
-                        txtPosStatus.setText("● POS Online");
-                        txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
-                        if (showToast) {
-                            Toast.makeText(MainActivity.this, "POS Synchronized", Toast.LENGTH_SHORT).show();
-                        }
-                    } else {
-                        txtPosStatus.setText("● Standalone");
-                    }
-                });
-            }
-        });
     }
 
     // ==========================================

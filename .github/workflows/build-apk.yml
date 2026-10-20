@@ -51,8 +51,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.0.0-scanner
-          name: "Kogna Verifier Native App v2.0.0"
+          tag_name: v2.1.0-scanner
+          name: "Kogna Verifier Native App v2.1.0"
           draft: false
           prerelease: false
           body: |
