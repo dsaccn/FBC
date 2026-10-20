@@ -1288,8 +1288,8 @@ public class MainActivity extends AppCompatActivity {
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         }
 
-        EditText inputCode = dialogView.findViewById(R.id.inputManualCode);
-        RadioGroup radioGroup = dialogView.findViewById(R.id.radioGroupProvider);
+        EditText inputCode = dialogView.findViewById(R.id.inputCode);
+        RadioGroup radioGroup = dialogView.findViewById(R.id.radioProvider);
         Button btnVerify = dialogView.findViewById(R.id.btnVerifyManual);
         Button btnCancel = dialogView.findViewById(R.id.btnCancelManual);
 
