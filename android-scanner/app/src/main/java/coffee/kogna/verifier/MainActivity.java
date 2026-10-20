@@ -70,6 +70,11 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Collections;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -78,6 +83,7 @@ import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.ConnectionPool;
 import okhttp3.ConnectionSpec;
+import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -153,6 +159,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isVerifying = false;
     private String lastVerifiedUrl = "";
     private Call currentActiveCall = null;
+    private final List<Call> activeRaceCalls = Collections.synchronizedList(new ArrayList<>());
     private String activePosUrl = DEFAULT_LOCAL_URL;
 
     // Last scanned verified data for post-scan table linking
@@ -225,12 +232,25 @@ public class MainActivity extends AppCompatActivity {
                 ConnectionSpec.COMPATIBLE_TLS,
                 ConnectionSpec.CLEARTEXT
         );
+        Dns fastDns = hostname -> {
+            if ("transactioninfo.ethiotelecom.et".equalsIgnoreCase(hostname)) {
+                try {
+                    return Arrays.asList(
+                            InetAddress.getByAddress("transactioninfo.ethiotelecom.et", new byte[]{(byte) 196, (byte) 188, 116, 120}),
+                            InetAddress.getByAddress("transactioninfo.ethiotelecom.et", new byte[]{(byte) 196, (byte) 188, 116, 121})
+                    );
+                } catch (UnknownHostException ignored) {}
+            }
+            return Dns.SYSTEM.lookup(hostname);
+        };
+
         httpClient = new OkHttpClient.Builder()
+                .dns(fastDns)
                 .connectionSpecs(specs)
                 .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(20, TimeUnit.SECONDS)
+                .connectTimeout(12, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build();
 
@@ -388,6 +408,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnCancelLoading.setOnClickListener(v -> {
+            cancelAllRaceCalls();
             if (currentActiveCall != null) {
                 currentActiveCall.cancel();
             }
@@ -943,143 +964,199 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             DetectedPayment payment = detectPayment(payload);
-
-            if (payment.isCbe) {
-                processCbeScan(payment);
-            } else {
-                processTelebirrScan(payment);
-            }
+            startParallelRaceVerification(payment);
         }).start();
     }
 
-    private interface DeviceSlipCallback {
-        void onComplete(String htmlContent);
-    }
-
-    private void fetchDeviceSlipWithRetry(final String slipUrl, final int attempt, final int maxAttempts, final DeviceSlipCallback callback) {
-        Request request = new Request.Builder()
-                .url(slipUrl)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
-                .header("Connection", "Keep-Alive")
-                .build();
-
-        currentActiveCall = httpClient.newCall(request);
-        currentActiveCall.enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                if (attempt < maxAttempts) {
-                    mainHandler.postDelayed(() -> fetchDeviceSlipWithRetry(slipUrl, attempt + 1, maxAttempts, callback), 300);
-                } else {
-                    callback.onComplete(null);
-                }
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (response.isSuccessful() && response.body() != null) {
-                    String html = response.body().string();
-                    if (html.length() > 300) {
-                        callback.onComplete(html);
-                        return;
-                    }
-                }
-                if (attempt < maxAttempts) {
-                    mainHandler.postDelayed(() -> fetchDeviceSlipWithRetry(slipUrl, attempt + 1, maxAttempts, callback), 300);
-                } else {
-                    callback.onComplete(null);
-                }
-            }
-        });
-    }
-
-    private void processTelebirrScan(final DetectedPayment payment) {
-        final String transactionId = payment.reference;
+    private void startParallelRaceVerification(final DetectedPayment payment) {
+        cancelAllRaceCalls();
+        final String reference = payment.reference;
+        final String provider = payment.provider;
         final String slipUrl = payment.slipUrl;
         lastVerifiedUrl = slipUrl;
 
-        if (transactionId == null || transactionId.isEmpty()) {
+        if (reference == null || reference.isEmpty()) {
             mainHandler.post(() -> showVerificationResult(
-                    false, "TELEBIRR", "-", 0.0, "-", "-",
-                    "Invalid QR format", "Unable to extract Telebirr reference code", "", "❌ Invalid QR code"
+                    false, provider, "-", 0.0, "-", "-",
+                    "-", "INVALID QR CODE", "", "❌ Unable to extract transaction reference from QR code"
             ));
             return;
         }
 
-        // ⚡ Direct on-device fetch with 2-attempt fast retry (Option B inside Ethiopia)
-        fetchDeviceSlipWithRetry(slipUrl, 1, 2, htmlContent -> {
-            if (htmlContent != null && htmlContent.length() > 300) {
-                // 🚀 Instant on-device verification & display (< 1 second!)
-                handleInstantTelebirrVerification(transactionId, htmlContent, slipUrl);
-            } else {
-                // If device couldn't fetch HTML, query Cashier PC server as fallback
-                verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
+        final AtomicBoolean isResolved = new AtomicBoolean(false);
+
+        // Gather all candidate POS endpoints for parallel query
+        final List<String> posEndpoints = new ArrayList<>();
+        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
+            posEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+        }
+        if (!posEndpoints.contains(DEFAULT_LOCAL_URL)) {
+            posEndpoints.add(DEFAULT_LOCAL_URL);
+        }
+        if (!posEndpoints.contains(DEFAULT_TUNNEL_URL)) {
+            posEndpoints.add(DEFAULT_TUNNEL_URL);
+        }
+
+        final boolean hasDirectBank = ("TELEBIRR".equalsIgnoreCase(provider) && slipUrl != null && !slipUrl.isEmpty())
+                || ("CBE".equalsIgnoreCase(provider) && reference.toLowerCase().startsWith("v2-"));
+
+        int totalRacers = posEndpoints.size() + (hasDirectBank ? 1 : 0);
+        final AtomicInteger remainingRacers = new AtomicInteger(totalRacers);
+
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
+        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
+        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
+
+        // 🏎️ RACER 1: Direct On-Device Bank Gateway Query (Local Ethiopian Gateway)
+        if (hasDirectBank) {
+            if ("TELEBIRR".equalsIgnoreCase(provider)) {
+                Request directReq = new Request.Builder()
+                        .url(slipUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
+                        .header("Connection", "Keep-Alive")
+                        .build();
+
+                Call directCall = httpClient.newCall(directReq);
+                activeRaceCalls.add(directCall);
+                directCall.enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                        onRacerDone(remainingRacers, isResolved, payment, "Direct device connection failed: " + e.getMessage());
+                    }
+
+                    @Override
+                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                        if (isResolved.get()) return;
+                        if (response.isSuccessful() && response.body() != null) {
+                            String html = response.body().string();
+                            if (html.length() > 300 && !html.contains("not found") && !html.contains("not correct")) {
+                                boolean won = evaluateInstantTelebirrRace(reference, html, slipUrl, isResolved);
+                                if (won) return;
+                            }
+                        }
+                        onRacerDone(remainingRacers, isResolved, payment, "Direct slip not verified");
+                    }
+                });
+            } else if ("CBE".equalsIgnoreCase(provider)) {
+                final String cleanToken = reference.replaceAll("[?#].*$", "").replaceAll("/+$", "");
+                String cbeUrl = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken;
+                Request directReq = new Request.Builder()
+                        .url(cbeUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
+                        .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
+                        .header("Accept", "application/json")
+                        .header("Connection", "Keep-Alive")
+                        .build();
+
+                Call directCall = httpClient.newCall(directReq);
+                activeRaceCalls.add(directCall);
+                directCall.enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                        onRacerDone(remainingRacers, isResolved, payment, "Direct CBE query failed: " + e.getMessage());
+                    }
+
+                    @Override
+                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                        if (isResolved.get()) return;
+                        if (response.isSuccessful() && response.body() != null) {
+                            try {
+                                String jsonStr = response.body().string();
+                                JSONObject data = new JSONObject(jsonStr);
+                                boolean won = evaluateInstantCbeRace(cleanToken, data, slipUrl, isResolved);
+                                if (won) return;
+                            } catch (Exception ignored) {}
+                        }
+                        onRacerDone(remainingRacers, isResolved, payment, "Direct CBE slip not verified");
+                    }
+                });
             }
-        });
-    }
+        }
 
-    private void processCbeScan(final DetectedPayment payment) {
-        final String tokenId = payment.reference;
-        final String slipUrl = payment.slipUrl;
-        lastVerifiedUrl = slipUrl;
+        // 🏎️ RACER 2 & 3: Cashier PC Local LAN & Cloudflare Tunnel in Parallel!
+        for (final String endpoint : posEndpoints) {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("referenceOrUrl", reference);
+                body.put("provider", provider);
+                if (targetOrderId != null) {
+                    body.put("orderId", targetOrderId);
+                    body.put("expectedAmount", expectedBill);
+                }
 
-        if (tokenId != null && tokenId.toLowerCase().startsWith("v2-")) {
-            // ⚡ Modern CBE V2 token: Query CBE API directly on device (< 400ms!)
-            fetchCbeSlipDirectly(tokenId, slipUrl);
-        } else {
-            // Legacy FT code or web slip: Query Cashier PC server
-            verifySlipWithServer(tokenId, "CBE", null, slipUrl);
+                Request posReq = new Request.Builder()
+                        .url(endpoint + "/api/verify-receipt")
+                        .header("x-scanner-token", apiKey)
+                        .post(RequestBody.Companion.create(body.toString(), MediaType.Companion.parse("application/json; charset=utf-8")))
+                        .build();
+
+                Call posCall = httpClient.newCall(posReq);
+                activeRaceCalls.add(posCall);
+                posCall.enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                        onRacerDone(remainingRacers, isResolved, payment, "POS error at " + endpoint);
+                    }
+
+                    @Override
+                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                        if (isResolved.get()) return;
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        try {
+                            JSONObject json = new JSONObject(jsonStr);
+                            boolean isDuplicate = json.optBoolean("isDuplicate", false) || json.optBoolean("duplicate", false);
+                            if (isDuplicate) {
+                                if (isResolved.compareAndSet(false, true)) {
+                                    cancelAllRaceCalls();
+                                    mainHandler.post(() -> {
+                                        txtResultBadge.setText("DUPLICATE");
+                                        txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                                        txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                                        showVerificationResult(
+                                                false, provider, reference, 0.0, "-", "-",
+                                                "-", "DUPLICATE SLIP", slipUrl,
+                                                "🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!"
+                                        );
+                                        playBeep(false);
+                                        vibrateError();
+                                    });
+                                }
+                                return;
+                            }
+
+                            boolean isSuccess = json.optBoolean("success", false);
+                            JSONObject receipt = json.optJSONObject("receipt");
+                            if (isSuccess && receipt != null && receipt.optBoolean("success", false)) {
+                                if (isResolved.compareAndSet(false, true)) {
+                                    cancelAllRaceCalls();
+                                    activePosUrl = endpoint;
+                                    mainHandler.post(() -> handleServerVerificationResponse(true, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
+                                }
+                                return;
+                            }
+                        } catch (Exception ignored) {}
+
+                        onRacerDone(remainingRacers, isResolved, payment, "POS verification rejected at " + endpoint);
+                    }
+                });
+            } catch (Exception e) {
+                onRacerDone(remainingRacers, isResolved, payment, "POS request creation failed");
+            }
         }
     }
 
-    private void fetchCbeSlipDirectly(final String tokenId, final String slipUrl) {
-        final String cleanToken = tokenId.replaceAll("[?#].*$", "").replaceAll("/+$", "");
-        String url = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + cleanToken;
-
-        Request request = new Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
-                .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
-                .header("Accept", "application/json")
-                .header("Connection", "Keep-Alive")
-                .build();
-
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                // Fall back to Cashier PC server
-                verifySlipWithServer(cleanToken, "CBE", null, slipUrl);
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (response.isSuccessful() && response.body() != null) {
-                    try {
-                        String jsonStr = response.body().string();
-                        JSONObject data = new JSONObject(jsonStr);
-                        handleInstantCbeVerification(cleanToken, data, slipUrl);
-                        return;
-                    } catch (Exception ignored) {}
-                }
-                // Non-200 or parsing error -> fall back to Cashier PC
-                verifySlipWithServer(cleanToken, "CBE", null, slipUrl);
-            }
-        });
-    }
-
-    private void handleInstantTelebirrVerification(
+    private boolean evaluateInstantTelebirrRace(
             final String reference,
             final String htmlContent,
-            final String slipUrl
+            final String slipUrl,
+            final AtomicBoolean isResolved
     ) {
-        if (htmlContent.contains("This request is not correct") || htmlContent.contains("not found") || htmlContent.length() < 300) {
-            mainHandler.post(() -> showVerificationResult(
-                    false, "TELEBIRR", reference, 0.0, "-", "-",
-                    "-", "INVALID SLIP", slipUrl, "❌ Slip expired or not found on Ethio Telecom"
-            ));
-            return;
+        if (htmlContent == null || htmlContent.length() < 300 || htmlContent.contains("This request is not correct") || htmlContent.contains("not found")) {
+            return false;
         }
 
         String payerName = extractHtmlField(htmlContent, "Payer\\s*Name");
@@ -1106,68 +1183,78 @@ public class MainActivity extends AppCompatActivity {
         // 🚨 1. FRAUD CHECK: Receiver Account Match
         boolean receiverMatched = matchReceiver("TELEBIRR", receiverPhone, receiverName);
         if (!receiverMatched) {
-            mainHandler.post(() -> {
-                showVerificationResult(
-                        false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
-                        dateTime, "RECEIVER MISMATCH", slipUrl,
-                        "🚨 FRAUD ALERT: Payment credited to " + finalReceiver + ", NOT your official account (" + cachedTelebirrReceiver + ")!"
-                );
-                txtResultBadge.setText("WRONG RECV");
-            });
-            return;
+            if (isResolved.compareAndSet(false, true)) {
+                cancelAllRaceCalls();
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
+                            dateTime, "RECEIVER MISMATCH", slipUrl,
+                            "🚨 FRAUD ALERT: Payment credited to " + finalReceiver + ", NOT your official account (" + cachedTelebirrReceiver + ")!"
+                    );
+                    txtResultBadge.setText("WRONG RECV");
+                    playBeep(false);
+                    vibrateError();
+                });
+            }
+            return true;
         }
 
         // 🚨 2. UNDERPAYMENT CHECK against selected table
         if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
-            mainHandler.post(() -> {
-                showVerificationResult(
-                        false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
-                        dateTime, "AMOUNT TOO LOW", slipUrl,
-                        String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
-                );
-                txtResultBadge.setText("UNDERPAID");
-            });
-            return;
+            if (isResolved.compareAndSet(false, true)) {
+                cancelAllRaceCalls();
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            false, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
+                            dateTime, "AMOUNT TOO LOW", slipUrl,
+                            String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
+                    );
+                    txtResultBadge.setText("UNDERPAID");
+                    playBeep(false);
+                    vibrateError();
+                });
+            }
+            return true;
         }
 
-        lastVerifiedRef = reference;
-        lastVerifiedProvider = "TELEBIRR";
-        lastVerifiedAmount = amount;
-        lastVerifiedPayer = finalPayer;
-        lastVerifiedReceiver = finalReceiver;
+        // 🏆 THIS RACER WON! Show genuine green card immediately!
+        if (isResolved.compareAndSet(false, true)) {
+            cancelAllRaceCalls();
+            lastVerifiedRef = reference;
+            lastVerifiedProvider = "TELEBIRR";
+            lastVerifiedAmount = amount;
+            lastVerifiedPayer = finalPayer;
+            lastVerifiedReceiver = finalReceiver;
 
-        final double verifiedAmount = amount;
-        final String verifiedTime = dateTime;
-        final String initialPosMsg = (selectedOrder != null) 
-                ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
-                : "⚡ Syncing with Cashier PC...";
+            final String initialPosMsg = (selectedOrder != null) 
+                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+                    : "⚡ Syncing with Cashier PC...";
 
-        // 🚀 SHOW GREEN GENUINE CARD IMMEDIATELY ON PHONE (< 1s)!
-        mainHandler.post(() -> {
-            showVerificationResult(
-                    true, "TELEBIRR", reference, verifiedAmount, finalPayer, finalReceiver,
-                    verifiedTime, null, slipUrl, initialPosMsg
-            );
-        });
+            mainHandler.post(() -> {
+                showVerificationResult(
+                        true, "TELEBIRR", reference, amount, finalPayer, finalReceiver,
+                        dateTime, null, slipUrl, initialPosMsg
+                );
+            });
 
-        // 🌐 Asynchronously sync with POS in background (Local LAN 2ms or Tunnel)
-        syncVerifiedSlipInBackground(reference, "TELEBIRR", htmlContent, slipUrl, verifiedAmount, finalPayer, finalReceiver);
+            // Sync with POS in background (non-blocking)
+            syncVerifiedSlipInBackground(reference, "TELEBIRR", htmlContent, slipUrl, amount, finalPayer, finalReceiver);
+            return true;
+        }
+        return false;
     }
 
-    private void handleInstantCbeVerification(
+    private boolean evaluateInstantCbeRace(
             final String reference,
             final JSONObject data,
-            final String slipUrl
+            final String slipUrl,
+            final AtomicBoolean isResolved
     ) {
         try {
             String status = data.optString("status", "").toUpperCase();
             boolean isCompleted = status.contains("COMPLETED") || status.contains("SUCCESS");
             if (!isCompleted) {
-                mainHandler.post(() -> showVerificationResult(
-                        false, "CBE", reference, 0.0, "-", "-",
-                        "-", "UNCONFIRMED STATUS", slipUrl, "CBE status: " + status
-                ));
-                return;
+                return false;
             }
 
             double parsedAmount = data.optDouble("amountCredited", 0.0);
@@ -1185,55 +1272,101 @@ public class MainActivity extends AppCompatActivity {
             // 🚨 1. Receiver Account Check
             boolean receiverMatched = matchReceiver("CBE", receiverAcc, receiver);
             if (!receiverMatched) {
-                mainHandler.post(() -> {
-                    showVerificationResult(
-                            false, "CBE", reference, amount, payer, receiver,
-                            dateTime, "RECEIVER MISMATCH", slipUrl,
-                            "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official CBE account (" + cachedCbeReceiver + ")!"
-                    );
-                    txtResultBadge.setText("WRONG RECV");
-                });
-                return;
+                if (isResolved.compareAndSet(false, true)) {
+                    cancelAllRaceCalls();
+                    mainHandler.post(() -> {
+                        showVerificationResult(
+                                false, "CBE", reference, amount, payer, receiver,
+                                dateTime, "RECEIVER MISMATCH", slipUrl,
+                                "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official CBE account (" + cachedCbeReceiver + ")!"
+                        );
+                        txtResultBadge.setText("WRONG RECV");
+                        playBeep(false);
+                        vibrateError();
+                    });
+                }
+                return true;
             }
 
             // 🚨 2. Underpayment Check
             if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
-                mainHandler.post(() -> {
-                    showVerificationResult(
-                            false, "CBE", reference, amount, payer, receiver,
-                            dateTime, "AMOUNT TOO LOW", slipUrl,
-                            String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
-                    );
-                    txtResultBadge.setText("UNDERPAID");
-                });
-                return;
+                if (isResolved.compareAndSet(false, true)) {
+                    cancelAllRaceCalls();
+                    mainHandler.post(() -> {
+                        showVerificationResult(
+                                false, "CBE", reference, amount, payer, receiver,
+                                dateTime, "AMOUNT TOO LOW", slipUrl,
+                                String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
+                        );
+                        txtResultBadge.setText("UNDERPAID");
+                        playBeep(false);
+                        vibrateError();
+                    });
+                }
+                return true;
             }
 
-            lastVerifiedRef = reference;
-            lastVerifiedProvider = "CBE";
-            lastVerifiedAmount = amount;
-            lastVerifiedPayer = payer;
-            lastVerifiedReceiver = receiver;
+            // 🏆 THIS RACER WON! Show genuine green card immediately!
+            if (isResolved.compareAndSet(false, true)) {
+                cancelAllRaceCalls();
+                lastVerifiedRef = reference;
+                lastVerifiedProvider = "CBE";
+                lastVerifiedAmount = amount;
+                lastVerifiedPayer = payer;
+                lastVerifiedReceiver = receiver;
 
-            final double verifiedAmount = amount;
-            final String verifiedTime = dateTime;
-            final String initialPosMsg = (selectedOrder != null) 
-                    ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
-                    : "⚡ Syncing with Cashier PC...";
+                final String initialPosMsg = (selectedOrder != null) 
+                        ? "⚡ Linking to " + selectedOrder.displayTitle + "..." 
+                        : "⚡ Syncing with Cashier PC...";
 
-            // 🚀 SHOW GREEN GENUINE CARD IMMEDIATELY ON PHONE (< 1s)!
-            mainHandler.post(() -> {
-                showVerificationResult(
-                        true, "CBE", reference, verifiedAmount, payer, receiver,
-                        verifiedTime, null, slipUrl, initialPosMsg
-                );
-            });
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            true, "CBE", reference, amount, payer, receiver,
+                            dateTime, null, slipUrl, initialPosMsg
+                    );
+                });
 
-            // 🌐 Asynchronously sync with POS in background
-            syncVerifiedSlipInBackground(reference, "CBE", null, slipUrl, verifiedAmount, payer, receiver);
+                // Asynchronously sync with POS in background
+                syncVerifiedSlipInBackground(reference, "CBE", null, slipUrl, amount, payer, receiver);
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
 
-        } catch (Exception e) {
-            verifySlipWithServer(reference, "CBE", null, slipUrl);
+    private void onRacerDone(
+            final AtomicInteger remainingRacers,
+            final AtomicBoolean isResolved,
+            final DetectedPayment payment,
+            final String reason
+    ) {
+        if (isResolved.get()) return;
+        if (remainingRacers.decrementAndGet() <= 0) {
+            if (isResolved.compareAndSet(false, true)) {
+                cancelAllRaceCalls();
+                mainHandler.post(() -> {
+                    showVerificationResult(
+                            false, payment.provider, payment.reference, 0.0, "-", "-",
+                            "-", "ALL REQUESTS TIMED OUT", payment.slipUrl,
+                            "❌ All verification routes timed out. Tap 'View Official Slip' below to inspect slip directly."
+                    );
+                    playBeep(false);
+                    vibrateError();
+                });
+            }
+        }
+    }
+
+    private void cancelAllRaceCalls() {
+        synchronized (activeRaceCalls) {
+            for (Call call : activeRaceCalls) {
+                try {
+                    if (!call.isCanceled()) {
+                        call.cancel();
+                    }
+                } catch (Exception ignored) {}
+            }
+            activeRaceCalls.clear();
         }
     }
 

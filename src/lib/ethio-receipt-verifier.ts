@@ -178,8 +178,8 @@ export function extractTelebirrTransactionId(raw: string): string {
 async function fetchTelebirrWithRetry(url: string, maxAttempts = 2): Promise<Response> {
   let lastErr: any = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Attempt 1: 5.5s timeout. Attempt 2: 7.5s timeout. Absorbs Ethiopian network peak latency!
-    const timeoutMs = attempt === 1 ? 5500 : 7500
+    // Attempt 1: 8.5s timeout. Attempt 2: 12.5s timeout. Absorbs Ethiopian network peak latency!
+    const timeoutMs = attempt === 1 ? 8500 : 12500
     try {
       const res = await fetch(url, {
         headers: {
