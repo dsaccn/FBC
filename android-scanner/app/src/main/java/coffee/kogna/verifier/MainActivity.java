@@ -11,8 +11,6 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
-import android.net.ConnectivityManager;
-import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -27,12 +25,17 @@ import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
 import android.view.animation.RotateAnimation;
 import android.view.animation.TranslateAnimation;
+import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -80,17 +83,24 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_API_KEY = "pos_api_key";
     private static final String KEY_HISTORY = "scan_history_json";
 
+    // Receiver Account Caching
+    private static final String KEY_TELEBIRR_RECV = "cached_telebirr_recv";
+    private static final String KEY_CBE_RECV = "cached_cbe_recv";
+    private static final String KEY_MERCHANT_NAME = "cached_merchant_name";
+
     // Cashier PC Default Endpoints (Cloudflare Tunnel & Local Café Wi-Fi IP)
     private static final String DEFAULT_TUNNEL_URL = "https://scanner.kogna.coffee";
     private static final String DEFAULT_LOCAL_URL = "http://192.168.1.5:3000";
     private static final String DEFAULT_API_KEY = "kogna_scanner_secure_2026";
 
     // UI Elements
+    private WebView webView;
     private DecoratedBarcodeView barcodeView;
     private View laserLine;
     private TextView txtPosStatus;
     private TextView txtPrompt;
     private TextView txtTodaySummary;
+    private ImageButton btnToggleEngine;
     private ImageButton btnFlash;
     private ImageButton btnRefresh;
     private ImageButton btnManual;
@@ -122,25 +132,40 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtResultRef;
     private TextView txtResultDate;
     private TextView txtResultPosMatch;
+    private LinearLayout layoutPostScanTablePicker;
+    private LinearLayout layoutPostScanTableButtons;
     private ImageView btnCopyRef;
     private Button btnScanNext;
     private Button btnViewOfficial;
 
     // State Variables
+    private boolean isWebViewMode = false;
     private boolean isFlashOn = false;
     private boolean isVerifying = false;
     private String lastVerifiedUrl = "";
     private Call currentActiveCall = null;
     private String activePosUrl = DEFAULT_TUNNEL_URL;
 
+    // Last scanned verified data for post-scan table linking
+    private String lastVerifiedRef = "";
+    private String lastVerifiedProvider = "";
+    private double lastVerifiedAmount = 0.0;
+    private String lastVerifiedPayer = "";
+    private String lastVerifiedReceiver = "";
+
+    // Cached Receiver Settings for instant check & offline fallback
+    private String cachedTelebirrReceiver = "";
+    private String cachedCbeReceiver = "";
+    private String cachedMerchantName = "Kogna Coffee";
+
     // Open Orders Data
-    private static class OpenOrder {
-        String id;
-        String tableId;
-        String displayTitle;
-        double total;
-        int itemsCount;
-        boolean isVerified;
+    public static class OpenOrder {
+        public String id;
+        public String tableId;
+        public String displayTitle;
+        public double total;
+        public int itemsCount;
+        public boolean isVerified;
     }
 
     private final List<OpenOrder> currentOpenOrders = new ArrayList<>();
@@ -157,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
             fetchOpenOrders(false);
-            mainHandler.postDelayed(this, 4000);
+            mainHandler.postDelayed(this, 3500);
         }
     };
 
@@ -169,8 +194,13 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         mainHandler = new Handler(Looper.getMainLooper());
 
+        cachedTelebirrReceiver = prefs.getString(KEY_TELEBIRR_RECV, "");
+        cachedCbeReceiver = prefs.getString(KEY_CBE_RECV, "");
+        cachedMerchantName = prefs.getString(KEY_MERCHANT_NAME, "Kogna Coffee");
+
         setupHttpAndAudio();
         bindViews();
+        setupWebView();
         setupListeners();
         setupScanner();
         startLaserAnimation();
@@ -196,11 +226,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindViews() {
+        webView = findViewById(R.id.webView);
         barcodeView = findViewById(R.id.barcodeView);
         laserLine = findViewById(R.id.laserLine);
         txtPosStatus = findViewById(R.id.txtPosStatus);
         txtPrompt = findViewById(R.id.txtPrompt);
         txtTodaySummary = findViewById(R.id.txtTodaySummary);
+        btnToggleEngine = findViewById(R.id.btnToggleEngine);
         btnFlash = findViewById(R.id.btnFlash);
         btnRefresh = findViewById(R.id.btnRefresh);
         btnManual = findViewById(R.id.btnManual);
@@ -229,12 +261,90 @@ public class MainActivity extends AppCompatActivity {
         txtResultRef = findViewById(R.id.txtResultRef);
         txtResultDate = findViewById(R.id.txtResultDate);
         txtResultPosMatch = findViewById(R.id.txtResultPosMatch);
+        layoutPostScanTablePicker = findViewById(R.id.layoutPostScanTablePicker);
+        layoutPostScanTableButtons = findViewById(R.id.layoutPostScanTableButtons);
         btnCopyRef = findViewById(R.id.btnCopyRef);
         btnScanNext = findViewById(R.id.btnScanNext);
         btnViewOfficial = findViewById(R.id.btnViewOfficial);
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    private void setupWebView() {
+        if (webView == null) return;
+        WebSettings ws = webView.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setDatabaseEnabled(true);
+        ws.setAllowFileAccess(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);
+        ws.setLoadWithOverviewMode(true);
+        ws.setUseWideViewPort(true);
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                // Grant camera access to embedded scanner link seamlessly
+                runOnUiThread(() -> request.grant(request.getResources()));
+            }
+        });
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                view.loadUrl(url);
+                return true;
+            }
+        });
+
+        // Add AndroidBridge for zero-delay slip fetching inside the webview engine
+        webView.addJavascriptInterface(new AndroidWebBridge(), "AndroidBridge");
+    }
+
+    public class AndroidWebBridge {
+        @JavascriptInterface
+        public void fetchReceipt(final String url, final String callbackId) {
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
+                    .build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    mainHandler.post(() -> {
+                        if (webView != null) {
+                            webView.evaluateJavascript("if(typeof window['" + callbackId + "']==='function'){window['" + callbackId + "'](false,'');}", null);
+                        }
+                    });
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    final String body = response.body() != null ? response.body().string() : "";
+                    mainHandler.post(() -> {
+                        if (webView != null) {
+                            String escaped = body.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+                            webView.evaluateJavascript("if(typeof window['" + callbackId + "']==='function'){window['" + callbackId + "'](true,\"" + escaped + "\");}", null);
+                        }
+                    });
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void playChime(boolean success) {
+            playBeep(success);
+        }
+
+        @JavascriptInterface
+        public void triggerHaptic(boolean success) {
+            if (success) vibrateSuccess();
+            else vibrateError();
+        }
+    }
+
     private void setupListeners() {
+        btnToggleEngine.setOnClickListener(v -> toggleEngineMode());
         btnFlash.setOnClickListener(v -> toggleFlashlight());
         btnRefresh.setOnClickListener(v -> handleRefresh());
         btnManual.setOnClickListener(v -> showManualInputDialog());
@@ -270,13 +380,49 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void toggleEngineMode() {
+        isWebViewMode = !isWebViewMode;
+        if (isWebViewMode) {
+            barcodeView.pause();
+            barcodeView.setVisibility(View.GONE);
+            webView.setVisibility(View.VISIBLE);
+            btnToggleEngine.setImageResource(R.drawable.ic_camera);
+
+            final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+            String webUrl = activePosUrl.replaceAll("/+$", "") + "/scanner?key=" + apiKey;
+            webView.loadUrl(webUrl);
+            Toast.makeText(this, "🌐 Switched to Web Scanner Link Engine", Toast.LENGTH_SHORT).show();
+        } else {
+            webView.setVisibility(View.GONE);
+            barcodeView.setVisibility(View.VISIBLE);
+            barcodeView.resume();
+            btnToggleEngine.setImageResource(R.drawable.ic_globe);
+            Toast.makeText(this, "⚡ Switched to Native App Engine", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isWebViewMode) {
+            if (webView != null && webView.canGoBack()) {
+                webView.goBack();
+            } else {
+                toggleEngineMode(); // Switch back to native scanner
+            }
+        } else if (cardResult.getVisibility() == View.VISIBLE) {
+            resetScannerToActive();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
     private void setupScanner() {
         barcodeView.setStatusText(""); // Hide default camera status label
         barcodeView.decodeContinuous(new BarcodeCallback() {
             @Override
             public void barcodeResult(BarcodeResult result) {
                 if (result != null && result.getText() != null && !result.getText().trim().isEmpty()) {
-                    if (!isVerifying && cardResult.getVisibility() != View.VISIBLE) {
+                    if (!isVerifying && cardResult.getVisibility() != View.VISIBLE && !isWebViewMode) {
                         handleScannedPayload(result.getText().trim());
                     }
                 }
@@ -339,7 +485,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                barcodeView.resume();
+                if (!isWebViewMode) barcodeView.resume();
             } else {
                 Toast.makeText(this, R.string.camera_permission_required, Toast.LENGTH_LONG).show();
             }
@@ -349,7 +495,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        barcodeView.resume();
+        if (!isWebViewMode) barcodeView.resume();
         discoverAndConnectCashierPc(false);
         mainHandler.post(orderPollRunnable);
     }
@@ -358,7 +504,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         mainHandler.removeCallbacks(orderPollRunnable);
-        barcodeView.pause();
+        if (!isWebViewMode) barcodeView.pause();
         if (isFlashOn) toggleFlashlight();
     }
 
@@ -412,7 +558,6 @@ public class MainActivity extends AppCompatActivity {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                // Try next candidate
                 probeCandidates(candidates, index + 1, apiKey, showToast);
             }
 
@@ -467,6 +612,19 @@ public class MainActivity extends AppCompatActivity {
         try {
             JSONObject json = new JSONObject(jsonStr);
             if (!json.optBoolean("success", false)) return;
+
+            // Cache Payment Settings (Receiver Phone & CBE Account) from server
+            JSONObject settingsObj = json.optJSONObject("settings");
+            if (settingsObj != null) {
+                cachedTelebirrReceiver = settingsObj.optString("telebirrReceiverPhone", cachedTelebirrReceiver);
+                cachedCbeReceiver = settingsObj.optString("cbeReceiverAccount", cachedCbeReceiver);
+                cachedMerchantName = settingsObj.optString("merchantName", cachedMerchantName);
+                prefs.edit()
+                        .putString(KEY_TELEBIRR_RECV, cachedTelebirrReceiver)
+                        .putString(KEY_CBE_RECV, cachedCbeReceiver)
+                        .putString(KEY_MERCHANT_NAME, cachedMerchantName)
+                        .apply();
+            }
 
             JSONArray arr = json.optJSONArray("orders");
             currentOpenOrders.clear();
@@ -544,6 +702,11 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
+            // Also refresh post-scan table buttons if currently visible
+            if (cardResult.getVisibility() == View.VISIBLE && layoutPostScanTablePicker.getVisibility() == View.VISIBLE) {
+                populatePostScanTableButtons();
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -564,7 +727,7 @@ public class MainActivity extends AppCompatActivity {
     private void updateSelectedOrderBanner() {
         if (selectedOrder != null) {
             bannerSelectedOrder.setVisibility(View.VISIBLE);
-            txtSelectedOrderTitle.setText(String.format(Locale.US, "🎯 Linked to %s (Bill: %.2f ETB)", selectedOrder.displayTitle, selectedOrder.total));
+            txtSelectedOrderTitle.setText(String.format(Locale.US, "🎯 Target: %s (Bill: %.2f ETB)", selectedOrder.displayTitle, selectedOrder.total));
         } else {
             bannerSelectedOrder.setVisibility(View.GONE);
         }
@@ -577,7 +740,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==========================================
-    // ⚡ SCAN & VERIFICATION LOGIC
+    // ⚡ SCAN & VERIFICATION LOGIC (AUTHORITATIVE)
     // ==========================================
 
     private void handleScannedPayload(final String payload) {
@@ -585,7 +748,7 @@ public class MainActivity extends AppCompatActivity {
         barcodeView.pause();
         playBeep(true);
 
-        showLoading("Verifying official slip on device network...");
+        showLoading("Verifying official bank slip & receiver...");
 
         new Thread(() -> {
             String cleaned = payload.trim();
@@ -596,22 +759,22 @@ public class MainActivity extends AppCompatActivity {
                     cleaned.toLowerCase().contains("mbreciept");
 
             if (isCbe) {
-                verifyCbeSlip(cleaned);
+                processCbeScan(cleaned);
             } else {
-                verifyTelebirrSlip(cleaned);
+                processTelebirrScan(cleaned);
             }
         }).start();
     }
 
     /**
-     * Direct On-Device Verification for Telebirr Slip
+     * Process Telebirr: Grab official slip HTML on device (0.5s), then verify with server
      */
-    private void verifyTelebirrSlip(final String rawInput) {
+    private void processTelebirrScan(final String rawInput) {
         final String transactionId = extractTelebirrId(rawInput);
         if (transactionId == null || transactionId.isEmpty()) {
             mainHandler.post(() -> showVerificationResult(
                     false, "TELEBIRR", rawInput, 0.0, "-", "-",
-                    "Invalid QR format", "Unable to extract Telebirr reference code", ""
+                    "Invalid QR format", "Unable to extract Telebirr reference code", "", "❌ Invalid QR code"
             ));
             return;
         }
@@ -623,7 +786,6 @@ public class MainActivity extends AppCompatActivity {
                 .url(slipUrl)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
                 .header("Connection", "Keep-Alive")
                 .build();
 
@@ -631,272 +793,58 @@ public class MainActivity extends AppCompatActivity {
         currentActiveCall.enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                mainHandler.post(() -> showVerificationResult(
-                        false, "TELEBIRR", transactionId, 0.0, "-", "-",
-                        "Network Timeout", "Direct connection to Ethio Telecom timed out. Please retry.", slipUrl
-                ));
+                // If direct network fails, pass to server anyway as fallback
+                verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
             }
 
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    mainHandler.post(() -> showVerificationResult(
-                            false, "TELEBIRR", transactionId, 0.0, "-", "-",
-                            "Receipt Not Found", "Ethio Telecom returned HTTP " + response.code(), slipUrl
-                    ));
+                    verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
                     return;
                 }
 
                 String html = response.body() != null ? response.body().string() : "";
-                parseAndDisplayTelebirrHtml(html, transactionId, slipUrl);
+                verifySlipWithServer(transactionId, "TELEBIRR", html, slipUrl);
             }
-        });
-    }
-
-    private void parseAndDisplayTelebirrHtml(final String html, final String transactionId, final String slipUrl) {
-        if (html.contains("This request is not correct") || html.contains("not found") || html.length() < 300) {
-            mainHandler.post(() -> showVerificationResult(
-                    false, "TELEBIRR", transactionId, 0.0, "-", "-",
-                    "Invalid Slip", "Expired or non-existent Telebirr receipt", slipUrl
-            ));
-            return;
-        }
-
-        String payerName = extractHtmlField(html, "Payer\\s*Name");
-        String payerPhone = extractHtmlField(html, "Payer\\s*telebirr");
-        String receiverName = extractHtmlField(html, "Credited\\s*Party\\s*name");
-        String receiverPhone = extractHtmlField(html, "Credited\\s*party\\s*account\\s*no");
-        if (receiverPhone == null) receiverPhone = extractHtmlField(html, "Receiver\\s*telebirr");
-
-        // Extract Amount
-        double amount = 0.0;
-        Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(html);
-        if (settledMatch.find()) {
-            amount = parseDoubleSafe(settledMatch.group(1));
-        } else {
-            Matcher totalMatch = Pattern.compile("(?:Total\\s*Paid\\s*Amount|ጠቅላላ\\s*የተከፈለ)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(html);
-            if (totalMatch.find()) {
-                amount = parseDoubleSafe(totalMatch.group(1));
-            }
-        }
-
-        // Extract Date
-        String dateTime = "-";
-        Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(html);
-        if (dateMatch.find()) {
-            dateTime = dateMatch.group(1);
-        }
-
-        final double finalAmount = amount;
-        final String finalPayer = (payerName != null && !payerName.isEmpty()) ? payerName : (payerPhone != null ? payerPhone : "Customer");
-        final String finalReceiver = (receiverName != null && !receiverName.isEmpty()) ? receiverName : (receiverPhone != null ? receiverPhone : "Kogna Coffee");
-        final String finalDate = dateTime;
-
-        mainHandler.post(() -> {
-            showVerificationResult(
-                    true, "TELEBIRR", transactionId, finalAmount, finalPayer, finalReceiver,
-                    finalDate, null, slipUrl
-            );
-
-            // Sync with Cashier PC in background
-            syncVerificationWithPos(transactionId, "TELEBIRR", finalAmount, finalPayer, finalReceiver, html);
         });
     }
 
     /**
-     * Direct On-Device Verification for CBE Slip
+     * Process CBE: Extract token or FT code, then verify with server
      */
-    private void verifyCbeSlip(final String rawInput) {
+    private void processCbeScan(final String rawInput) {
         String clean = rawInput.trim();
         String tokenId = clean.replaceAll("^https?://(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/", "");
-        final String cbeUrl = "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/" + tokenId;
-        lastVerifiedUrl = "https://mbreciept.cbe.com.et/" + tokenId;
-
-        Request request = new Request.Builder()
-                .url(cbeUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .header("X-App-ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
-                .header("X-App-Version", "0a01980b-9859-1369-8198-59f403820000")
-                .header("Accept", "application/json")
-                .build();
-
-        currentActiveCall = httpClient.newCall(request);
-        currentActiveCall.enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                mainHandler.post(() -> showVerificationResult(
-                        false, "CBE", tokenId, 0.0, "-", "-",
-                        "CBE Gateway Delay", "Direct CBE network request timed out.", lastVerifiedUrl
-                ));
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    mainHandler.post(() -> showVerificationResult(
-                            false, "CBE", tokenId, 0.0, "-", "-",
-                            "CBE Invalid", "CBE returned HTTP " + response.code(), lastVerifiedUrl
-                    ));
-                    return;
-                }
-
-                try {
-                    String jsonStr = response.body() != null ? response.body().string() : "{}";
-                    JSONObject json = new JSONObject(jsonStr);
-
-                    String status = json.optString("status", "");
-                    boolean isSuccess = status.equalsIgnoreCase("COMPLETED") || status.equalsIgnoreCase("SUCCESS");
-
-                    double amount = parseDoubleSafe(json.optString("amountCredited", json.optString("debitAmount", "0")));
-                    String payer = json.optString("debitAccountHolder", "CBE Customer");
-                    String receiver = json.optString("creditAccountHolder", "Kogna Coffee");
-                    String ref = json.optString("id", tokenId);
-
-                    String dateTime = "-";
-                    JSONArray dates = json.optJSONArray("dateTimes");
-                    if (dates != null && dates.length() > 0) {
-                        dateTime = dates.getString(0);
-                    }
-
-                    final double finalAmount = amount;
-                    final String finalPayer = payer;
-                    final String finalReceiver = receiver;
-                    final String finalRef = ref;
-                    final String finalDate = dateTime;
-                    final boolean finalSuccess = isSuccess;
-
-                    mainHandler.post(() -> {
-                        showVerificationResult(
-                                finalSuccess, "CBE", finalRef, finalAmount, finalPayer, finalReceiver,
-                                finalDate, null, lastVerifiedUrl
-                        );
-
-                        if (finalSuccess) {
-                            syncVerificationWithPos(finalRef, "CBE", finalAmount, finalPayer, finalReceiver, null);
-                        }
-                    });
-                } catch (Exception ex) {
-                    mainHandler.post(() -> showVerificationResult(
-                            false, "CBE", tokenId, 0.0, "-", "-",
-                            "Parse Error", "Unable to read CBE slip details", lastVerifiedUrl
-                    ));
-                }
-            }
-        });
-    }
-
-    /**
-     * Display Verification Result Card
-     */
-    private void showVerificationResult(
-            boolean isSuccess,
-            String provider,
-            String reference,
-            double amount,
-            String payer,
-            String receiver,
-            String dateTime,
-            String errorMessage,
-            String slipUrl
-    ) {
-        hideLoading();
-        isVerifying = false;
-
-        cardResult.setVisibility(View.VISIBLE);
-
-        if (isSuccess) {
-            playBeep(true);
-            vibrateSuccess();
-
-            imgResultIcon.setImageResource(R.drawable.ic_verified_check);
-            txtResultStatus.setText(R.string.verified_title);
-            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_green));
-
-            txtResultBadge.setText("GENUINE");
-            txtResultBadge.setBackgroundResource(R.drawable.badge_status_green);
-            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_green));
-
-            txtResultAmount.setText(String.format(Locale.US, "%.2f ETB", amount));
-            txtResultPayer.setText(payer);
-            txtResultReceiver.setText(receiver);
-            txtResultRef.setText(reference);
-            txtResultDate.setText(dateTime);
-
-            if (selectedOrder != null) {
-                txtResultPosMatch.setText(String.format(Locale.US, "⚡ Attaching to %s (Bill: %.2f ETB)...", selectedOrder.displayTitle, selectedOrder.total));
-            } else {
-                txtResultPosMatch.setText("⚡ Auto-matching open table on Cashier PC...");
-            }
-
-            saveToHistory(reference, provider, amount, payer, dateTime, true);
-        } else {
-            playBeep(false);
-            vibrateError();
-
-            imgResultIcon.setImageResource(R.drawable.ic_error_cross);
-            txtResultStatus.setText(errorMessage != null ? errorMessage : getString(R.string.failed_title));
-            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_red));
-
-            txtResultBadge.setText("FAILED");
-            txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_red));
-
-            txtResultAmount.setText("0.00 ETB");
-            txtResultPayer.setText(payer);
-            txtResultReceiver.setText(receiver);
-            txtResultRef.setText(reference);
-            txtResultDate.setText(dateTime != null ? dateTime : "-");
-            txtResultPosMatch.setText("❌ " + (errorMessage != null ? errorMessage : "Payment not confirmed"));
-        }
-
-        txtResultProvider.setText(provider);
+        final String slipUrl = "https://mbreciept.cbe.com.et/" + tokenId;
         lastVerifiedUrl = slipUrl;
 
-        updateTodaySummary();
+        verifySlipWithServer(tokenId, "CBE", null, slipUrl);
     }
 
     /**
-     * Asynchronously sync verified receipt with Cashier PC
+     * Authoritative Verification via Cashier PC /api/verify-receipt
      */
-    private void syncVerificationWithPos(
+    private void verifySlipWithServer(
             final String reference,
             final String provider,
-            final double amount,
-            final String payer,
-            final String receiver,
-            final String htmlContent
+            final String htmlContent,
+            final String slipUrl
     ) {
         final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
-
-        // Determine if an order is selected or auto-matchable
-        String orderIdToAttach = null;
-        String targetTitle = "Order";
-
-        if (selectedOrder != null) {
-            orderIdToAttach = selectedOrder.id;
-            targetTitle = selectedOrder.displayTitle;
-        } else {
-            // Check for exact amount match among open orders
-            for (OpenOrder o : currentOpenOrders) {
-                if (Math.abs(o.total - amount) < 0.5) {
-                    orderIdToAttach = o.id;
-                    targetTitle = o.displayTitle;
-                    break;
-                }
-            }
-        }
-
-        final String finalTargetTitle = targetTitle;
+        final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
+        final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
+        final double expectedBill = (selectedOrder != null) ? selectedOrder.total : 0.0;
 
         try {
             JSONObject body = new JSONObject();
             body.put("referenceOrUrl", reference);
             body.put("provider", provider);
-            body.put("expectedAmount", amount);
-            if (orderIdToAttach != null) {
-                body.put("orderId", orderIdToAttach);
+            if (targetOrderId != null) {
+                body.put("orderId", targetOrderId);
+                body.put("expectedAmount", expectedBill);
             }
-            if (htmlContent != null) {
+            if (htmlContent != null && htmlContent.length() > 200) {
                 body.put("htmlContent", htmlContent);
             }
 
@@ -914,32 +862,406 @@ public class MainActivity extends AppCompatActivity {
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    mainHandler.post(() -> txtResultPosMatch.setText("📱 Standalone Verified (Cashier PC Offline)"));
+                    // Cashier PC offline -> Fall back to on-device validation
+                    mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    if (response.isSuccessful()) {
-                        mainHandler.post(() -> {
-                            txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", finalTargetTitle));
-                            clearSelectedOrder();
-                            fetchOpenOrders(false);
-                        });
-                    } else {
-                        mainHandler.post(() -> txtResultPosMatch.setText("⚡ Sent to Cashier PC"));
+                    String jsonStr = response.body() != null ? response.body().string() : "{}";
+                    mainHandler.post(() -> handleServerVerificationResponse(response.isSuccessful(), response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
+                }
+            });
+
+        } catch (Exception e) {
+            mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
+        }
+    }
+
+    private void handleServerVerificationResponse(
+            boolean isHttpOk,
+            int statusCode,
+            String jsonStr,
+            String reference,
+            String provider,
+            String slipUrl,
+            String targetOrderTitle
+    ) {
+        try {
+            JSONObject res = new JSONObject(jsonStr);
+            JSONObject receipt = res.optJSONObject("receipt");
+
+            double amount = receipt != null ? receipt.optDouble("amount", 0.0) : 0.0;
+            String payer = receipt != null ? receipt.optString("payerName", "Customer") : "Customer";
+            String receiver = receipt != null ? receipt.optString("receiverName", cachedMerchantName) : cachedMerchantName;
+            String ref = receipt != null ? receipt.optString("reference", reference) : reference;
+            String date = receipt != null ? receipt.optString("dateTime", "-") : "-";
+
+            boolean isDuplicate = res.optBoolean("duplicate", false) || (receipt != null && receipt.optBoolean("isDuplicate", false));
+            boolean isReceiverMismatch = res.optBoolean("receiverMismatch", false) || (receipt != null && !receipt.optBoolean("isReceiverMatched", true));
+            boolean isUnderpaid = res.optBoolean("underpaid", false) || (receipt != null && receipt.optBoolean("isUnderpaid", false));
+            String errorMsg = res.optString("error", receipt != null ? receipt.optString("errorMessage", "") : "");
+
+            if (isHttpOk && receipt != null && receipt.optBoolean("success", false) && !isReceiverMismatch && !isDuplicate && !isUnderpaid) {
+                // ✅ 100% GENUINE & VERIFIED
+                lastVerifiedRef = ref;
+                lastVerifiedProvider = provider;
+                lastVerifiedAmount = amount;
+                lastVerifiedPayer = payer;
+                lastVerifiedReceiver = receiver;
+
+                String posMatchMsg;
+                boolean orderLinked = false;
+
+                if (targetOrderTitle != null) {
+                    posMatchMsg = String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", targetOrderTitle);
+                    orderLinked = true;
+                    clearSelectedOrder();
+                    fetchOpenOrders(false);
+                } else {
+                    posMatchMsg = "✅ Payment Verified! Tap a table below to link:";
+                }
+
+                showVerificationResult(
+                        true, provider, ref, amount, payer, receiver,
+                        date, null, slipUrl, posMatchMsg
+                );
+
+                if (!orderLinked) {
+                    layoutPostScanTablePicker.setVisibility(View.VISIBLE);
+                    populatePostScanTableButtons();
+                } else {
+                    layoutPostScanTablePicker.setVisibility(View.GONE);
+                }
+
+            } else {
+                // ❌ REJECTED (Fraud, Duplicate, Underpaid, or Mismatch)
+                layoutPostScanTablePicker.setVisibility(View.GONE);
+
+                String badge;
+                String title;
+                String posMatch;
+
+                if (isReceiverMismatch) {
+                    badge = "WRONG RECV";
+                    title = "RECEIVER MISMATCH";
+                    posMatch = "🚨 FRAUD ALERT: Payment credited to " + receiver + ", NOT your official business account!";
+                } else if (isDuplicate) {
+                    badge = "DUPLICATE";
+                    title = "DUPLICATE RECEIPT";
+                    posMatch = "❌ " + (errorMsg.isEmpty() ? "Receipt reference already used on another order!" : errorMsg);
+                } else if (isUnderpaid) {
+                    badge = "UNDERPAID";
+                    title = "AMOUNT TOO LOW";
+                    posMatch = "❌ " + (errorMsg.isEmpty() ? "Amount paid is less than the table bill!" : errorMsg);
+                } else {
+                    badge = "FAILED";
+                    title = "VERIFICATION FAILED";
+                    posMatch = "❌ " + (errorMsg.isEmpty() ? "Invalid or unconfirmed receipt" : errorMsg);
+                }
+
+                showVerificationResult(
+                        false, provider, ref, amount, payer, receiver,
+                        date, title, slipUrl, posMatch
+                );
+                txtResultBadge.setText(badge);
+            }
+
+        } catch (Exception e) {
+            showVerificationResult(
+                    false, provider, reference, 0.0, "-", "-",
+                    "-", "Error parsing server response", slipUrl, "❌ Verification Error"
+            );
+        }
+    }
+
+    /**
+     * Fallback validation when Cashier PC is unreachable
+     */
+    private void handleOfflineVerificationFallback(
+            String reference,
+            String provider,
+            String htmlContent,
+            String slipUrl
+    ) {
+        if (htmlContent != null && htmlContent.length() > 300) {
+            String payerName = extractHtmlField(htmlContent, "Payer\\s*Name");
+            String payerPhone = extractHtmlField(htmlContent, "Payer\\s*telebirr");
+            String receiverName = extractHtmlField(htmlContent, "Credited\\s*Party\\s*name");
+            String receiverPhone = extractHtmlField(htmlContent, "Credited\\s*party\\s*account\\s*no");
+            if (receiverPhone == null) receiverPhone = extractHtmlField(htmlContent, "Receiver\\s*telebirr");
+
+            double amount = 0.0;
+            Matcher settledMatch = Pattern.compile("(?:Settled\\s*Amount|የተከፈለው\\s*መጠን)[\\s\\S]*?([\\d,.]+)\\s*Birr", Pattern.CASE_INSENSITIVE).matcher(htmlContent);
+            if (settledMatch.find()) {
+                amount = parseDoubleSafe(settledMatch.group(1));
+            }
+
+            String dateTime = "-";
+            Matcher dateMatch = Pattern.compile("(\\d{2}-\\d{2}-\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})").matcher(htmlContent);
+            if (dateMatch.find()) dateTime = dateMatch.group(1);
+
+            final String finalPayer = (payerName != null && !payerName.isEmpty()) ? payerName : (payerPhone != null ? payerPhone : "Customer");
+            final String finalReceiver = (receiverName != null && !receiverName.isEmpty()) ? receiverName : (receiverPhone != null ? receiverPhone : cachedMerchantName);
+
+            // 🚨 STRICT OFFLINE RECEIVER MATCH CHECK
+            boolean receiverMatched = matchReceiver(provider, receiverPhone, receiverName);
+            if (!receiverMatched) {
+                showVerificationResult(
+                        false, provider, reference, amount, finalPayer, finalReceiver,
+                        dateTime, "RECEIVER MISMATCH", slipUrl,
+                        "🚨 FRAUD ALERT: Payment credited to " + finalReceiver + ", NOT your official business account (" + cachedTelebirrReceiver + ")!"
+                );
+                txtResultBadge.setText("WRONG RECV");
+                return;
+            }
+
+            // Check if selected order bill matches
+            if (selectedOrder != null && selectedOrder.total > 0 && amount < selectedOrder.total - 0.5) {
+                showVerificationResult(
+                        false, provider, reference, amount, finalPayer, finalReceiver,
+                        dateTime, "AMOUNT TOO LOW", slipUrl,
+                        String.format(Locale.US, "❌ Bill is %.2f ETB but slip is %.2f ETB (Short by %.2f ETB)", selectedOrder.total, amount, selectedOrder.total - amount)
+                );
+                txtResultBadge.setText("UNDERPAID");
+                return;
+            }
+
+            lastVerifiedRef = reference;
+            lastVerifiedProvider = provider;
+            lastVerifiedAmount = amount;
+            lastVerifiedPayer = finalPayer;
+            lastVerifiedReceiver = finalReceiver;
+
+            showVerificationResult(
+                    true, provider, reference, amount, finalPayer, finalReceiver,
+                    dateTime, null, slipUrl,
+                    "📱 Verified Genuine on Device (Cashier PC Offline)"
+            );
+        } else {
+            showVerificationResult(
+                    false, provider, reference, 0.0, "-", "-",
+                    "-", "Cannot Reach Cashier PC", slipUrl, "❌ PC Offline & Slip not cached"
+            );
+        }
+    }
+
+    private boolean matchReceiver(String provider, String receivedPhone, String receivedName) {
+        if ("TELEBIRR".equalsIgnoreCase(provider)) {
+            if (cachedTelebirrReceiver == null || cachedTelebirrReceiver.trim().isEmpty()) {
+                return true; // No restriction configured
+            }
+            String cleanTarget = cachedTelebirrReceiver.replaceAll("\\D", "");
+            if (receivedPhone != null && !receivedPhone.trim().isEmpty()) {
+                String cleanReceived = receivedPhone.replaceAll("[^0-9*Xx]", "");
+                if (cleanReceived.contains("*") || cleanReceived.contains("X") || cleanReceived.contains("x")) {
+                    Matcher suffixMatcher = Pattern.compile("(\\d{3,})$").matcher(cleanReceived);
+                    if (suffixMatcher.find()) {
+                        String suffix = suffixMatcher.group(1);
+                        if (!cleanTarget.endsWith(suffix)) return false;
+                    }
+                    return true;
+                }
+                String digitsReceived = cleanReceived.replaceAll("\\D", "");
+                if (digitsReceived.length() >= 4) {
+                    if (cleanTarget.endsWith(digitsReceived) || digitsReceived.endsWith(cleanTarget)) return true;
+                    return cleanTarget.contains(digitsReceived) || digitsReceived.contains(cleanTarget);
+                }
+            }
+            if (receivedName != null && cachedMerchantName != null && !cachedMerchantName.trim().isEmpty()) {
+                String cleanRecv = receivedName.toLowerCase().replaceAll("[^a-z0-9]", "");
+                String cleanMerch = cachedMerchantName.toLowerCase().replaceAll("[^a-z0-9]", "");
+                if (cleanRecv.contains(cleanMerch) || cleanMerch.contains(cleanRecv)) return true;
+            }
+            return false;
+        } else if ("CBE".equalsIgnoreCase(provider)) {
+            if (cachedCbeReceiver == null || cachedCbeReceiver.trim().isEmpty()) return true;
+            String cleanTarget = cachedCbeReceiver.replaceAll("\\D", "");
+            if (receivedPhone != null && !receivedPhone.trim().isEmpty()) {
+                String digitsReceived = receivedPhone.replaceAll("\\D", "");
+                if (digitsReceived.length() >= 4) {
+                    return cleanTarget.endsWith(digitsReceived) || digitsReceived.endsWith(cleanTarget);
+                }
+            }
+            return true;
+        }
+        return true;
+    }
+
+    private void populatePostScanTableButtons() {
+        layoutPostScanTableButtons.removeAllViews();
+        if (currentOpenOrders.isEmpty()) {
+            TextView none = new TextView(this);
+            none.setText("No open tables on Cashier PC");
+            none.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+            none.setTextSize(12);
+            layoutPostScanTableButtons.addView(none);
+            return;
+        }
+
+        for (final OpenOrder order : currentOpenOrders) {
+            Button btn = new Button(this);
+            btn.setText(String.format(Locale.US, "%s (%.0f ETB)", order.displayTitle, order.total));
+            btn.setBackgroundResource(R.drawable.bg_order_chip);
+            btn.setTextColor(ContextCompat.getColor(this, R.color.gold));
+            btn.setTextSize(11);
+            btn.setPadding(24, 12, 24, 12);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            lp.setMargins(0, 0, 16, 0);
+            btn.setLayoutParams(lp);
+
+            btn.setOnClickListener(v -> linkVerifiedReceiptToOrder(order));
+            layoutPostScanTableButtons.addView(btn);
+        }
+    }
+
+    private void linkVerifiedReceiptToOrder(final OpenOrder targetOrder) {
+        if (lastVerifiedRef.isEmpty()) {
+            Toast.makeText(this, "No verified receipt to link", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showLoading("Linking payment to " + targetOrder.displayTitle + "...");
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+
+        try {
+            JSONObject body = new JSONObject();
+            body.put("orderId", targetOrder.id);
+            body.put("reference", lastVerifiedRef);
+            body.put("provider", lastVerifiedProvider);
+            body.put("amount", lastVerifiedAmount > 0 ? lastVerifiedAmount : targetOrder.total);
+            body.put("payerName", lastVerifiedPayer);
+            body.put("receiverName", lastVerifiedReceiver);
+            body.put("manualConfirmed", true);
+
+            RequestBody requestBody = RequestBody.Companion.create(
+                    body.toString(),
+                    MediaType.Companion.parse("application/json; charset=utf-8")
+            );
+
+            Request request = new Request.Builder()
+                    .url(activePosUrl.replaceAll("/+$", "") + "/api/scanner/verify-order")
+                    .header("x-scanner-token", apiKey)
+                    .post(requestBody)
+                    .build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    mainHandler.post(() -> {
+                        hideLoading();
+                        Toast.makeText(MainActivity.this, "Network error linking to " + targetOrder.displayTitle, Toast.LENGTH_SHORT).show();
+                    });
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    hideLoading();
+                    String jsonStr = response.body() != null ? response.body().string() : "{}";
+                    try {
+                        JSONObject res = new JSONObject(jsonStr);
+                        if (res.optBoolean("success", false)) {
+                            mainHandler.post(() -> {
+                                playBeep(true);
+                                txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", targetOrder.displayTitle));
+                                layoutPostScanTablePicker.setVisibility(View.GONE);
+                                clearSelectedOrder();
+                                fetchOpenOrders(false);
+                            });
+                        } else {
+                            final String err = res.optString("error", "Failed to link order");
+                            mainHandler.post(() -> {
+                                playBeep(false);
+                                Toast.makeText(MainActivity.this, "⚠️ " + err, Toast.LENGTH_LONG).show();
+                            });
+                        }
+                    } catch (Exception ex) {
+                        mainHandler.post(() -> Toast.makeText(MainActivity.this, "Error parsing link response", Toast.LENGTH_SHORT).show());
                     }
                 }
             });
-        } catch (Exception ignored) {
-            txtResultPosMatch.setText("📱 Standalone Verified");
+
+        } catch (Exception e) {
+            hideLoading();
         }
+    }
+
+    /**
+     * Display Verification Result Card
+     */
+    private void showVerificationResult(
+            boolean isSuccess,
+            String provider,
+            String reference,
+            double amount,
+            String payer,
+            String receiver,
+            String dateTime,
+            String statusTitle,
+            String slipUrl,
+            String posMatchMessage
+    ) {
+        hideLoading();
+        isVerifying = false;
+
+        cardResult.setVisibility(View.VISIBLE);
+
+        if (isSuccess) {
+            playBeep(true);
+            vibrateSuccess();
+
+            imgResultIcon.setImageResource(R.drawable.ic_verified_check);
+            txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.verified_title));
+            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_green));
+
+            txtResultBadge.setText("GENUINE");
+            txtResultBadge.setBackgroundResource(R.drawable.badge_status_green);
+            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_green));
+
+            txtResultAmount.setText(String.format(Locale.US, "%.2f ETB", amount));
+            txtResultPayer.setText(payer);
+            txtResultReceiver.setText(receiver);
+            txtResultRef.setText(reference);
+            txtResultDate.setText(dateTime);
+            txtResultPosMatch.setText(posMatchMessage);
+
+            saveToHistory(reference, provider, amount, payer, dateTime, true);
+        } else {
+            playBeep(false);
+            vibrateError();
+
+            imgResultIcon.setImageResource(R.drawable.ic_error_cross);
+            txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.failed_title));
+            txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+
+            txtResultBadge.setText("FAILED");
+            txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+            txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+
+            txtResultAmount.setText(amount > 0 ? String.format(Locale.US, "%.2f ETB", amount) : "0.00 ETB");
+            txtResultPayer.setText(payer);
+            txtResultReceiver.setText(receiver);
+            txtResultRef.setText(reference);
+            txtResultDate.setText(dateTime != null ? dateTime : "-");
+            txtResultPosMatch.setText(posMatchMessage);
+        }
+
+        txtResultProvider.setText(provider);
+        lastVerifiedUrl = slipUrl;
+
+        updateTodaySummary();
     }
 
     private void resetScannerToActive() {
         cardResult.setVisibility(View.GONE);
+        layoutPostScanTablePicker.setVisibility(View.GONE);
         hideLoading();
         isVerifying = false;
-        barcodeView.resume();
+        if (!isWebViewMode) barcodeView.resume();
         fetchOpenOrders(false);
     }
 
@@ -966,16 +1288,23 @@ public class MainActivity extends AppCompatActivity {
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         }
 
-        EditText inputCode = dialogView.findViewById(R.id.inputCode);
+        EditText inputCode = dialogView.findViewById(R.id.inputManualCode);
+        RadioGroup radioGroup = dialogView.findViewById(R.id.radioGroupProvider);
         Button btnVerify = dialogView.findViewById(R.id.btnVerifyManual);
         Button btnCancel = dialogView.findViewById(R.id.btnCancelManual);
 
         btnVerify.setOnClickListener(v -> {
             String code = inputCode.getText().toString().trim();
             if (code.isEmpty()) {
-                inputCode.setError("Enter transaction reference code");
+                inputCode.setError("Enter code or paste slip link");
                 return;
             }
+
+            int selectedRadio = radioGroup.getCheckedRadioButtonId();
+            String prov = "AUTO";
+            if (selectedRadio == R.id.radioTelebirr) prov = "TELEBIRR";
+            else if (selectedRadio == R.id.radioCbe) prov = "CBE";
+
             dialog.dismiss();
             handleScannedPayload(code);
         });

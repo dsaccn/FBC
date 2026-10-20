@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isScannerAuthorized } from '@/lib/scanner-auth'
 import { pullFromCloud, startBackgroundPullLoop } from '@/lib/sync-engine'
+import { getPaymentSettings } from '@/lib/payment-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,8 +112,22 @@ export async function GET(req: Request) {
       }
     })
 
+    const paymentSettings = await getPaymentSettings().catch(() => ({
+      telebirrReceiverPhone: '',
+      cbeReceiverAccount: '',
+      merchantName: 'Kogna Coffee'
+    }))
+
     return NextResponse.json(
-      { success: true, orders: formatted },
+      {
+        success: true,
+        orders: formatted,
+        settings: {
+          telebirrReceiverPhone: paymentSettings.telebirrReceiverPhone || '',
+          cbeReceiverAccount: paymentSettings.cbeReceiverAccount || '',
+          merchantName: paymentSettings.merchantName || 'Kogna Coffee'
+        }
+      },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',

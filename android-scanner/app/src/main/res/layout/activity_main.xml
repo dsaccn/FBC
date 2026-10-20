@@ -6,6 +6,17 @@
     android:layout_height="match_parent"
     android:background="@color/bg_dark">
 
+    <!-- 🌐 Full-Feature Scanner Web Engine (The Scanner Link You Used to Use) -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- 📷 100% Native High-Speed Hardware Camera Scanner -->
     <com.journeyapps.barcodescanner.DecoratedBarcodeView
         android:id="@+id/barcodeView"
@@ -22,9 +33,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/surface_translucent"
-        android:paddingStart="16dp"
+        android:paddingStart="14dp"
         android:paddingTop="12dp"
-        android:paddingEnd="16dp"
+        android:paddingEnd="14dp"
         android:paddingBottom="12dp"
         app:layout_constraintTop_toTopOf="parent">
 
@@ -75,11 +86,21 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
+            <!-- Switch Mode: Native <-> Scanner Link -->
+            <ImageButton
+                android:id="@+id/btnToggleEngine"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/btn_icon_translucent"
+                android:contentDescription="Switch Mode"
+                android:src="@drawable/ic_globe" />
+
             <!-- Flashlight Toggle -->
             <ImageButton
                 android:id="@+id/btnFlash"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/btn_icon_translucent"
                 android:contentDescription="Flashlight"
@@ -88,8 +109,8 @@
             <!-- In-App Refresh / Reconnect Button -->
             <ImageButton
                 android:id="@+id/btnRefresh"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/btn_icon_translucent"
                 android:contentDescription="Refresh Connection"
@@ -98,8 +119,8 @@
             <!-- Manual Keypad Code Entry -->
             <ImageButton
                 android:id="@+id/btnManual"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/btn_icon_translucent"
                 android:contentDescription="Manual Code Entry"
@@ -108,8 +129,8 @@
             <!-- Settings -->
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:background="@drawable/btn_icon_translucent"
                 android:contentDescription="Settings"
                 android:src="@drawable/ic_settings" />
@@ -563,6 +584,36 @@
                     android:text="⚡ Syncing with Cashier PC..."
                     android:textColor="@color/gold"
                     android:textSize="12sp" />
+
+                <!-- Quick Table Link Picker (Shown when payment is verified without a pre-selected table) -->
+                <LinearLayout
+                    android:id="@+id/layoutPostScanTablePicker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔗 Link this payment to Table:"
+                        android:textColor="@color/gold_light"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:scrollbars="none">
+                        <LinearLayout
+                            android:id="@+id/layoutPostScanTableButtons"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+                </LinearLayout>
             </LinearLayout>
 
             <!-- Action Buttons -->

@@ -51,27 +51,25 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.0-scanner
-          name: "Kogna Verifier Native App v2.1.0"
+          tag_name: v2.2.0-scanner
+          name: "Kogna Verifier App v2.2.0 (Receiver Check & Table Linking)"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Native Android App v2.0.0
-            
-            100% Standalone Native Android application for Kogna Coffee waitstaff and cashiers.
-            
-            ### ✨ What's New in v2.0.0:
-            - **100% Pure Native App**: Zero WebViews, zero browser shells, zero web loading bars. Boots instantly in 0.00 seconds.
-            - **Hardware CameraX/ZXing**: High-speed real-time continuous camera scanning directly on GPU surface.
-            - **Direct On-Device Verification**: Scrapes and verifies Telebirr and CBE receipts directly over the phone's Ethiopian IP address, eliminating overseas cloud proxy timeouts ("Gateway Delay").
-            - **In-App Refresh Button**: Reconnects to POS, syncs pending offline scans, and resets scanner with a single tap.
-            - **Sensory Audio & Haptic Feedback**: Native chime tones and haptic vibration on receipt verification.
-            - **Offline-First Resilience**: Scans and verifies even if POS server is unreachable, automatically queuing receipts for background sync.
-            
+            ## 📱 Kogna Verifier Android App v2.2.0
+
+            ### 🛡️ Critical Updates & Features:
+            - **Strict Receiver Verification**: Cross-references Telebirr and CBE receiver phone/account numbers with official store settings. Fraudulent receipts or payments sent to other accounts are immediately flagged with `❌ RECEIVER MISMATCH` and rejected!
+            - **Real-Time Table Linking**: Verified payments automatically link to target tables and broadcast `ORDER_VERIFIED` to the Cashier PC screen, marking them as PAID in 0 ms.
+            - **Quick Post-Scan Table Picker**: If a receipt is scanned without pre-selecting a table, horizontal 1-tap table chips (`Table 1`, `Table 2`, etc.) appear right on the result card for instant Cashier linking.
+            - **Dual Engine Toggle (Native + Web Scanner Link)**: Tap the 🌐 icon in the top bar to toggle between the ⚡ 100% Native Hardware Camera and the 🌐 Full Web Scanner Link engine.
+            - **Zero-Delay Slip Fetching**: Direct Ethiopian network connectivity bypasses overseas cloud gateway delays.
+            - **Duplicate & Underpayment Protection**: Rejects already-used transaction IDs and prevents linking receipts where the paid amount is less than the bill.
+
             ### 📥 Download & Install:
-            1. Download **`KognaVerifier.apk`** below to your Android phone.
-            2. Tap to install (enable *"Install unknown apps"* if prompted).
-            3. Open the app to start scanning Telebirr and CBE receipts!
+            1. Download **`KognaVerifier.apk`** below to your Android device.
+            2. Tap to install (allow "Install unknown apps" if prompted).
+            3. Open to scan Telebirr and CBE QR codes directly.
           files: build-output/KognaVerifier.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
