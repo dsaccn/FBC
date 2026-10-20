@@ -152,9 +152,6 @@ export default function QRScannerPage() {
   const [verifiedResult, setVerifiedResult] = useState<VerifiedReceipt | null>(null)
   const [amountMatches, setAmountMatches] = useState<boolean | null>(null)
   const [copiedRef, setCopiedRef] = useState(false)
-  const [retryAttemptText, setRetryAttemptText] = useState<string | null>(null)
-  const [autoRetrySeconds, setAutoRetrySeconds] = useState<number | null>(null)
-  const autoRetryTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Recent scans drawer
   const [history, setHistory] = useState<ScanHistoryItem[]>([])
@@ -406,17 +403,10 @@ export default function QRScannerPage() {
     if (isVerifyingRef.current) return
     isVerifyingRef.current = true
 
-    if (autoRetryTimerRef.current) {
-      clearInterval(autoRetryTimerRef.current)
-      autoRetryTimerRef.current = null
-    }
-    setAutoRetrySeconds(null)
     setVerifying(true)
     setVerifiedResult(null)
     setAmountMatches(null)
-    setRetryAttemptText(null)
 
-    const MAX_RETRIES = 2 // 3 total attempts
     let finalResultData: any = null
     let finalReceiptPayload: any = null
     let isGatewayDelay = false
@@ -426,15 +416,9 @@ export default function QRScannerPage() {
     let isSuccess = false
 
     try {
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (attempt > 0) {
-          setRetryAttemptText(`Ethio Telecom is lagging — automatically retrying (Attempt ${attempt + 1} of ${MAX_RETRIES + 1})...`)
-          await new Promise(r => setTimeout(r, 1400))
-        }
-
-        // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
-        let htmlContent: string | undefined = htmlOverride
-        const candidateId = extractCleanTransactionId(clean)
+      // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
+      let htmlContent: string | undefined = htmlOverride
+      const candidateId = extractCleanTransactionId(clean)
 
         if (!htmlContent && typeof (window as any).AndroidBridge?.fetchReceipt === 'function') {
           try {
@@ -470,78 +454,55 @@ export default function QRScannerPage() {
           }
         }
 
-        try {
-          const activeOrderId = selectedOrderIdRef.current || undefined
-          const res = await fetch('/api/verify-receipt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              referenceOrUrl: candidateId || clean,
-              provider: prov,
-              accountDigits: accountDigits || undefined,
-              expectedAmount: expAmt || undefined,
-              orderId: activeOrderId,
-              htmlContent: htmlContent || undefined,
-            }),
-          })
+      const activeOrderId = selectedOrderIdRef.current || undefined
+      const res = await fetch('/api/verify-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceOrUrl: candidateId || clean,
+          provider: prov,
+          accountDigits: accountDigits || undefined,
+          expectedAmount: expAmt || undefined,
+          orderId: activeOrderId,
+          htmlContent: htmlContent || undefined,
+        }),
+      })
 
-          const data = await res.json()
-          const receiptPayload = data.receipt || null
-          finalResultData = data
-          finalReceiptPayload = receiptPayload
+      const data = await res.json()
+      const receiptPayload = data.receipt || null
+      finalResultData = data
+      finalReceiptPayload = receiptPayload
 
-          isDup = Boolean(
-            data.duplicate ||
-            receiptPayload?.isDuplicate ||
-            data.error?.toLowerCase().includes('duplicate') ||
-            data.error?.toLowerCase().includes('already used') ||
-            receiptPayload?.errorMessage?.toLowerCase().includes('already used')
-          )
-          isRecvMismatch = Boolean(
-            data.receiverMismatch ||
-            receiptPayload?.isReceiverMatched === false ||
-            data.error?.toLowerCase().includes('receiver mismatch') ||
-            receiptPayload?.errorMessage?.toLowerCase().includes('receiver mismatch')
-          )
-          isUnder = Boolean(
-            data.underpaid ||
-            receiptPayload?.isUnderpaid ||
-            data.error?.toLowerCase().includes('amount too low') ||
-            receiptPayload?.errorMessage?.toLowerCase().includes('amount too low')
-          )
-          isGatewayDelay = Boolean(
-            !isDup && !isRecvMismatch && !isUnder &&
-            (receiptPayload?.isTimeout ||
-             receiptPayload?.status === 'PENDING' ||
-             data.error?.toLowerCase().includes('timed out') ||
-             receiptPayload?.errorMessage?.toLowerCase().includes('timed out'))
-          )
+      isDup = Boolean(
+        data.duplicate ||
+        receiptPayload?.isDuplicate ||
+        data.error?.toLowerCase().includes('duplicate') ||
+        data.error?.toLowerCase().includes('already used') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('already used')
+      )
+      isRecvMismatch = Boolean(
+        data.receiverMismatch ||
+        receiptPayload?.isReceiverMatched === false ||
+        data.error?.toLowerCase().includes('receiver mismatch') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('receiver mismatch')
+      )
+      isUnder = Boolean(
+        data.underpaid ||
+        receiptPayload?.isUnderpaid ||
+        data.error?.toLowerCase().includes('amount too low') ||
+        receiptPayload?.errorMessage?.toLowerCase().includes('amount too low')
+      )
+      isGatewayDelay = Boolean(
+        !isDup && !isRecvMismatch && !isUnder &&
+        (receiptPayload?.isTimeout ||
+         receiptPayload?.status === 'PENDING' ||
+         data.error?.toLowerCase().includes('timed out') ||
+         receiptPayload?.errorMessage?.toLowerCase().includes('timed out'))
+      )
 
-          if (res.ok && receiptPayload && receiptPayload.success && !isRecvMismatch && !isUnder && !isDup) {
-            isSuccess = true
-            break
-          }
-
-          // Real fraud or mismatch errors: stop retrying immediately
-          if (isDup || isRecvMismatch || isUnder) {
-            break
-          }
-
-          // If gateway delay and more attempts remain, retry!
-          if (isGatewayDelay && attempt < MAX_RETRIES) {
-            continue
-          }
-
-          break
-        } catch (fetchErr) {
-          if (attempt < MAX_RETRIES) {
-            continue
-          }
-          break
-        }
+      if (res.ok && receiptPayload && receiptPayload.success && !isRecvMismatch && !isUnder && !isDup) {
+        isSuccess = true
       }
-
-      setRetryAttemptText(null)
 
       if (isSuccess && finalReceiptPayload) {
         const receipt: VerifiedReceipt = {
@@ -602,24 +563,6 @@ export default function QRScannerPage() {
         setAmountMatches(false)
         playChime(false)
         triggerHaptic(false)
-
-        // If gateway delay, start 5s countdown timer to automatically re-try again
-        if (isGatewayDelay) {
-          let sec = 5
-          setAutoRetrySeconds(sec)
-          autoRetryTimerRef.current = setInterval(() => {
-            sec -= 1
-            if (sec <= 0) {
-              if (autoRetryTimerRef.current) clearInterval(autoRetryTimerRef.current)
-              autoRetryTimerRef.current = null
-              setAutoRetrySeconds(null)
-              isVerifyingRef.current = false
-              verifyReference(clean, prov, accountDigits, expAmt)
-            } else {
-              setAutoRetrySeconds(sec)
-            }
-          }, 1000)
-        }
       }
     } catch (err: any) {
       const detectedProv = clean.toUpperCase().startsWith('FT') || clean.toLowerCase().includes('cbe')
@@ -643,7 +586,6 @@ export default function QRScannerPage() {
     } finally {
       setVerifying(false)
       isVerifyingRef.current = false
-      setRetryAttemptText(null)
     }
   }, [playChime, triggerHaptic, openOrders, fetchOpenOrders])
 
@@ -1312,13 +1254,11 @@ export default function QRScannerPage() {
             }}>
               <RefreshCw size={34} className="animate-spin" style={{ color: '#B48A1E' }} />
             </div>
-            <h3 style={{ fontSize: '19px', fontWeight: '800', margin: '0 0 8px 0', color: retryAttemptText ? '#D97706' : '#0F172A' }}>
-              {retryAttemptText || 'Querying Bank Server...'}
+            <h3 style={{ fontSize: '19px', fontWeight: '800', margin: '0 0 8px 0', color: '#0F172A' }}>
+              Querying Bank Server...
             </h3>
             <p style={{ fontSize: '13px', color: '#64748B', maxWidth: '320px', margin: 0, lineHeight: 1.5 }}>
-              {retryAttemptText
-                ? 'Ethio Telecom gateway is taking a moment to respond. Re-polling automatically...'
-                : 'Connecting directly to Ethio Telecom / Commercial Bank of Ethiopia to validate transaction slip authenticity.'}
+              Connecting directly to Ethio Telecom / Commercial Bank of Ethiopia to validate transaction slip authenticity.
             </p>
           </div>
         )}
@@ -1682,47 +1622,6 @@ export default function QRScannerPage() {
                       flexDirection: 'column',
                       gap: '8px'
                     }}>
-                      {/* Auto-retry countdown banner with pause */}
-                      {autoRetrySeconds !== null && autoRetrySeconds > 0 && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          background: '#FFFBEB',
-                          border: '1.5px solid #FCD34D',
-                          borderRadius: '10px',
-                          padding: '8px 12px',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          color: '#92400E'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <RefreshCw size={14} className="animate-spin" color="#D97706" />
-                            <span>Auto-retrying Ethio Telecom in <b>{autoRetrySeconds}s</b>...</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (autoRetryTimerRef.current) clearInterval(autoRetryTimerRef.current)
-                              autoRetryTimerRef.current = null
-                              setAutoRetrySeconds(null)
-                            }}
-                            style={{
-                              background: '#FDE68A',
-                              border: 'none',
-                              color: '#78350F',
-                              borderRadius: '6px',
-                              padding: '3px 8px',
-                              fontSize: '11px',
-                              fontWeight: '800',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Pause
-                          </button>
-                        </div>
-                      )}
-
                       <div style={{ fontSize: '11px', color: '#92400E', fontWeight: '700', lineHeight: 1.4 }}>
                         💡 <b>Gateway Lag Workaround:</b> Once you glance at the customer's phone or official slip:
                       </div>
@@ -1732,9 +1631,6 @@ export default function QRScannerPage() {
                           type="button"
                           disabled={isLinkingOrder}
                           onClick={() => {
-                            if (autoRetryTimerRef.current) clearInterval(autoRetryTimerRef.current)
-                            autoRetryTimerRef.current = null
-                            setAutoRetrySeconds(null)
                             handleLinkToOrder(selectedOrderId, true)
                           }}
                           style={{
@@ -1765,9 +1661,6 @@ export default function QRScannerPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (autoRetryTimerRef.current) clearInterval(autoRetryTimerRef.current)
-                          autoRetryTimerRef.current = null
-                          setAutoRetrySeconds(null)
                           verifyReference(verifiedResult.reference, verifiedResult.provider as any)
                         }}
                         style={{
