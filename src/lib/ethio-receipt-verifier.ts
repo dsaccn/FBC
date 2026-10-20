@@ -247,12 +247,14 @@ export async function parseTelebirrReceiptHtml(
     extractField(/Credited\s*party\s*no[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
   const rawStatus = extractField(/transaction\s*status[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i) || 'Completed'
 
-  // Extract amount: Try Total Paid Amount first, then Settled Amount from data row
-  const totalPaidMatch = html.match(/Total\s*Paid\s*Amount[\s\S]*?([\d.]+)\s*Birr/i) ||
+  // Extract amount: Prioritize Settled Amount (net amount received by merchant), then Total Paid Amount
+  const settledMatch = html.match(/Settled\s*Amount[\s\S]*?([\d,.]+)\s*Birr/i) ||
+                       html.match(/የተከፈለው\s*መጠን[\s\S]*?([\d,.]+)\s*Birr/i) ||
+                       html.match(/<td[^>]*class="[^"]*receipttableTd2[^"]*"[^>]*>[^<]*<\/td>\s*<td[^>]*>[^<]*<\/td>\s*<td[^>]*>\s*([\d,.]+)\s*Birr/i)
+  const totalPaidMatch = html.match(/Total\s*Paid\s*Amount[\s\S]*?([\d,.]+)\s*Birr/i) ||
+                         html.match(/ጠቅላላ\s*የተከፈለ[\s\S]*?([\d,.]+)\s*Birr/i) ||
                          html.match(/Total\s*Paid\s*Amount[^<]*<\/t[dh]>\s*<td[^>]*>([\s\S]*?)<\/td>/i)
-  const settledMatch = html.match(/Settled\s*Amount[\s\S]*?([\d.]+)\s*Birr/i) ||
-                       html.match(/<td[^>]*class="[^"]*receipttableTd2[^"]*"[^>]*>[^<]*<\/td>\s*<td[^>]*>[^<]*<\/td>\s*<td[^>]*>\s*([\d.]+)\s*Birr/i)
-  const rawAmount = totalPaidMatch ? totalPaidMatch[1] : (settledMatch ? settledMatch[1] : undefined)
+  const rawAmount = settledMatch ? settledMatch[1] : (totalPaidMatch ? totalPaidMatch[1] : undefined)
 
   // Extract payment date: From data row containing date timestamp e.g. "19-10-2026 15:03:21"
   const dateRowMatch = html.match(/<td[^>]*class="[^"]*receipttableTd[^"]*"[^>]*>\s*(\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2})\s*<\/td>/i) ||
