@@ -58,6 +58,7 @@ if %errorlevel% equ 0 (
                 echo =========================================================
                 if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
                 call git pull origin main --quiet
+                call npx prisma db push --accept-data-loss
                 call npx prisma generate
                 call npm run build
                 echo [OK] POS updated to latest code successfully!

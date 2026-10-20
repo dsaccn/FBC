@@ -126,6 +126,11 @@ attrib -r -s -h "prisma\*" /s /d >nul 2>&1
 attrib -r -s -h "prisma\kogna.db*" >nul 2>&1
 icacls "%~dp0prisma" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
 
+call npx --no-install prisma db push --accept-data-loss
+if %errorlevel% neq 0 (
+    call npx prisma db push --accept-data-loss
+)
+
 call npx --no-install prisma generate
 if %errorlevel% neq 0 (
     call npx prisma generate
