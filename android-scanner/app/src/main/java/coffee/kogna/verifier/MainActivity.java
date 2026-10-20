@@ -151,9 +151,12 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout layoutPostScanTableButtons;
     private ImageView btnCopyRef;
     private Button btnScanNext;
+    private Button btnRetryVerification;
     private Button btnViewOfficial;
 
     // State Variables
+    private String lastRawScan = "";
+    private boolean isLinkingInFlight = false;
     private boolean isWebViewMode = false;
     private boolean isFlashOn = false;
     private boolean isVerifying = false;
@@ -311,6 +314,7 @@ public class MainActivity extends AppCompatActivity {
         layoutPostScanTableButtons = findViewById(R.id.layoutPostScanTableButtons);
         btnCopyRef = findViewById(R.id.btnCopyRef);
         btnScanNext = findViewById(R.id.btnScanNext);
+        btnRetryVerification = findViewById(R.id.btnRetryVerification);
         btnViewOfficial = findViewById(R.id.btnViewOfficial);
     }
 
@@ -399,6 +403,20 @@ public class MainActivity extends AppCompatActivity {
 
         btnDeselectOrder.setOnClickListener(v -> clearSelectedOrder());
         btnScanNext.setOnClickListener(v -> resetScannerToActive());
+        btnRetryVerification.setOnClickListener(v -> {
+            if (isVerifying) return;
+            if (lastRawScan == null || lastRawScan.trim().isEmpty()) {
+                Toast.makeText(this, "Nothing to retry — scan again", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (cardResult != null) {
+                cardResult.setVisibility(View.GONE);
+            }
+            if (btnRetryVerification != null) {
+                btnRetryVerification.setVisibility(View.GONE);
+            }
+            handleScannedPayload(lastRawScan);
+        });
 
         btnViewOfficial.setOnClickListener(v -> {
             if (lastVerifiedUrl != null && !lastVerifiedUrl.isEmpty()) {
@@ -681,12 +699,26 @@ public class MainActivity extends AppCompatActivity {
             JSONObject json = new JSONObject(jsonStr);
             if (!json.optBoolean("success", false)) return;
 
+            // Item F: If scanner key is rejected, alert user and do NOT touch caches
+            if (json.optBoolean("restricted", false)) {
+                if (txtPosStatus != null) {
+                    txtPosStatus.setText("● PC connected but scanner key rejected — check ⚙️ Settings");
+                    txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
+                }
+                return;
+            }
+
             // Cache Payment Settings (Receiver Phone & CBE Account) from server
             JSONObject settingsObj = json.optJSONObject("settings");
             if (settingsObj != null) {
-                cachedTelebirrReceiver = settingsObj.optString("telebirrReceiverPhone", cachedTelebirrReceiver);
-                cachedCbeReceiver = settingsObj.optString("cbeReceiverAccount", cachedCbeReceiver);
-                cachedMerchantName = settingsObj.optString("merchantName", cachedMerchantName);
+                String sTelebirr = settingsObj.optString("telebirrReceiverPhone", "").trim();
+                String sCbe = settingsObj.optString("cbeReceiverAccount", "").trim();
+                String sMerchant = settingsObj.optString("merchantName", "").trim();
+
+                if (!sTelebirr.isEmpty()) cachedTelebirrReceiver = sTelebirr;
+                if (!sCbe.isEmpty()) cachedCbeReceiver = sCbe;
+                if (!sMerchant.isEmpty()) cachedMerchantName = sMerchant;
+
                 prefs.edit()
                         .putString(KEY_TELEBIRR_RECV, cachedTelebirrReceiver)
                         .putString(KEY_CBE_RECV, cachedCbeReceiver)
@@ -838,6 +870,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleScannedPayload(final String payload) {
+        lastRawScan = payload;
         isVerifying = true;
         barcodeView.pause();
         playBeep(true);
@@ -1431,63 +1464,98 @@ public class MainActivity extends AppCompatActivity {
                     if (response.isSuccessful()) {
                         activePosUrl = currentBaseUrl;
                         String jsonStr = response.body() != null ? response.body().string() : "{}";
-                        mainHandler.post(() -> {
-                            try {
-                                JSONObject json = new JSONObject(jsonStr);
-                                boolean isDuplicate = json.optBoolean("isDuplicate", false);
-                                if (isDuplicate) {
-                                    txtResultBadge.setText("DUPLICATE");
-                                    txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-                                    txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-                                    txtResultPosMatch.setText("🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
-                                    playBeep(false);
-                                    vibrateError();
-                                    return;
-                                }
-
-                                JSONObject orderMatch = json.optJSONObject("orderMatch");
-                                if (orderMatch != null && orderMatch.optBoolean("matched", false)) {
-                                    String orderName = orderMatch.optString("orderName", targetOrderTitle != null ? targetOrderTitle : "Table");
-                                    txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", orderName));
-                                    playBeep(true);
-                                    clearSelectedOrder();
-                                    fetchOpenOrders(false);
-                                    layoutPostScanTablePicker.setVisibility(View.GONE);
-                                } else {
-                                    txtResultPosMatch.setText("✅ Recorded on Cashier PC");
-                                    if (!currentOpenOrders.isEmpty()) {
-                                        layoutPostScanTablePicker.setVisibility(View.VISIBLE);
-                                        populatePostScanTableButtons();
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                txtResultPosMatch.setText("✅ Recorded on Cashier PC");
-                            }
-                        });
+                        mainHandler.post(() -> handleBackgroundSyncResponse(jsonStr, response.code(), targetOrderTitle));
                     } else if (response.code() >= 500) {
                         tryAsyncBackgroundSync(endpoints, index + 1, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
                     } else {
-                        // 4xx error (e.g. authoritative duplicate or mismatch from server)
+                        // 4xx error (e.g. authoritative duplicate, mismatch, underpaid from server)
                         String jsonStr = response.body() != null ? response.body().string() : "{}";
-                        mainHandler.post(() -> {
-                            try {
-                                JSONObject json = new JSONObject(jsonStr);
-                                boolean isDuplicate = json.optBoolean("isDuplicate", false);
-                                if (isDuplicate) {
-                                    txtResultBadge.setText("DUPLICATE");
-                                    txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-                                    txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-                                    txtResultPosMatch.setText("🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
-                                    playBeep(false);
-                                    vibrateError();
-                                }
-                            } catch (Exception ignored) {}
-                        });
+                        mainHandler.post(() -> handleBackgroundSyncResponse(jsonStr, response.code(), targetOrderTitle));
                     }
                 }
             });
         } catch (Exception e) {
             tryAsyncBackgroundSync(endpoints, index + 1, reference, provider, htmlContent, slipUrl, amount, payer, receiver);
+        }
+    }
+
+    private void handleBackgroundSyncResponse(final String jsonStr, final int statusCode, final String targetOrderTitle) {
+        try {
+            JSONObject json = new JSONObject(jsonStr);
+            JSONObject receipt = json.optJSONObject("receipt");
+
+            boolean isDuplicate = json.optBoolean("duplicate", false)
+                    || json.optBoolean("isDuplicate", false)
+                    || (receipt != null && receipt.optBoolean("isDuplicate", false));
+            boolean isReceiverMismatch = json.optBoolean("receiverMismatch", false)
+                    || (receipt != null && !receipt.optBoolean("isReceiverMatched", true));
+            boolean isUnderpaid = json.optBoolean("underpaid", false)
+                    || (receipt != null && receipt.optBoolean("isUnderpaid", false));
+            String errorMsg = json.optString("error", receipt != null ? receipt.optString("errorMessage", "") : "");
+
+            if (isDuplicate) {
+                txtResultBadge.setText("DUPLICATE");
+                txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : "🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
+                if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
+                playBeep(false);
+                vibrateError();
+                return;
+            }
+
+            if (isReceiverMismatch) {
+                txtResultBadge.setText("WRONG RECV");
+                txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : "🚨 RECEIVER MISMATCH: Payment was NOT credited to your business account!");
+                if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
+                playBeep(false);
+                vibrateError();
+                return;
+            }
+
+            if (isUnderpaid) {
+                txtResultBadge.setText("UNDERPAID");
+                txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
+                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : "❌ Scanned amount is less than order bill!");
+                if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
+                playBeep(false);
+                vibrateError();
+                return;
+            }
+
+            if (statusCode >= 200 && statusCode < 300) {
+                JSONObject linkedOrder = json.optJSONObject("linkedOrder");
+                if (linkedOrder != null) {
+                    String tableNum = linkedOrder.optString("tableNumber", "");
+                    String orderName = (targetOrderTitle != null && !targetOrderTitle.isEmpty())
+                            ? targetOrderTitle
+                            : (!tableNum.isEmpty() && !"?".equals(tableNum) ? "Table " + tableNum : "Table");
+                    txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", orderName));
+                    playBeep(true);
+                    clearSelectedOrder();
+                    fetchOpenOrders(false);
+                    if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
+                } else {
+                    txtResultPosMatch.setText("✅ Recorded on Cashier PC");
+                    if (layoutPostScanTablePicker != null) {
+                        if (!currentOpenOrders.isEmpty()) {
+                            layoutPostScanTablePicker.setVisibility(View.VISIBLE);
+                            populatePostScanTableButtons();
+                        } else {
+                            layoutPostScanTablePicker.setVisibility(View.GONE);
+                        }
+                    }
+                }
+            } else if (!errorMsg.isEmpty()) {
+                txtResultPosMatch.setText(errorMsg);
+            }
+        } catch (Exception ex) {
+            if (statusCode >= 200 && statusCode < 300) {
+                txtResultPosMatch.setText("✅ Recorded on Cashier PC");
+            }
         }
     }
 
@@ -1721,6 +1789,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "No verified receipt to link", Toast.LENGTH_SHORT).show();
             return;
         }
+        if (isLinkingInFlight) return;
+        isLinkingInFlight = true;
 
         showLoading("Linking payment to " + targetOrder.displayTitle + "...");
         final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
@@ -1735,37 +1805,74 @@ public class MainActivity extends AppCompatActivity {
             body.put("receiverName", lastVerifiedReceiver);
             body.put("manualConfirmed", true);
 
-            RequestBody requestBody = RequestBody.Companion.create(
-                    body.toString(),
-                    MediaType.Companion.parse("application/json; charset=utf-8")
-            );
+            final String requestBodyStr = body.toString();
 
-            String basePosUrl = (activePosUrl != null && !activePosUrl.trim().isEmpty()) ? activePosUrl : DEFAULT_TUNNEL_URL;
-            Request request = new Request.Builder()
-                    .url(basePosUrl.replaceAll("/+$", "") + "/api/scanner/verify-order")
-                    .header("x-scanner-token", apiKey)
-                    .post(requestBody)
-                    .build();
+            List<String> endpoints = new ArrayList<>();
+            if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
+                endpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+            }
+            if (!endpoints.contains(DEFAULT_LOCAL_URL)) {
+                endpoints.add(DEFAULT_LOCAL_URL);
+            }
+            if (!endpoints.contains(DEFAULT_TUNNEL_URL)) {
+                endpoints.add(DEFAULT_TUNNEL_URL);
+            }
 
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+            tryLinkOrderEndpoints(endpoints, 0, targetOrder, requestBodyStr, apiKey);
+
+        } catch (Exception e) {
+            isLinkingInFlight = false;
+            mainHandler.post(this::hideLoading);
+        }
+    }
+
+    private void tryLinkOrderEndpoints(
+            final List<String> endpoints,
+            final int index,
+            final OpenOrder targetOrder,
+            final String requestBodyStr,
+            final String apiKey
+    ) {
+        if (index >= endpoints.size()) {
+            isLinkingInFlight = false;
+            mainHandler.post(() -> {
+                hideLoading();
+                Toast.makeText(MainActivity.this, "Network error: Could not reach Cashier PC to link order", Toast.LENGTH_SHORT).show();
+            });
+            return;
+        }
+
+        final String currentBaseUrl = endpoints.get(index);
+        RequestBody requestBody = RequestBody.Companion.create(
+                requestBodyStr,
+                MediaType.Companion.parse("application/json; charset=utf-8")
+        );
+
+        Request request = new Request.Builder()
+                .url(currentBaseUrl + "/api/scanner/verify-order")
+                .header("x-scanner-token", apiKey)
+                .post(requestBody)
+                .build();
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                tryLinkOrderEndpoints(endpoints, index + 1, targetOrder, requestBodyStr, apiKey);
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                final String jsonStr = response.body() != null ? response.body().string() : "{}";
+                final int statusCode = response.code();
+
+                if (response.isSuccessful()) {
+                    activePosUrl = currentBaseUrl;
                     mainHandler.post(() -> {
-                        hideLoading();
-                        Toast.makeText(MainActivity.this, "Network error linking to " + targetOrder.displayTitle + ": " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    });
-                }
-
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    final String jsonStr = response.body() != null ? response.body().string() : "{}";
-                    final boolean isSuccess = response.isSuccessful();
-
-                    mainHandler.post(() -> {
+                        isLinkingInFlight = false;
                         hideLoading();
                         try {
                             JSONObject res = new JSONObject(jsonStr);
-                            if (isSuccess && res.optBoolean("success", false)) {
+                            if (res.optBoolean("success", false)) {
                                 playBeep(true);
                                 vibrateSuccess();
                                 txtResultPosMatch.setText(String.format(Locale.US, "✅ Linked to %s (Marked Paid on Cashier PC!)", targetOrder.displayTitle));
@@ -1774,21 +1881,44 @@ public class MainActivity extends AppCompatActivity {
                                 fetchOpenOrders(false);
                                 Toast.makeText(MainActivity.this, "✅ Marked Paid on Cashier PC for " + targetOrder.displayTitle, Toast.LENGTH_SHORT).show();
                             } else {
-                                final String err = res.optString("error", "Failed to link order (HTTP " + response.code() + ")");
-                                playBeep(false);
-                                vibrateError();
-                                Toast.makeText(MainActivity.this, "⚠️ " + err, Toast.LENGTH_LONG).show();
+                                handleLinkOrderError(res, statusCode);
                             }
                         } catch (Exception ex) {
                             Toast.makeText(MainActivity.this, "Error parsing link response: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
+                } else if (statusCode >= 500) {
+                    tryLinkOrderEndpoints(endpoints, index + 1, targetOrder, requestBodyStr, apiKey);
+                } else {
+                    // Authoritative 4xx response
+                    mainHandler.post(() -> {
+                        isLinkingInFlight = false;
+                        hideLoading();
+                        try {
+                            JSONObject res = new JSONObject(jsonStr);
+                            handleLinkOrderError(res, statusCode);
+                        } catch (Exception ex) {
+                            txtResultPosMatch.setText("⚠️ Failed to link order (HTTP " + statusCode + ")");
+                            Toast.makeText(MainActivity.this, "⚠️ Failed to link order (HTTP " + statusCode + ")", Toast.LENGTH_LONG).show();
+                        }
+                    });
                 }
-            });
+            }
+        });
+    }
 
-        } catch (Exception e) {
-            mainHandler.post(this::hideLoading);
+    private void handleLinkOrderError(JSONObject res, int statusCode) {
+        boolean isDuplicate = res.optBoolean("duplicate", false) || res.optBoolean("isDuplicate", false);
+        if (isDuplicate) {
+            txtResultBadge.setText("DUPLICATE");
+            txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+            txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
         }
+        final String err = res.optString("error", "Failed to link order (HTTP " + statusCode + ")");
+        txtResultPosMatch.setText(err);
+        playBeep(false);
+        vibrateError();
+        Toast.makeText(MainActivity.this, "⚠️ " + err, Toast.LENGTH_LONG).show();
     }
 
     /**
@@ -1826,6 +1956,10 @@ public class MainActivity extends AppCompatActivity {
                 playBeep(true);
                 vibrateSuccess();
 
+                if (btnRetryVerification != null) {
+                    btnRetryVerification.setVisibility(View.GONE);
+                }
+
                 imgResultIcon.setImageResource(R.drawable.ic_verified_check);
                 txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.verified_title));
                 txtResultStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
@@ -1845,6 +1979,20 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 playBeep(false);
                 vibrateError();
+
+                if (btnRetryVerification != null) {
+                    btnRetryVerification.setVisibility(View.VISIBLE);
+                }
+
+                // Bug C: Clear verified fields and hide table picker on failure so table taps cannot link stale slip
+                lastVerifiedRef = "";
+                lastVerifiedProvider = "";
+                lastVerifiedAmount = 0.0;
+                lastVerifiedPayer = "";
+                lastVerifiedReceiver = "";
+                if (layoutPostScanTablePicker != null) {
+                    layoutPostScanTablePicker.setVisibility(View.GONE);
+                }
 
                 imgResultIcon.setImageResource(R.drawable.ic_error_cross);
                 txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.failed_title));
@@ -1883,6 +2031,14 @@ public class MainActivity extends AppCompatActivity {
         mainHandler.post(() -> {
             cardResult.setVisibility(View.GONE);
             layoutPostScanTablePicker.setVisibility(View.GONE);
+            if (btnRetryVerification != null) {
+                btnRetryVerification.setVisibility(View.GONE);
+            }
+            lastVerifiedRef = "";
+            lastVerifiedProvider = "";
+            lastVerifiedAmount = 0.0;
+            lastVerifiedPayer = "";
+            lastVerifiedReceiver = "";
             hideLoading();
             isVerifying = false;
             if (!isWebViewMode) barcodeView.resume();

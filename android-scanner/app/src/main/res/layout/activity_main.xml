@@ -620,10 +620,23 @@
 
             <!-- Action Buttons -->
             <Button
-                android:id="@+id/btnScanNext"
+                android:id="@+id/btnRetryVerification"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="16dp"
+                android:background="@drawable/btn_gold"
+                android:text="↻ Try Again"
+                android:textColor="@color/bg_dark"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                app:backgroundTint="@null" />
+
+            <Button
+                android:id="@+id/btnScanNext"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/btn_gold"
                 android:text="@string/scan_next"
                 android:textColor="@color/bg_dark"

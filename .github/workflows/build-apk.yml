@@ -55,30 +55,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.5.1-scanner
-          name: "Kogna Verifier App v2.5.1"
+          tag_name: v2.5.2-scanner
+          name: "Kogna Verifier App v2.5.2"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.5.1
+            ## 📱 Kogna Verifier Android App v2.5.2
 
-            ### 🛠️ Verification Stability & Security Fixes:
-            - **Hedged Verification with Automatic Fallback**:
-              - Verification queries the official bank gateway directly with a 2-second hedging timer.
-              - If the bank gateway does not respond within 2 seconds or encounters errors, the app concurrently queries the Cashier PC POS endpoints (`activePosUrl`, `DEFAULT_LOCAL_URL`, `DEFAULT_TUNNEL_URL`).
-              - First authoritative verdict (genuine payment, duplicate, wrong receiver, or underpayment) wins and cancels competing requests.
-              - All routes must fail before an unverified failure is reported.
-            - **Telebirr Gateway Resilience**:
-              - DNS resolution now queries system DNS first with fallback to `196.188.116.120` on `UnknownHostException` (unresponsive `.121` removed).
-              - Shorter per-call timeouts (5s connect, 8s read) with automatic single retry on network failure or 5xx responses.
-              - Transaction status check now parses non-standard HTML table structure (`transaction status` cell without closing tag) requiring `completed|success|approved`.
-            - **CBE Verification Fixes**:
-              - Corrected field mappings for modern v2 API responses (`creditAccountNo`, `creditAccountHolder`, `debitAccountHolder`, `debitAccountNo`, `amountCredited`, `status`, `dateTimes[0]`).
-              - Legacy `FT` slips bypass direct device query and route to Cashier PC PDF parser, displaying clear guidance when Cashier PC is unreachable.
-            - **Masked Account & Phone Matching**:
-              - Implemented prefix/suffix matching and international dial code normalization (`251` ↔ `0`) for masked accounts across Telebirr and CBE.
-            - **Test Automation & Architecture**:
-              - Modularized parsing and validation logic into `ReceiptParser` with unit tests running in CI prior to build.
+            ### 🔄 New Features & Workflow Improvements:
+            - **↻ Try Again Button on Failure Cards**:
+              - Added a visible retry button on error/unverified cards.
+              - Re-runs the verification pipeline for the last scanned payload immediately without requiring cashier to re-aim camera.
+            - **Post-Scan Table Linking Contract Fix (Bug A)**:
+              - Corrected response handling for `linkedOrder != null` from Cashier PC sync.
+              - Accurately confirms order linking on screen and closes table picker to prevent duplicate submissions.
+            - **Cashier PC Sync Status Updates (Bug B)**:
+              - Authoritative duplicate, wrong-receiver, and underpayment responses from Cashier PC now update the result card and badge in place.
+            - **Stale Reference Safeguard (Bug C)**:
+              - Cleared verified transaction data and hid post-scan table picker on failed scans and scanner reset to prevent associating previous slip with new tables.
+            - **Multi-Endpoint Fallback for Table Linking (Bug D)**:
+              - Table linking requests now sequentially try `activePosUrl` -> `DEFAULT_LOCAL_URL` -> `DEFAULT_TUNNEL_URL` with in-flight double-tap protection.
+            - **Security Hardening (Bug E)**:
+              - Enforced `isScannerAuthorized` authentication check on `POST /api/scanner/verify-order`.
+            - **Settings Safeguard (Item F)**:
+              - Added warning banner if scanner token is rejected and preserved cached receiver accounts.
 
             ### 📥 Download & Install:
             1. Download **`KognaVerifier.apk`** below to your Android device.

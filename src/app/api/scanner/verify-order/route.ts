@@ -8,6 +8,11 @@ import { isScannerAuthorized } from '@/lib/scanner-auth'
 
 export async function POST(req: Request) {
   try {
+    const authorized = await isScannerAuthorized(req)
+    if (!authorized) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Action restricted to authorized staff' }, { status: 401 })
+    }
+
     const body = await req.json()
     const { orderId, reference, provider, amount, payerName, receiverName, manualConfirmed } = body
 
