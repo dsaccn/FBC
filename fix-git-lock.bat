@@ -7,9 +7,10 @@ echo        KOGNA COFFEE — CLEAR STALE GIT LOCKS
 echo =========================================================
 echo.
 
-echo [1/2] Terminating any frozen or background Git processes...
+echo [1/2] Terminating any frozen or background Git & tunnel processes...
 taskkill /f /im git.exe >nul 2>&1
 taskkill /f /im git-remote-https.exe >nul 2>&1
+taskkill /f /im cloudflared.exe >nul 2>&1
 echo       Process check complete.
 echo.
 

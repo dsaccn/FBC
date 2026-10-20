@@ -20,9 +20,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Auto-kill any hung or orphaned Git background processes
+:: Auto-kill any hung or orphaned Git background processes and lock holders
 taskkill /f /im git.exe >nul 2>&1
 taskkill /f /im git-remote-https.exe >nul 2>&1
+taskkill /f /im cloudflared.exe >nul 2>&1
 
 :: Auto-clean any stale Git lock files (e.g. from previous aborted runs or crashes)
 if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
