@@ -393,7 +393,10 @@ export async function verifyTelebirrReceipt(
  * Official endpoint: https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/{id}
  */
 export async function verifyModernCbeReceipt(tokenId: string): Promise<VerifiedReceipt> {
-  const cleanToken = cleanReference(tokenId).replace(/^https?:\/\/(?:mbrecie?pt|mb)\.cbe\.com\.et\//i, '')
+  const cleanToken = cleanReference(tokenId)
+    .replace(/^https?:\/\/(?:mbrecie?pt|mb)\.cbe\.com\.et\//i, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
   const fetchUrl = `https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail/${cleanToken}`
 
   try {
@@ -563,10 +566,14 @@ export async function verifyCbeReceipt(
   }
 
   // 1. Check for modern CBE mobile banking receipt link or token (mbreciept.cbe.com.et/{token} or v2-{token})
-  const modernMatch = clean.match(/(?:(?:mbrecie?pt|mb)\.cbe\.com\.et\/|^)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i)
-  if (modernMatch) {
-    const tokenId = modernMatch[1]
-    return verifyModernCbeReceipt(tokenId)
+  const isFtCode = /^FT/i.test(clean) || /[?&]id=FT/i.test(clean)
+  if (!isFtCode) {
+    const modernMatch = clean.match(/(?:(?:mbrecie?pt|mb)\.cbe\.com\.et\/)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i) ||
+                        clean.match(/^(v2-[A-Za-z0-9_-]+)/i)
+    if (modernMatch) {
+      const tokenId = modernMatch[1].replace(/[?#].*$/, '').replace(/\/+$/, '')
+      return verifyModernCbeReceipt(tokenId)
+    }
   }
 
   let fetchUrl = clean

@@ -51,18 +51,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.2.1-scanner
-          name: "Kogna Verifier App v2.2.1 (Crash Fix & Direct Table Link)"
+          tag_name: v2.2.2-scanner
+          name: "Kogna Verifier App v2.2.2 (100% Reliable Scanner & Dual Failover)"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.2.1
+            ## 📱 Kogna Verifier Android App v2.2.2
 
-            ### 🛡️ Critical Updates & Features:
-            - **Strict Receiver Verification**: Cross-references Telebirr and CBE receiver phone/account numbers with official store settings. Fraudulent receipts or payments sent to other accounts are immediately flagged with `❌ RECEIVER MISMATCH` and rejected!
-            - **Real-Time Table Linking**: Verified payments automatically link to target tables and broadcast `ORDER_VERIFIED` to the Cashier PC screen, marking them as PAID in 0 ms.
-            - **Quick Post-Scan Table Picker**: If a receipt is scanned without pre-selecting a table, horizontal 1-tap table chips (`Table 1`, `Table 2`, etc.) appear right on the result card for instant Cashier linking.
-            - **Dual Engine Toggle (Native + Web Scanner Link)**: Tap the 🌐 icon in the top bar to toggle between the ⚡ 100% Native Hardware Camera and the 🌐 Full Web Scanner Link engine.
+            ### 🛡️ Critical Fixes & Improvements:
+            - **Eliminated "Cannot Reach Cashier PC" Delay**: Added automatic dual-endpoint failover between Cloudflare Tunnel and Local Wi-Fi (`http://192.168.1.5:3000`). If one network is slow or unreachable, it instantly tries the other in milliseconds.
+            - **High-Performance In-Flight Retries**: Added transparent 2-attempt retry loop on device for Ethio Telecom slips, preventing packet drop failures on mobile networks.
+            - **Universal Ethiopian Payment QR Engine**: Comprehensive regex matching for CBE v2 URLs/tokens (stripping `?type=qr`), legacy CBE FT codes, Telebirr URLs, SuperApp Base64 EMVCo QR, and SMS strings.
+            - **9-Digit Receiver Normalization**: Automatically normalizes Ethiopian phone formats (`251...` vs `09...`) so masked numbers match reliably without false receiver mismatch rejections.
+            - **ZXing Fast Continuous Autofocus & Inverted Mode**: Added mixed normal/inverted luminance decoding for fast QR scanning on dark-mode phone screens and low-contrast displays.
             - **Zero-Delay Slip Fetching**: Direct Ethiopian network connectivity bypasses overseas cloud gateway delays.
             - **Duplicate & Underpayment Protection**: Rejects already-used transaction IDs and prevents linking receipts where the paid amount is less than the bill.
 

@@ -47,10 +47,14 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.android.material.card.MaterialCardView;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.DecodeHintType;
 import com.google.zxing.ResultPoint;
 import com.journeyapps.barcodescanner.BarcodeCallback;
 import com.journeyapps.barcodescanner.BarcodeResult;
 import com.journeyapps.barcodescanner.DecoratedBarcodeView;
+import com.journeyapps.barcodescanner.DefaultDecoderFactory;
+import com.journeyapps.barcodescanner.camera.CameraSettings;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -59,9 +63,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,6 +76,7 @@ import java.util.regex.Pattern;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.ConnectionPool;
+import okhttp3.ConnectionSpec;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -211,10 +219,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupHttpAndAudio() {
+        List<ConnectionSpec> specs = Arrays.asList(
+                ConnectionSpec.MODERN_TLS,
+                ConnectionSpec.COMPATIBLE_TLS,
+                ConnectionSpec.CLEARTEXT
+        );
         httpClient = new OkHttpClient.Builder()
+                .connectionSpecs(specs)
                 .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
-                .connectTimeout(6, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build();
 
@@ -418,6 +433,27 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupScanner() {
         barcodeView.setStatusText(""); // Hide default camera status label
+
+        try {
+            CameraSettings cameraSettings = barcodeView.getBarcodeView().getCameraSettings();
+            if (cameraSettings == null) cameraSettings = new CameraSettings();
+            cameraSettings.setContinuousFocusEnabled(true);
+            cameraSettings.setAutoFocusEnabled(true);
+            barcodeView.getBarcodeView().setCameraSettings(cameraSettings);
+
+            List<BarcodeFormat> formats = Arrays.asList(
+                    BarcodeFormat.QR_CODE,
+                    BarcodeFormat.DATA_MATRIX,
+                    BarcodeFormat.CODE_128,
+                    BarcodeFormat.PDF_417
+            );
+            Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
+            hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
+            hints.put(DecodeHintType.POSSIBLE_FORMATS, formats);
+            hints.put(DecodeHintType.CHARACTER_SET, "UTF-8");
+            barcodeView.getBarcodeView().setDecoderFactory(new DefaultDecoderFactory(formats, hints, "UTF-8", 2));
+        } catch (Exception ignored) {}
+
         barcodeView.decodeContinuous(new BarcodeCallback() {
             @Override
             public void barcodeResult(BarcodeResult result) {
@@ -750,6 +786,153 @@ public class MainActivity extends AppCompatActivity {
     // ⚡ SCAN & VERIFICATION LOGIC (AUTHORITATIVE)
     // ==========================================
 
+    public static class DetectedPayment {
+        public String provider = "UNKNOWN";
+        public String reference = "";
+        public String slipUrl = "";
+        public boolean isTelebirr = false;
+        public boolean isCbe = false;
+    }
+
+    private DetectedPayment detectPayment(String rawInput) {
+        DetectedPayment res = new DetectedPayment();
+        if (rawInput == null || rawInput.trim().isEmpty()) {
+            return res;
+        }
+        String clean = rawInput.trim();
+
+        // 1. CBE Modern Mobile Banking QR code / URL (mbreciept.cbe.com.et/v2-... or mb.cbe.com.et/...)
+        Matcher cbeV2Url = Pattern.compile("(?:https?://)?(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (cbeV2Url.find()) {
+            String token = cbeV2Url.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
+            res.provider = "CBE";
+            res.reference = token; // Exact case preserved!
+            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Direct v2 token
+        Matcher directV2 = Pattern.compile("^(v2-[A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (directV2.find()) {
+            String token = directV2.group(1).replaceAll("[?#].*$", "").replaceAll("/+$", "");
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 2. CBE Legacy FT URL: [?&]id=(FT[0-9A-Za-z]{10})
+        Matcher cbeFtUrl = Pattern.compile("[?&]id=(FT[0-9A-Za-z]{10})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (cbeFtUrl.find()) {
+            String ft = cbeFtUrl.group(1).toUpperCase();
+            res.provider = "CBE";
+            res.reference = ft;
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Direct FT code
+        Matcher directFt = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (directFt.find()) {
+            String ft = directFt.group(1).toUpperCase();
+            res.provider = "CBE";
+            res.reference = ft;
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+            res.isCbe = true;
+            return res;
+        }
+
+        // Any other CBE URL
+        if (clean.toLowerCase().contains("cbe.com.et")) {
+            Matcher tokenMatch = Pattern.compile("cbe\\.com\\.et/([A-Za-z0-9_-]{8,})", Pattern.CASE_INSENSITIVE).matcher(clean);
+            String token = tokenMatch.find() ? tokenMatch.group(1).replaceAll("[?#].*$", "") : clean;
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = clean.startsWith("http") ? clean : "https://" + clean;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 3. Telebirr URL: /receipt/([A-Za-z0-9_-]+)
+        Matcher tbUrl = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (tbUrl.find()) {
+            String code = tbUrl.group(1).toUpperCase();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 4. Telebirr Base64 EMVCo SuperApp QR code
+        if (clean.length() > 30 && clean.matches("^[A-Za-z0-9+/=\\s]+$")) {
+            try {
+                byte[] decoded = Base64.decode(clean.replaceAll("\\s+", ""), Base64.DEFAULT);
+                String isoString = new String(decoded, StandardCharsets.ISO_8859_1);
+                Matcher emvMatch = Pattern.compile("000A([0-9a-fA-F]{20})", Pattern.CASE_INSENSITIVE).matcher(isoString);
+                if (emvMatch.find()) {
+                    String hex = emvMatch.group(1);
+                    StringBuilder ascii = new StringBuilder();
+                    for (int i = 0; i < hex.length() - 1; i += 2) {
+                        ascii.append((char) Integer.parseInt(hex.substring(i, i + 2), 16));
+                    }
+                    String code = ascii.toString().trim().toUpperCase();
+                    if (code.matches("^[A-Za-z0-9]{8,14}$")) {
+                        res.provider = "TELEBIRR";
+                        res.reference = code;
+                        res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+                        res.isTelebirr = true;
+                        return res;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 5. Amharic or English SMS text
+        Matcher smsTagMatch = Pattern.compile("(?:Transaction\\s*(?:number|no|id)|Txn\\s*ID|የግብይት\\s*ቁጥር|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (smsTagMatch.find()) {
+            String code = smsTagMatch.group(1).toUpperCase();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 6. Standalone 10-char alphanumeric reference code (e.g. DJ22CN5LY2)
+        Matcher codeMatch = Pattern.compile("\\b([A-Za-z0-9]{10})\\b").matcher(clean);
+        while (codeMatch.find()) {
+            String candidate = codeMatch.group(1);
+            if (!candidate.equalsIgnoreCase("TELEBIRR") && !candidate.equalsIgnoreCase("ETHIOTELE") &&
+                !candidate.equalsIgnoreCase("COMMERCIAL") && !candidate.matches("^\\d+$") && !candidate.matches("^[A-Za-z]+$")) {
+                String code = candidate.toUpperCase();
+                res.provider = "TELEBIRR";
+                res.reference = code;
+                res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+                res.isTelebirr = true;
+                return res;
+            }
+        }
+
+        // 7. Fallback
+        String cleanedAlpha = clean.replaceAll("[^A-Za-z0-9_-]", "");
+        if (cleanedAlpha.toUpperCase().startsWith("FT")) {
+            res.provider = "CBE";
+            res.reference = cleanedAlpha.toUpperCase();
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + res.reference;
+            res.isCbe = true;
+        } else {
+            res.provider = "TELEBIRR";
+            res.reference = cleanedAlpha.toUpperCase();
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + res.reference;
+            res.isTelebirr = true;
+        }
+        return res;
+    }
+
     private void handleScannedPayload(final String payload) {
         isVerifying = true;
         barcodeView.pause();
@@ -758,41 +941,26 @@ public class MainActivity extends AppCompatActivity {
         showLoading("Verifying official bank slip & receiver...");
 
         new Thread(() -> {
-            String cleaned = payload.trim();
+            DetectedPayment payment = detectPayment(payload);
 
-            boolean isCbe = cleaned.toUpperCase().startsWith("FT") ||
-                    cleaned.toLowerCase().contains("cbe.com.et") ||
-                    cleaned.startsWith("v2-") ||
-                    cleaned.toLowerCase().contains("mbreciept");
-
-            if (isCbe) {
-                processCbeScan(cleaned);
+            if (payment.isCbe) {
+                processCbeScan(payment);
             } else {
-                processTelebirrScan(cleaned);
+                processTelebirrScan(payment);
             }
         }).start();
     }
 
-    /**
-     * Process Telebirr: Grab official slip HTML on device (0.5s), then verify with server
-     */
-    private void processTelebirrScan(final String rawInput) {
-        final String transactionId = extractTelebirrId(rawInput);
-        if (transactionId == null || transactionId.isEmpty()) {
-            mainHandler.post(() -> showVerificationResult(
-                    false, "TELEBIRR", rawInput, 0.0, "-", "-",
-                    "Invalid QR format", "Unable to extract Telebirr reference code", "", "❌ Invalid QR code"
-            ));
-            return;
-        }
+    private interface DeviceSlipCallback {
+        void onComplete(String htmlContent);
+    }
 
-        final String slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + transactionId;
-        lastVerifiedUrl = slipUrl;
-
+    private void fetchDeviceSlipWithRetry(final String slipUrl, final int attempt, final int maxAttempts, final DeviceSlipCallback callback) {
         Request request = new Request.Builder()
                 .url(slipUrl)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9,am;q=0.8")
                 .header("Connection", "Keep-Alive")
                 .build();
 
@@ -800,44 +968,92 @@ public class MainActivity extends AppCompatActivity {
         currentActiveCall.enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                // If direct network fails, pass to server anyway as fallback
-                verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
+                if (attempt < maxAttempts) {
+                    mainHandler.postDelayed(() -> fetchDeviceSlipWithRetry(slipUrl, attempt + 1, maxAttempts, callback), 300);
+                } else {
+                    callback.onComplete(null);
+                }
             }
 
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    verifySlipWithServer(transactionId, "TELEBIRR", null, slipUrl);
-                    return;
+                if (response.isSuccessful() && response.body() != null) {
+                    String html = response.body().string();
+                    if (html.length() > 300) {
+                        callback.onComplete(html);
+                        return;
+                    }
                 }
-
-                String html = response.body() != null ? response.body().string() : "";
-                verifySlipWithServer(transactionId, "TELEBIRR", html, slipUrl);
+                if (attempt < maxAttempts) {
+                    mainHandler.postDelayed(() -> fetchDeviceSlipWithRetry(slipUrl, attempt + 1, maxAttempts, callback), 300);
+                } else {
+                    callback.onComplete(null);
+                }
             }
         });
     }
 
-    /**
-     * Process CBE: Extract token or FT code, then verify with server
-     */
-    private void processCbeScan(final String rawInput) {
-        String clean = rawInput.trim();
-        String tokenId = clean.replaceAll("^https?://(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/", "");
-        final String slipUrl = "https://mbreciept.cbe.com.et/" + tokenId;
+    private void processTelebirrScan(final DetectedPayment payment) {
+        final String transactionId = payment.reference;
+        final String slipUrl = payment.slipUrl;
+        lastVerifiedUrl = slipUrl;
+
+        if (transactionId == null || transactionId.isEmpty()) {
+            mainHandler.post(() -> showVerificationResult(
+                    false, "TELEBIRR", "-", 0.0, "-", "-",
+                    "Invalid QR format", "Unable to extract Telebirr reference code", "", "❌ Invalid QR code"
+            ));
+            return;
+        }
+
+        fetchDeviceSlipWithRetry(slipUrl, 1, 2, htmlContent -> {
+            verifySlipWithServer(transactionId, "TELEBIRR", htmlContent, slipUrl);
+        });
+    }
+
+    private void processCbeScan(final DetectedPayment payment) {
+        final String tokenId = payment.reference;
+        final String slipUrl = payment.slipUrl;
         lastVerifiedUrl = slipUrl;
 
         verifySlipWithServer(tokenId, "CBE", null, slipUrl);
     }
 
-    /**
-     * Authoritative Verification via Cashier PC /api/verify-receipt
-     */
     private void verifySlipWithServer(
             final String reference,
             final String provider,
             final String htmlContent,
             final String slipUrl
     ) {
+        List<String> targetEndpoints = new ArrayList<>();
+        if (activePosUrl != null && !activePosUrl.trim().isEmpty()) {
+            targetEndpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+        }
+        if (!targetEndpoints.contains(DEFAULT_LOCAL_URL)) {
+            targetEndpoints.add(DEFAULT_LOCAL_URL);
+        }
+        if (!targetEndpoints.contains(DEFAULT_TUNNEL_URL)) {
+            targetEndpoints.add(DEFAULT_TUNNEL_URL);
+        }
+
+        tryVerifyEndpoints(targetEndpoints, 0, reference, provider, htmlContent, slipUrl);
+    }
+
+    private void tryVerifyEndpoints(
+            final List<String> endpoints,
+            final int index,
+            final String reference,
+            final String provider,
+            final String htmlContent,
+            final String slipUrl
+    ) {
+        if (index >= endpoints.size()) {
+            // All endpoints failed -> Fall back to on-device validation
+            mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
+            return;
+        }
+
+        final String currentBaseUrl = endpoints.get(index);
         final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
         final String targetOrderId = (selectedOrder != null) ? selectedOrder.id : null;
         final String targetOrderTitle = (selectedOrder != null) ? selectedOrder.displayTitle : null;
@@ -861,7 +1077,7 @@ public class MainActivity extends AppCompatActivity {
             );
 
             Request request = new Request.Builder()
-                    .url(activePosUrl.replaceAll("/+$", "") + "/api/verify-receipt")
+                    .url(currentBaseUrl + "/api/verify-receipt")
                     .header("x-scanner-token", apiKey)
                     .post(requestBody)
                     .build();
@@ -869,19 +1085,29 @@ public class MainActivity extends AppCompatActivity {
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    // Cashier PC offline -> Fall back to on-device validation
-                    mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
+                    // Try next endpoint (e.g. Tunnel -> Local LAN IP, or vice versa)
+                    tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    String jsonStr = response.body() != null ? response.body().string() : "{}";
-                    mainHandler.post(() -> handleServerVerificationResponse(response.isSuccessful(), response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
+                    if (response.isSuccessful()) {
+                        activePosUrl = currentBaseUrl; // Update active URL to the responsive endpoint
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        mainHandler.post(() -> handleServerVerificationResponse(true, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
+                    } else if (response.code() >= 500) {
+                        // Gateway timeout or server 5xx on this endpoint -> try alternative endpoint
+                        tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
+                    } else {
+                        // Authoritative 4xx response from Cashier PC (Duplicate, Wrong Receiver, Underpaid, etc.)
+                        String jsonStr = response.body() != null ? response.body().string() : "{}";
+                        mainHandler.post(() -> handleServerVerificationResponse(false, response.code(), jsonStr, reference, provider, slipUrl, targetOrderTitle));
+                    }
                 }
             });
 
         } catch (Exception e) {
-            mainHandler.post(() -> handleOfflineVerificationFallback(reference, provider, htmlContent, slipUrl));
+            tryVerifyEndpoints(endpoints, index + 1, reference, provider, htmlContent, slipUrl);
         }
     }
 
@@ -1059,26 +1285,42 @@ public class MainActivity extends AppCompatActivity {
                 return true; // No restriction configured
             }
             String cleanTarget = cachedTelebirrReceiver.replaceAll("\\D", "");
+            String target9 = cleanTarget.length() >= 9 ? cleanTarget.substring(cleanTarget.length() - 9) : cleanTarget;
+
             if (receivedPhone != null && !receivedPhone.trim().isEmpty()) {
-                String cleanReceived = receivedPhone.replaceAll("[^0-9*Xx]", "");
-                if (cleanReceived.contains("*") || cleanReceived.contains("X") || cleanReceived.contains("x")) {
-                    Matcher suffixMatcher = Pattern.compile("(\\d{3,})$").matcher(cleanReceived);
+                String rawRecv = receivedPhone.trim();
+                // Case 1: Masked with *, X, x
+                if (rawRecv.contains("*") || rawRecv.contains("X") || rawRecv.contains("x")) {
+                    Matcher suffixMatcher = Pattern.compile("(\\d{3,})$").matcher(rawRecv);
                     if (suffixMatcher.find()) {
                         String suffix = suffixMatcher.group(1);
-                        if (!cleanTarget.endsWith(suffix)) return false;
+                        if (!target9.endsWith(suffix) && !cleanTarget.endsWith(suffix)) {
+                            return false;
+                        }
                     }
                     return true;
                 }
-                String digitsReceived = cleanReceived.replaceAll("\\D", "");
-                if (digitsReceived.length() >= 4) {
-                    if (cleanTarget.endsWith(digitsReceived) || digitsReceived.endsWith(cleanTarget)) return true;
-                    return cleanTarget.contains(digitsReceived) || digitsReceived.contains(cleanTarget);
+
+                // Case 2: Full or unmasked digits
+                String digitsRecv = rawRecv.replaceAll("\\D", "");
+                if (digitsRecv.length() >= 9) {
+                    String recv9 = digitsRecv.substring(digitsRecv.length() - 9);
+                    if (target9.equals(recv9)) return true;
+                }
+                if (digitsRecv.length() >= 4) {
+                    if (cleanTarget.endsWith(digitsRecv) || digitsRecv.endsWith(cleanTarget) || target9.endsWith(digitsRecv)) {
+                        return true;
+                    }
                 }
             }
+
+            // Check merchant name fallback
             if (receivedName != null && cachedMerchantName != null && !cachedMerchantName.trim().isEmpty()) {
                 String cleanRecv = receivedName.toLowerCase().replaceAll("[^a-z0-9]", "");
                 String cleanMerch = cachedMerchantName.toLowerCase().replaceAll("[^a-z0-9]", "");
-                if (cleanRecv.contains(cleanMerch) || cleanMerch.contains(cleanRecv)) return true;
+                if (cleanRecv.contains(cleanMerch) || cleanMerch.contains(cleanRecv)) {
+                    return true;
+                }
             }
             return false;
         } else if ("CBE".equalsIgnoreCase(provider)) {
@@ -1500,38 +1742,7 @@ public class MainActivity extends AppCompatActivity {
     // ==========================================
 
     private String extractTelebirrId(String raw) {
-        if (raw == null) return null;
-        String clean = raw.trim();
-
-        // 1. URL pattern
-        Matcher urlMatcher = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (urlMatcher.find()) return urlMatcher.group(1).toUpperCase();
-
-        // 2. Base64 EMVCo SuperApp QR code
-        try {
-            byte[] decoded = Base64.decode(clean.replaceAll("\\s+", ""), Base64.DEFAULT);
-            String text = new String(decoded, StandardCharsets.UTF_8);
-            Matcher emvMatcher = Pattern.compile("000A([0-9a-fA-F]{20})", Pattern.CASE_INSENSITIVE).matcher(text);
-            if (emvMatcher.find()) {
-                String hex = emvMatcher.group(1);
-                StringBuilder ascii = new StringBuilder();
-                for (int i = 0; i < hex.length() - 1; i += 2) {
-                    ascii.append((char) Integer.parseInt(hex.substring(i, i + 2), 16));
-                }
-                return ascii.toString().toUpperCase();
-            }
-        } catch (Exception ignored) {}
-
-        // 3. Standalone 10-char reference code (e.g. DJJ7261SX7)
-        String[] tokens = clean.split("[\\s,.;:()!?-]+");
-        for (String tok : tokens) {
-            String c = tok.replaceAll("[^A-Za-z0-9]", "");
-            if (c.length() == 10 && c.matches("^[A-Za-z0-9]{10}$")) {
-                return c.toUpperCase();
-            }
-        }
-
-        return clean.replaceAll("[^A-Za-z0-9_-]", "").toUpperCase();
+        return detectPayment(raw).reference;
     }
 
     private String extractHtmlField(String html, String fieldRegex) {

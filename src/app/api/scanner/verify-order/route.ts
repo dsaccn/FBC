@@ -15,7 +15,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Missing orderId or transaction reference' }, { status: 400 })
     }
 
-    const cleanRef = String(reference).trim().toUpperCase()
+    const rawRefStr = String(reference).trim()
+    const cleanRef = rawRefStr.startsWith('v2-') ? rawRefStr : rawRefStr.toUpperCase()
     const verifiedDate = new Date()
 
     // 🚨 DUPLICATE PROTECTION: Check if this transaction code was already used on another order or payment

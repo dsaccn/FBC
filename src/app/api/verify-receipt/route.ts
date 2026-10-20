@@ -81,7 +81,8 @@ export async function POST(req: Request) {
 
     // If verification succeeded
     if (receipt.success) {
-      const cleanRef = String(receipt.reference || extractedRef || trimmedInput).trim().toUpperCase()
+      const rawRefStr = String(receipt.reference || extractedRef || trimmedInput).trim()
+      const cleanRef = rawRefStr.startsWith('v2-') ? rawRefStr : rawRefStr.toUpperCase()
 
       // Double-check duplicate protection just in case reference was updated by bank receipt payload
       const duplicateConflict = await checkReceiptDuplicate(cleanRef, orderId)
