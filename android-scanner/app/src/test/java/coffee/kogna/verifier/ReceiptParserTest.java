@@ -41,15 +41,15 @@ public class ReceiptParserTest {
         assertTrue(p3.isCbe);
 
         // 4. FT code
-        ReceiptParser.DetectedPayment p4 = ReceiptParser.detectPayment("FT24287ABCD");
+        ReceiptParser.DetectedPayment p4 = ReceiptParser.detectPayment("FT24287ABCDE");
         assertEquals("CBE", p4.provider);
-        assertEquals("FT24287ABCD", p4.reference);
+        assertEquals("FT24287ABCDE", p4.reference);
         assertTrue(p4.isCbe);
 
-        // 5. ?id=FT... URL
-        ReceiptParser.DetectedPayment p5 = ReceiptParser.detectPayment("https://apps.cbe.com.et:100/?id=FT24287ABCD12345678");
+        // 5. ?id=FT... URL (with 8 trailing receiver account digits)
+        ReceiptParser.DetectedPayment p5 = ReceiptParser.detectPayment("https://apps.cbe.com.et:100/?id=FT24287ABCDE12345678");
         assertEquals("CBE", p5.provider);
-        assertEquals("FT24287ABCD", p5.reference);
+        assertEquals("FT24287ABCDE", p5.reference);
         assertTrue(p5.isCbe);
     }
 

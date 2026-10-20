@@ -82,21 +82,25 @@ public final class ReceiptParser {
             return res;
         }
 
-        // 2. CBE Legacy FT URL: [?&]id=(FT[0-9A-Za-z]{10})
-        Matcher cbeFtUrl = Pattern.compile("[?&]id=(FT[0-9A-Za-z]{10})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        // 2. CBE Legacy FT URL: [?&]id=([A-Za-z0-9]+)
+        Matcher cbeFtUrl = Pattern.compile("[?&]id=([A-Za-z0-9]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
         if (cbeFtUrl.find()) {
-            String ft = cbeFtUrl.group(1).toUpperCase();
-            res.provider = "CBE";
-            res.reference = ft;
-            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
-            res.isCbe = true;
-            return res;
+            String fullId = cbeFtUrl.group(1).toUpperCase();
+            if (fullId.startsWith("FT")) {
+                String ft = fullId.length() > 12 ? fullId.substring(0, 12) : fullId;
+                res.provider = "CBE";
+                res.reference = ft;
+                res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+                res.isCbe = true;
+                return res;
+            }
         }
 
         // Direct FT code
-        Matcher directFt = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
+        Matcher directFt = Pattern.compile("\\b(FT[0-9A-Za-z]{8,14})\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
         if (directFt.find()) {
-            String ft = directFt.group(1).toUpperCase();
+            String fullFt = directFt.group(1).toUpperCase();
+            String ft = fullFt.length() > 12 ? fullFt.substring(0, 12) : fullFt;
             res.provider = "CBE";
             res.reference = ft;
             res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
