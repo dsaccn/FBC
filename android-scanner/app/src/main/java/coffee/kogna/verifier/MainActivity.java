@@ -316,6 +316,16 @@ public class MainActivity extends AppCompatActivity {
         btnScanNext = findViewById(R.id.btnScanNext);
         btnRetryVerification = findViewById(R.id.btnRetryVerification);
         btnViewOfficial = findViewById(R.id.btnViewOfficial);
+
+        TextView txtAppVersion = findViewById(R.id.txtAppVersion);
+        if (txtAppVersion != null) {
+            try {
+                android.content.pm.PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+                txtAppVersion.setText("v" + pInfo.versionName);
+            } catch (Exception ignored) {
+                txtAppVersion.setText("v2.5.3");
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

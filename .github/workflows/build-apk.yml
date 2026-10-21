@@ -35,14 +35,61 @@ jobs:
         working-directory: android-scanner
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      - name: Build Debug APK
+      - name: Validate Signing Secrets and Decode Keystore
+        env:
+          KOGNA_KEYSTORE_B64: ${{ secrets.KOGNA_KEYSTORE_B64 }}
+          KOGNA_KEYSTORE_PASSWORD: ${{ secrets.KOGNA_KEYSTORE_PASSWORD }}
+          KOGNA_KEY_ALIAS: ${{ secrets.KOGNA_KEY_ALIAS }}
+          KOGNA_KEY_PASSWORD: ${{ secrets.KOGNA_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KOGNA_KEYSTORE_B64" ] || [ -z "$KOGNA_KEYSTORE_PASSWORD" ] || [ -z "$KOGNA_KEY_ALIAS" ] || [ -z "$KOGNA_KEY_PASSWORD" ]; then
+            echo "::error::Missing required signing secrets (KOGNA_KEYSTORE_B64, KOGNA_KEYSTORE_PASSWORD, KOGNA_KEY_ALIAS, KOGNA_KEY_PASSWORD). Please configure them in repository secrets."
+            exit 1
+          fi
+          mkdir -p /tmp/keystore
+          echo "$KOGNA_KEYSTORE_B64" | base64 -d > /tmp/keystore/kogna-verifier.jks
+          if [ ! -s /tmp/keystore/kogna-verifier.jks ]; then
+            echo "::error::Keystore file is empty after base64 decoding!"
+            exit 1
+          fi
+          echo "Keystore successfully decoded."
+
+      - name: Build Release APK
         working-directory: android-scanner
-        run: ./gradlew assembleDebug --stacktrace
+        env:
+          KOGNA_KEYSTORE_PATH: /tmp/keystore/kogna-verifier.jks
+          KOGNA_KEYSTORE_PASSWORD: ${{ secrets.KOGNA_KEYSTORE_PASSWORD }}
+          KOGNA_KEY_ALIAS: ${{ secrets.KOGNA_KEY_ALIAS }}
+          KOGNA_KEY_PASSWORD: ${{ secrets.KOGNA_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Prepare APK Output
         run: |
           mkdir -p build-output
-          cp android-scanner/app/build/outputs/apk/debug/app-debug.apk build-output/KognaVerifier.apk
+          cp android-scanner/app/build/outputs/apk/release/app-release.apk build-output/KognaVerifier.apk
+
+      - name: Verify APK Signing Certificate
+        run: |
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner tool not found in $ANDROID_HOME/build-tools"
+            exit 1
+          fi
+          echo "Using apksigner: $APKSIGNER"
+          CERTS_OUTPUT=$($APKSIGNER verify --print-certs build-output/KognaVerifier.apk)
+          echo "$CERTS_OUTPUT"
+
+          EXPECTED_SHA256="83ca86a3a8f3f79bd33116dfe2be87c7cc337491c061ac2cfbb199b9dc4d7839"
+          ACTUAL_SHA256=$(echo "$CERTS_OUTPUT" | grep -i "SHA-256 digest" | tr -d ' :' | awk -F'digest' '{print tolower($2)}')
+
+          echo "Expected SHA-256: $EXPECTED_SHA256"
+          echo "Actual SHA-256:   $ACTUAL_SHA256"
+
+          if [[ "$ACTUAL_SHA256" != *"$EXPECTED_SHA256"* ]]; then
+            echo "::error::Certificate fingerprint mismatch! The APK was not signed with the official Kogna key."
+            exit 1
+          fi
+          echo "Certificate fingerprint verified successfully: $EXPECTED_SHA256"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -55,30 +102,27 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.5.2-scanner
-          name: "Kogna Verifier App v2.5.2"
+          tag_name: v2.5.3-scanner
+          name: "Kogna Verifier App v2.5.3"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.5.2
+            ## 📱 Kogna Verifier Android App v2.5.3
 
-            ### 🔄 New Features & Workflow Improvements:
-            - **↻ Try Again Button on Failure Cards**:
-              - Added a visible retry button on error/unverified cards.
-              - Re-runs the verification pipeline for the last scanned payload immediately without requiring cashier to re-aim camera.
-            - **Post-Scan Table Linking Contract Fix (Bug A)**:
-              - Corrected response handling for `linkedOrder != null` from Cashier PC sync.
-              - Accurately confirms order linking on screen and closes table picker to prevent duplicate submissions.
-            - **Cashier PC Sync Status Updates (Bug B)**:
-              - Authoritative duplicate, wrong-receiver, and underpayment responses from Cashier PC now update the result card and badge in place.
-            - **Stale Reference Safeguard (Bug C)**:
-              - Cleared verified transaction data and hid post-scan table picker on failed scans and scanner reset to prevent associating previous slip with new tables.
-            - **Multi-Endpoint Fallback for Table Linking (Bug D)**:
-              - Table linking requests now sequentially try `activePosUrl` -> `DEFAULT_LOCAL_URL` -> `DEFAULT_TUNNEL_URL` with in-flight double-tap protection.
-            - **Security Hardening (Bug E)**:
-              - Enforced `isScannerAuthorized` authentication check on `POST /api/scanner/verify-order`.
-            - **Settings Safeguard (Item F)**:
-              - Added warning banner if scanner token is rejected and preserved cached receiver accounts.
+            ### 🔐 Fixed Release Key Signing & Seamless In-App Updates:
+            - **Permanent Release Signing Key**:
+              - All future releases are now signed with the official, permanent Kogna Verifier certificate.
+              - Eliminates the `INSTALL_FAILED_UPDATE_INCOMPATIBLE` error previously caused by ephemeral CI debug keys.
+              - Verified certificate SHA-256: `83:CA:86:A3:A8:F3:F7:9B:D3:31:16:DF:E2:BE:87:C7:CC:33:74:91:C0:61:AC:2C:FB:B1:99:B9:DC:4D:78:39`.
+            - **App Version Display**:
+              - Version `v2.5.3` is now visible on the top app header so cashiers can instantly confirm the running build.
+            - **Retained All v2.5.2 Features**:
+              - Direct bank verification (Telebirr & CBE Birr) with parallel PC fallback.
+              - "Try Again" retry button on failure cards.
+              - Real-time table linking and order sync.
+
+            ### ⚠️ Notice for Upgrading from v2.5.2 or earlier:
+            Because previous builds (v2.5.0 - v2.5.2) were signed with ephemeral CI keys, you must **uninstall the existing app once** before installing v2.5.3. All future updates (v2.5.4+) will install seamlessly over v2.5.3 without uninstalling!
 
             ### 📥 Download & Install:
             1. Download **`KognaVerifier.apk`** below to your Android device.

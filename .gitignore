@@ -56,6 +56,10 @@ prisma/payment-settings.json
 *.apk
 /bin/
 
+# Keystores and signing keys (CRITICAL - never commit to public repo)
+*.jks
+*.keystore
+
 # Agent and IDE local directories
 .agents
 .cursor

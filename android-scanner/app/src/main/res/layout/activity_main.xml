@@ -58,14 +58,31 @@
             app:layout_constraintStart_toEndOf="@id/imgLogo"
             app:layout_constraintTop_toTopOf="parent">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:letterSpacing="0.05"
-                android:text="KOGNA VERIFIER"
-                android:textColor="@color/gold"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.05"
+                    android:text="KOGNA VERIFIER"
+                    android:textColor="@color/gold"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtAppVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="v2.5.3"
+                    android:textColor="@color/text_muted"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/txtPosStatus"
