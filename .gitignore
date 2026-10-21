@@ -54,6 +54,7 @@ prisma/payment-settings.json
 *.msi
 *.exe
 *.apk
+*.docx
 /bin/
 
 # Keystores and signing keys (CRITICAL - never commit to public repo)
