@@ -303,9 +303,6 @@ public class MainActivity extends AppCompatActivity {
         txtPrompt = findViewById(R.id.txtPrompt);
         txtTodaySummary = findViewById(R.id.txtTodaySummary);
         btnLanguage = findViewById(R.id.btnLanguage);
-        if (btnLanguage == null) {
-            btnLanguage = findViewById(R.id.btnToggleEngine);
-        }
         btnToggleEngine = btnLanguage;
         btnFlash = findViewById(R.id.btnFlash);
         btnRefresh = findViewById(R.id.btnRefresh);
