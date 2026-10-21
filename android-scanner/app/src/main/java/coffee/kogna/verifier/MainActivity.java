@@ -9,7 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.content.pm.PackageManager;
+import android.util.TypedValue;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.net.Uri;
@@ -171,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
     private double lastVerifiedAmount = 0.0;
     private String lastVerifiedPayer = "";
     private String lastVerifiedReceiver = "";
+    private boolean isCurrentResultDuplicate = false;
 
     // Cached Receiver Settings for instant check & offline fallback
     private String cachedTelebirrReceiver = "";
@@ -323,7 +326,7 @@ public class MainActivity extends AppCompatActivity {
                 android.content.pm.PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
                 txtAppVersion.setText("v" + pInfo.versionName);
             } catch (Exception ignored) {
-                txtAppVersion.setText("v2.5.3");
+                txtAppVersion.setText("v2.5.4");
             }
         }
     }
@@ -823,7 +826,88 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void applyDuplicateAlertStyle(String message) {
+        // Block all future table-linking attempts
+        isCurrentResultDuplicate = true;
+        lastVerifiedRef = "";
+        lastVerifiedProvider = "";
+        lastVerifiedAmount = 0.0;
+        lastVerifiedPayer = "";
+        lastVerifiedReceiver = "";
+
+        // Transform the card into a prominent red alert
+        cardResult.setCardBackgroundColor(ContextCompat.getColor(this, R.color.status_red_bg));
+        cardResult.setStrokeColor(ContextCompat.getColor(this, R.color.status_red));
+        int strokePx = Math.round(3f * getResources().getDisplayMetrics().density);
+        cardResult.setStrokeWidth(strokePx);
+
+        imgResultIcon.setImageResource(R.drawable.ic_error_cross);
+
+        txtResultStatus.setText("🚨 DUPLICATE RECEIPT — DO NOT ACCEPT!");
+        txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+        txtResultStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        txtResultStatus.setTypeface(null, Typeface.BOLD);
+
+        txtResultBadge.setText("⛔ DUPLICATE");
+        txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
+        txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+        txtResultBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+
+        txtResultAmount.setTextColor(ContextCompat.getColor(this, R.color.status_red));
+
+        int padPx = Math.round(12f * getResources().getDisplayMetrics().density);
+        txtResultPosMatch.setText(message);
+        txtResultPosMatch.setTextColor(ContextCompat.getColor(this, R.color.white));
+        txtResultPosMatch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        txtResultPosMatch.setTypeface(null, Typeface.BOLD);
+        txtResultPosMatch.setBackgroundColor(ContextCompat.getColor(this, R.color.status_red));
+        txtResultPosMatch.setPadding(padPx, padPx, padPx, padPx);
+
+        if (layoutPostScanTablePicker != null) {
+            layoutPostScanTablePicker.setVisibility(View.GONE);
+        }
+
+        // Distinctive triple-buzz error haptics
+        if (vibrator != null && vibrator.hasVibrator()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 250, 100, 250, 100, 250}, -1));
+            } else {
+                vibrator.vibrate(800);
+            }
+        }
+        playBeep(false);
+    }
+
+    private void resetCardToDefaultStyle() {
+        cardResult.setCardBackgroundColor(ContextCompat.getColor(this, R.color.surface_card));
+        cardResult.setStrokeColor(ContextCompat.getColor(this, R.color.border_gold));
+        int strokePx = Math.round(1.5f * getResources().getDisplayMetrics().density);
+        cardResult.setStrokeWidth(strokePx);
+
+        txtResultStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        txtResultStatus.setTypeface(null, Typeface.BOLD);
+
+        txtResultBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+
+        txtResultAmount.setTextColor(ContextCompat.getColor(this, R.color.gold));
+
+        int padPx = Math.round(12f * getResources().getDisplayMetrics().density);
+        int padVertPx = Math.round(6f * getResources().getDisplayMetrics().density);
+        txtResultPosMatch.setTextColor(ContextCompat.getColor(this, R.color.gold));
+        txtResultPosMatch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        txtResultPosMatch.setTypeface(null, Typeface.NORMAL);
+        txtResultPosMatch.setBackgroundResource(R.drawable.badge_chip);
+        txtResultPosMatch.setPadding(padPx, padVertPx, padPx, padVertPx);
+    }
+
     private void toggleOrderSelection(OpenOrder order) {
+        if (isCurrentResultDuplicate) {
+            Toast.makeText(this, "🚨 CANNOT LINK: This receipt is a duplicate — already used!", Toast.LENGTH_LONG).show();
+            playBeep(false);
+            vibrateError();
+            return;
+        }
+
         // If a verified receipt is currently shown on the screen, touching any table directly attaches the payment!
         if (cardResult != null && cardResult.getVisibility() == View.VISIBLE && lastVerifiedRef != null && !lastVerifiedRef.isEmpty()) {
             linkVerifiedReceiptToOrder(order);
@@ -881,6 +965,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleScannedPayload(final String payload) {
         lastRawScan = payload;
+        isCurrentResultDuplicate = false;
         isVerifying = true;
         barcodeView.pause();
         playBeep(true);
@@ -1504,17 +1589,12 @@ public class MainActivity extends AppCompatActivity {
             String errorMsg = json.optString("error", receipt != null ? receipt.optString("errorMessage", "") : "");
 
             if (isDuplicate) {
-                txtResultBadge.setText("DUPLICATE");
-                txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-                txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : "🚨 DUPLICATE SLIP: Previously scanned on Cashier PC!");
-                if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
-                playBeep(false);
-                vibrateError();
+                applyDuplicateAlertStyle(!errorMsg.isEmpty() ? errorMsg : "🚨 DUPLICATE SLIP: Previously scanned and paid on Cashier PC!");
                 return;
             }
 
             if (isReceiverMismatch) {
+                lastVerifiedRef = "";
                 txtResultBadge.setText("WRONG RECV");
                 txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
                 txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
@@ -1657,6 +1737,11 @@ public class MainActivity extends AppCompatActivity {
                         date, title, slipUrl, posMatch
                 );
                 txtResultBadge.setText(badge);
+
+                if (isDuplicate) {
+                    final String duplicateMsg = posMatch;
+                    mainHandler.post(() -> applyDuplicateAlertStyle(duplicateMsg));
+                }
             }
 
         } catch (Exception e) {
@@ -1795,6 +1880,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void linkVerifiedReceiptToOrder(final OpenOrder targetOrder) {
+        if (isCurrentResultDuplicate) {
+            Toast.makeText(this, "🚨 Cannot link: Duplicate receipt!", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (lastVerifiedRef == null || lastVerifiedRef.isEmpty()) {
             Toast.makeText(this, "No verified receipt to link", Toast.LENGTH_SHORT).show();
             return;
@@ -1919,12 +2008,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleLinkOrderError(JSONObject res, int statusCode) {
         boolean isDuplicate = res.optBoolean("duplicate", false) || res.optBoolean("isDuplicate", false);
-        if (isDuplicate) {
-            txtResultBadge.setText("DUPLICATE");
-            txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
-            txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-        }
         final String err = res.optString("error", "Failed to link order (HTTP " + statusCode + ")");
+        if (isDuplicate) {
+            applyDuplicateAlertStyle(err.isEmpty() ? "🚨 This receipt was already used on another order!" : err);
+            Toast.makeText(MainActivity.this, "🚨 DUPLICATE: " + err, Toast.LENGTH_LONG).show();
+            return;
+        }
         txtResultPosMatch.setText(err);
         playBeep(false);
         vibrateError();
@@ -1963,6 +2052,7 @@ public class MainActivity extends AppCompatActivity {
                     .start();
 
             if (isSuccess) {
+                resetCardToDefaultStyle();
                 playBeep(true);
                 vibrateSuccess();
 
@@ -2039,6 +2129,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void resetScannerToActive() {
         mainHandler.post(() -> {
+            isCurrentResultDuplicate = false;
+            resetCardToDefaultStyle();
             cardResult.setVisibility(View.GONE);
             layoutPostScanTablePicker.setVisibility(View.GONE);
             if (btnRetryVerification != null) {

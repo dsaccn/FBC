@@ -109,31 +109,32 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.5.3-scanner
-          name: "Kogna Verifier App v2.5.3"
+          tag_name: v2.5.4-scanner
+          name: "Kogna Verifier App v2.5.4"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.5.3
+            ## 📱 Kogna Verifier Android App v2.5.4
 
-            ### 🔐 Fixed Release Key Signing & Seamless In-App Updates:
-            - **Permanent Release Signing Key**:
-              - All future releases are now signed with the official, permanent Kogna Verifier certificate.
-              - Eliminates the `INSTALL_FAILED_UPDATE_INCOMPATIBLE` error previously caused by ephemeral CI debug keys.
-              - Verified certificate SHA-256: `83:CA:86:A3:A8:F3:F7:9B:D3:31:16:DF:E2:BE:87:C7:CC:33:74:91:C0:61:AC:2C:FB:B1:99:B9:DC:4D:78:39`.
-            - **App Version Display**:
-              - Version `v2.5.3` is now visible on the top app header so cashiers can instantly confirm the running build.
-            - **Retained All v2.5.2 Features**:
-              - Direct bank verification (Telebirr & CBE Birr) with parallel PC fallback.
-              - "Try Again" retry button on failure cards.
-              - Real-time table linking and order sync.
-
-            ### ⚠️ Notice for Upgrading from v2.5.2 or earlier:
-            Because previous builds (v2.5.0 - v2.5.2) were signed with ephemeral CI keys, you must **uninstall the existing app once** before installing v2.5.3. All future updates (v2.5.4+) will install seamlessly over v2.5.3 without uninstalling!
+            ### 🚨 Enhanced Anti-Fraud Duplicate Detection & Table Linking Guard:
+            - **Blocked Duplicate Table Linking**:
+              - Tapping an open table chip when a duplicate slip is detected is now strictly blocked with an error sound and Toast alert.
+              - Eliminates the race condition where `lastVerifiedRef` persisted after Cashier PC reported duplicate status.
+            - **Unmissable High-Visibility Duplicate Alert**:
+              - Transformed the verification card on duplicate detection into an unmistakable red alert card:
+                - 🚨 Red card background (`#3B1C1C`) and 3dp solid red border.
+                - Error cross icon (`ic_error_cross`) replacing the green checkmark.
+                - Bold red title `"🚨 DUPLICATE RECEIPT — DO NOT ACCEPT!"`.
+                - Prominent `"⛔ DUPLICATE"` badge and bold white-on-red conflict message banner.
+                - Triple-buzz error haptics to physically alert the cashier.
+            - **Automatic Card Reset on Genuine Scans**:
+              - Subsequent scans of genuine slips cleanly restore the card to the default gold/surface theme.
+            - **Permanent Release Keystore**:
+              - Signed with the official permanent Kogna certificate (`83:CA:86:A3:A8:F3:F7:9B:D3:31:16:DF:E2:BE:87:C7:CC:33:74:91:C0:61:AC:2C:FB:B1:99:B9:DC:4D:78:39`). Seamless in-place updates over v2.5.3!
 
             ### 📥 Download & Install:
             1. Download **`KognaVerifier.apk`** below to your Android device.
-            2. Tap to install (allow "Install unknown apps" if prompted).
+            2. Tap to install (updates seamlessly over v2.5.3 without uninstalling!).
           files: build-output/KognaVerifier.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

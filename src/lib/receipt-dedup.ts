@@ -128,7 +128,7 @@ export async function checkReceiptDuplicate(
   // 1. Check local/active database via Prisma
   try {
     // a) Check Order table (active orders or paid orders with this verifiedRef)
-    const conflictingOrder = await prisma.order.findFirst({
+    let conflictingOrder = await prisma.order.findFirst({
       where: {
         verifiedRef: cleanRef,
         status: { not: 'CANCELLED' },
@@ -136,6 +136,22 @@ export async function checkReceiptDuplicate(
       },
       include: { table: true, payment: true },
     })
+
+    // If order was marked PAID but its payment record was deleted by user, heal it and do not block the receipt!
+    if (conflictingOrder && conflictingOrder.status === 'PAID' && !conflictingOrder.payment) {
+      await prisma.order.update({
+        where: { id: conflictingOrder.id },
+        data: {
+          verifiedRef: null,
+          verifiedProvider: null,
+          verifiedAmount: null,
+          verifiedPayer: null,
+          verifiedReceiver: null,
+          status: 'CANCELLED'
+        }
+      }).catch(() => {})
+      conflictingOrder = null
+    }
 
     // b) Check Payment table (payments where notes contain this reference)
     const conflictingPayment = !conflictingOrder

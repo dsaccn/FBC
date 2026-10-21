@@ -471,6 +471,31 @@ export async function DELETE(req: NextRequest) {
     const previousRecords = await delegate.findMany({ where: { id: { in: ids } } }).catch(() => [])
     const deleteResult = await delegate.deleteMany({ where: { id: { in: ids } } })
 
+    // If payments were deleted, un-verify their linked orders so receipts can be reused
+    if (model === 'Payment') {
+      const orderIds = previousRecords.map((p: any) => p.orderId).filter(Boolean)
+      if (orderIds.length > 0) {
+        await prisma.order.updateMany({
+          where: { id: { in: orderIds } },
+          data: {
+            verifiedRef: null,
+            verifiedProvider: null,
+            verifiedAmount: null,
+            verifiedPayer: null,
+            verifiedReceiver: null,
+            status: 'OPEN'
+          }
+        }).catch(() => {})
+        if (!process.env.VERCEL) {
+          await deleteFromNeon(`
+            UPDATE "Order" 
+            SET "verifiedRef" = NULL, "verifiedProvider" = NULL, "verifiedAmount" = NULL, "verifiedPayer" = NULL, "verifiedReceiver" = NULL, status = 'OPEN'
+            WHERE id = ANY($1)
+          `, [orderIds]).catch(() => {})
+        }
+      }
+    }
+
     // If orders were deleted, heal table statuses
     if (model === 'Order') {
       const activeTables = await prisma.table.findMany({
