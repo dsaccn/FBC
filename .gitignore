@@ -60,6 +60,10 @@ prisma/payment-settings.json
 *.jks
 *.keystore
 
+# Gradle cache
+.gradle/
+android-scanner/.gradle/
+
 # Agent and IDE local directories
 .agents
 .cursor

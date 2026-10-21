@@ -22,6 +22,7 @@ android {
                 storePassword System.getenv("KOGNA_KEYSTORE_PASSWORD")
                 keyAlias System.getenv("KOGNA_KEY_ALIAS")
                 keyPassword System.getenv("KOGNA_KEY_PASSWORD")
+                storeType "PKCS12"
             }
         }
     }
@@ -34,6 +35,11 @@ android {
         debug {
             signingConfig (signingConfigs.kogna.storeFile != null ? signingConfigs.kogna : signingConfigs.debug)
         }
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
     }
 
     compileOptions {

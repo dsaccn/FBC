@@ -47,12 +47,14 @@ jobs:
             exit 1
           fi
           mkdir -p /tmp/keystore
-          echo "$KOGNA_KEYSTORE_B64" | base64 -d > /tmp/keystore/kogna-verifier.jks
+          node -e "const fs = require('fs'); fs.writeFileSync('/tmp/keystore/kogna-verifier.jks', Buffer.from(process.env.KOGNA_KEYSTORE_B64.trim(), 'base64'));"
           if [ ! -s /tmp/keystore/kogna-verifier.jks ]; then
             echo "::error::Keystore file is empty after base64 decoding!"
             exit 1
           fi
-          echo "Keystore successfully decoded."
+          echo "Keystore successfully decoded. Verifying alias with keytool..."
+          keytool -list -keystore /tmp/keystore/kogna-verifier.jks -storepass "$KOGNA_KEYSTORE_PASSWORD" -alias "$KOGNA_KEY_ALIAS"
+          echo "Keystore verified successfully."
 
       - name: Build Release APK
         working-directory: android-scanner
