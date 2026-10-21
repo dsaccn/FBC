@@ -42,7 +42,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     // 0. Find existing user to get username for precise cross-database deletion
     const existingUser = await prisma.user.findUnique({ where: { id } })
-    const username = existingUser?.username
+    if (!existingUser) {
+      return NextResponse.json({ error: 'Staff member not found.' }, { status: 404 })
+    }
+
+    // Protected system accounts can NEVER be deleted!
+    if (existingUser.username === 'master' || existingUser.username === 'admin' || existingUser.username === 'admin10') {
+      return NextResponse.json({ error: 'System administrator accounts cannot be deleted.' }, { status: 400 })
+    }
+
+    const username = existingUser.username
 
     // 1. Delete ShiftLogs for this user locally
     await prisma.shiftLog.deleteMany({ where: { userId: id } })
@@ -63,9 +72,12 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       await prisma.order.deleteMany({ where: { id: { in: orderIds } } })
     }
 
-    // 5. Delete the user from active database
-    if (existingUser) {
-      await prisma.user.delete({ where: { id } }).catch(() => {})
+    // 5. Delete the user from active database — do NOT silently swallow errors!
+    try {
+      await prisma.user.delete({ where: { id } })
+    } catch (deleteErr: any) {
+      console.error('[DELETE /api/staff/[id]] prisma.user.delete FAILED:', deleteErr?.message, deleteErr?.code)
+      throw deleteErr
     }
 
     // 6. Delete the user and cascading relations from Cloud (Neon) by ID AND username
@@ -74,8 +86,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     backgroundSync()
 
     return NextResponse.json({ success: true })
-  } catch (err) {
-    console.error('[DELETE /api/staff/[id]]', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+  } catch (err: any) {
+    console.error('[DELETE /api/staff/[id]] Error:', err)
+    return NextResponse.json({ error: err?.message || String(err) }, { status: 500 })
   }
 }
