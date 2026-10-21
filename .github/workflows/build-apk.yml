@@ -56,19 +56,24 @@ jobs:
           keytool -list -keystore /tmp/keystore/kogna-verifier.jks -storepass "$KOGNA_KEYSTORE_PASSWORD" -alias "$KOGNA_KEY_ALIAS"
           echo "Keystore verified successfully."
 
-      - name: Build Release APK
+      - name: Build APK with Fixed Signing Key
         working-directory: android-scanner
         env:
           KOGNA_KEYSTORE_PATH: /tmp/keystore/kogna-verifier.jks
           KOGNA_KEYSTORE_PASSWORD: ${{ secrets.KOGNA_KEYSTORE_PASSWORD }}
           KOGNA_KEY_ALIAS: ${{ secrets.KOGNA_KEY_ALIAS }}
           KOGNA_KEY_PASSWORD: ${{ secrets.KOGNA_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee /tmp/gradle_build.log || {
+            echo "::error::Gradle build failed. Showing last 50 lines:"
+            tail -n 50 /tmp/gradle_build.log
+            exit 1
+          }
 
       - name: Prepare APK Output
         run: |
           mkdir -p build-output
-          cp android-scanner/app/build/outputs/apk/release/app-release.apk build-output/KognaVerifier.apk
+          cp android-scanner/app/build/outputs/apk/debug/app-debug.apk build-output/KognaVerifier.apk
 
       - name: Verify APK Signing Certificate
         run: |
