@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ኮኛ ማረጋገጫ</string>
+    <string name="app_title">ኮኛ ማረጋገጫ</string>
+    <string name="camera_permission_required">የቴሌብር እና የንግድ ባንክ ደረሰኞችን ለመቃኘት የካሜራ ፍቃድ ያስፈልጋል።</string>
+    <string name="scan_prompt">የቴሌብር ወይም የንግድ ባንክ ደረሰኝ ምልክቱን እዚህ ውስጥ ያስተካክሉ</string>
+
+    <!-- POS Connection Status -->
+    <string name="pos_status_connecting">● ከካሸር ኮምፒውተር ጋር በመገናኘት ላይ…</string>
+    <string name="pos_status_connected">● ከካሸር ኮምፒውተር ጋር ተገናኝቷል</string>
+    <string name="pos_status_standalone">● ብቻውን የሚሰራ (ኮምፒውተር የለም)</string>
+    <string name="pos_status_online">ኮምፒውተር መስመር ላይ ነው</string>
+
+    <!-- Open Orders -->
+    <string name="open_orders_header">ክፍት ትዕዛዞች (%d)</string>
+    <string name="tap_table_hint">ክፍያውን ለማያያዝ ጠረጴዛ ይጫኑ</string>
+    <string name="no_open_orders">በካሸር ኮምፒውተር ላይ ክፍት ትዕዛዝ የለም</string>
+    <string name="order_selected_format">የተመረጠ: %s</string>
+    <string name="clear_selection">✕ ሰርዝ</string>
+    <string name="link_to_table_prompt">🔗 ክፍያውን ከጠረጴዛ ጋር ያያይዙ:</string>
+    <string name="order_items_count_single">1 ዕቃ</string>
+    <string name="order_items_count_multiple">%d ዕቃዎች</string>
+
+    <!-- Today Summary -->
+    <string name="today_summary_format">ዛሬ፡ %d ደረሰኞች • %s</string>
+    <string name="btn_history">ታሪክ</string>
+
+    <!-- Loading Overlay -->
+    <string name="verifying_receipt">ደረሰኙን ከባንክ በማረጋገጥ ላይ…</string>
+    <string name="btn_cancel">ይቅር</string>
+
+    <!-- Result Card -->
+    <string name="verified_title">ክፍያ ተረጋግጧል</string>
+    <string name="failed_title">ማረጋገጥ አልተሳካም</string>
+    <string name="duplicate_title">🚨 የተደገመ ደረሰኝ — እንዳይቀበሉ!</string>
+    <string name="wrong_receiver_title">የተሳሳተ ተቀባይ</string>
+
+    <!-- Badges -->
+    <string name="badge_genuine">ትክክለኛ</string>
+    <string name="badge_duplicate">የተደገመ</string>
+    <string name="badge_wrong_recv">የተሳሳተ ተቀባይ</string>
+    <string name="badge_failed">አልተሳካም</string>
+    <string name="badge_verified">ተረጋግጧል</string>
+
+    <!-- Detail Fields -->
+    <string name="label_payer_name">የከፋይ ስም</string>
+    <string name="label_receiver">ተቀባይ</string>
+    <string name="label_reference">የማጣቀሻ ቁጥር</string>
+    <string name="label_date_time">ቀን እና ሰዓት</string>
+    <string name="ref_copied">የማጣቀሻ ቁጥሩ ተቀድቷል</string>
+
+    <!-- Result Card Actions -->
+    <string name="scan_next">ቀጣይ ደረሰኝ ይቃኙ</string>
+    <string name="view_official_slip">ኦፊሴላዊ የባንክ ደረሰኝ ይመልከቱ</string>
+    <string name="retry_verification">↻ እንደገና ይሞክሩ</string>
+
+    <!-- Sync Messages -->
+    <string name="syncing_with_pos">⚡ ከካሸር ኮምፒውተር ጋር በማመሳሰል ላይ…</string>
+    <string name="duplicate_pos_msg">🚨 የተደገመ ደረሰኝ፡ ቀደም ሲል በካሸር ኮምፒውተር ላይ ተከፍሏል!</string>
+    <string name="receiver_mismatch_msg">⚠️ የተሳሳተ ተቀባይ አካውንት፡ የሚጠበቀው %s</string>
+    <string name="cannot_link_duplicate">🚨 ማያያዝ አይቻልም፡ የተደገመ ደረሰኝ ነው!</string>
+
+    <!-- Language Selection -->
+    <string name="choose_language_title">Choose Language / ቋንቋ ይምረጡ</string>
+    <string name="lang_english">English (እንግሊዝኛ)</string>
+    <string name="lang_amharic">አማርኛ (Amharic)</string>
+    <string name="lang_switched">ቋንቋ ወደ አማርኛ ተቀይሯል</string>
+
+    <!-- Dialogs -->
+    <string name="manual_input_title">የግብይት ቁጥር ያስገቡ</string>
+    <string name="manual_input_desc">የቴሌብር የግብይት ቁጥር (ለምሳሌ DJJ7261SX7) ወይም የንግድ ባንክ FT ቁጥር ያስገቡ።</string>
+    <string name="manual_input_hint">ለምሳሌ DJJ7261SX7 ወይም FT24…</string>
+    <string name="btn_verify_now">አሁን አረጋግጥ</string>
+
+    <string name="settings_title">የካሸር ኮምፒውተር ግንኙነት</string>
+    <string name="settings_desc">ክፍት ጠረጴዛዎችን ለማየት እና ትዕዛዞችን ለማመሳሰል ይህን ስልክ ከካሸር ኮምፒውተር ጋር ያገናኛል።</string>
+    <string name="quick_presets">ፈጣን ምርጫዎች:</string>
+    <string name="preset_cloud">የክላውድ ታነል</string>
+    <string name="preset_local">የውስጥ ዋይፋይ (Local Wi-Fi)</string>
+    <string name="label_pc_url">የካሸር ኮምፒውተር URL</string>
+    <string name="label_security_key">የስካነር ሚስጥር ቁልፍ</string>
+    <string name="btn_test_connection">ግንኙነትን ሞክር እና ክፍት ትዕዛዞችን ፈልግ</string>
+    <string name="btn_save_connect">አስቀምጥ እና አገናኝ</string>
+    <string name="btn_close">ዝጋ</string>
+
+    <string name="history_title">የዛሬ የተረጋገጡ ደረሰኞች</string>
+    <string name="history_total_format">የዛሬ ድምር፡ %s (%d ደረሰኞች)</string>
+    <string name="history_empty">ዛሬ የተረጋገጠ ደረሰኝ እስካሁን የለም።</string>
+    <string name="btn_clear_history">ታሪክን አጽዳ</string>
+</resources>

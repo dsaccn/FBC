@@ -10,7 +10,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Today\'s Scanned Receipts"
+        android:text="@string/history_title"
         android:textColor="@color/gold"
         android:textSize="18sp"
         android:textStyle="bold" />
@@ -42,7 +42,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:padding="20dp"
-                android:text="No receipts verified today yet."
+                android:text="@string/history_empty"
                 android:textColor="@color/text_muted" />
         </LinearLayout>
     </ScrollView>
@@ -59,7 +59,7 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="Clear History"
+            android:text="@string/btn_clear_history"
             android:textColor="@color/status_red" />
 
         <Button
@@ -69,7 +69,7 @@
             android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:background="@drawable/btn_gold"
-            android:text="CLOSE"
+            android:text="@string/btn_close"
             android:textColor="@color/bg_dark"
             android:textStyle="bold"
             app:backgroundTint="@null" />

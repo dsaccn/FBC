@@ -46,8 +46,12 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.os.LocaleListCompat;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 
 import com.google.android.material.card.MaterialCardView;
 import com.google.zxing.BarcodeFormat;
@@ -99,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_POS_URL = "pos_server_url";
     private static final String KEY_API_KEY = "pos_api_key";
     private static final String KEY_HISTORY = "scan_history_json";
+    public static final String KEY_APP_LANGUAGE = "app_language";
 
     // Receiver Account Caching
     private static final String KEY_TELEBIRR_RECV = "cached_telebirr_recv";
@@ -117,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtPosStatus;
     private TextView txtPrompt;
     private TextView txtTodaySummary;
+    private ImageButton btnLanguage;
     private ImageButton btnToggleEngine;
     private ImageButton btnFlash;
     private ImageButton btnRefresh;
@@ -211,6 +217,18 @@ public class MainActivity extends AppCompatActivity {
     };
 
     @Override
+    protected void attachBaseContext(Context newBase) {
+        SharedPreferences sp = newBase.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String lang = sp.getString(KEY_APP_LANGUAGE, "en");
+        Locale locale = new Locale(lang);
+        Locale.setDefault(locale);
+        Configuration config = new Configuration(newBase.getResources().getConfiguration());
+        config.setLocale(locale);
+        Context context = newBase.createConfigurationContext(config);
+        super.attachBaseContext(context);
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
@@ -284,7 +302,11 @@ public class MainActivity extends AppCompatActivity {
         txtPosStatus = findViewById(R.id.txtPosStatus);
         txtPrompt = findViewById(R.id.txtPrompt);
         txtTodaySummary = findViewById(R.id.txtTodaySummary);
-        btnToggleEngine = findViewById(R.id.btnToggleEngine);
+        btnLanguage = findViewById(R.id.btnLanguage);
+        if (btnLanguage == null) {
+            btnLanguage = findViewById(R.id.btnToggleEngine);
+        }
+        btnToggleEngine = btnLanguage;
         btnFlash = findViewById(R.id.btnFlash);
         btnRefresh = findViewById(R.id.btnRefresh);
         btnManual = findViewById(R.id.btnManual);
@@ -326,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
                 android.content.pm.PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
                 txtAppVersion.setText("v" + pInfo.versionName);
             } catch (Exception ignored) {
-                txtAppVersion.setText("v2.5.4");
+                txtAppVersion.setText("v2.5.5");
             }
         }
     }
@@ -407,7 +429,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupListeners() {
-        btnToggleEngine.setOnClickListener(v -> toggleEngineMode());
+        if (btnLanguage != null) {
+            btnLanguage.setOnClickListener(v -> showLanguageDialog());
+        }
         btnFlash.setOnClickListener(v -> toggleFlashlight());
         btnRefresh.setOnClickListener(v -> handleRefresh());
         btnManual.setOnClickListener(v -> showManualInputDialog());
@@ -456,6 +480,53 @@ public class MainActivity extends AppCompatActivity {
             hideLoading();
             resetScannerToActive();
         });
+    }
+
+    private void showLanguageDialog() {
+        final String currentLang = prefs.getString(KEY_APP_LANGUAGE, "en");
+        final String[] languages = new String[]{"English (እንግሊዝኛ)", "አማርኛ (Amharic)"};
+        final String[] langCodes = new String[]{"en", "am"};
+        int selectedIndex = "am".equalsIgnoreCase(currentLang) ? 1 : 0;
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(getString(R.string.choose_language_title));
+        builder.setSingleChoiceItems(languages, selectedIndex, (dialog, which) -> {
+            dialog.dismiss();
+            String chosenCode = langCodes[which];
+            if (!chosenCode.equals(currentLang)) {
+                setAppLocale(chosenCode);
+            }
+        });
+        builder.setNegativeButton(getString(R.string.btn_cancel), null);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_result_card);
+        }
+    }
+
+    private void setAppLocale(String langCode) {
+        prefs.edit().putString(KEY_APP_LANGUAGE, langCode).apply();
+
+        try {
+            LocaleListCompat appLocale = LocaleListCompat.forLanguageTags(langCode);
+            AppCompatDelegate.setApplicationLocales(appLocale);
+        } catch (Exception ignored) {}
+
+        try {
+            Locale locale = new Locale(langCode);
+            Locale.setDefault(locale);
+            Resources res = getResources();
+            Configuration config = new Configuration(res.getConfiguration());
+            config.setLocale(locale);
+            res.updateConfiguration(config, res.getDisplayMetrics());
+        } catch (Exception ignored) {}
+
+        String msg = "am".equals(langCode) ? "ቋንቋ ወደ አማርኛ ተቀይሯል" : "Language switched to English";
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+
+        recreate();
     }
 
     private void toggleEngineMode() {
@@ -637,7 +708,7 @@ public class MainActivity extends AppCompatActivity {
     private void probeCandidates(final List<String> candidates, final int index, final String apiKey, final boolean showToast) {
         if (index >= candidates.size()) {
             mainHandler.post(() -> {
-                txtPosStatus.setText("● Standalone (PC Offline)");
+                txtPosStatus.setText(getString(R.string.pos_status_standalone));
                 txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
                 if (showToast) {
                     Toast.makeText(MainActivity.this, "Cannot reach Cashier PC. Tap ⚙️ to configure.", Toast.LENGTH_SHORT).show();
@@ -666,7 +737,7 @@ public class MainActivity extends AppCompatActivity {
                     String jsonStr = response.body() != null ? response.body().string() : "{}";
                     mainHandler.post(() -> {
                         activePosUrl = testUrl;
-                        txtPosStatus.setText("● Cashier PC Connected");
+                        txtPosStatus.setText(getString(R.string.pos_status_connected));
                         txtPosStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
                         if (showToast) {
                             Toast.makeText(MainActivity.this, "Connected to Cashier PC!", Toast.LENGTH_SHORT).show();
@@ -757,7 +828,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Update header count
-            txtOpenOrdersHeader.setText(String.format(Locale.US, "OPEN ORDERS (%d)", currentOpenOrders.size()));
+            txtOpenOrdersHeader.setText(getString(R.string.open_orders_header, currentOpenOrders.size()));
 
             // Render order cards
             layoutOrdersList.removeAllViews();
@@ -779,7 +850,7 @@ public class MainActivity extends AppCompatActivity {
 
                     txtTitle.setText(order.displayTitle);
                     txtTotal.setText(String.format(Locale.US, "%.2f ETB", order.total));
-                    txtCount.setText(String.format(Locale.US, "%d item%s", order.itemsCount, order.itemsCount == 1 ? "" : "s"));
+                    txtCount.setText(order.itemsCount == 1 ? getString(R.string.order_items_count_single) : getString(R.string.order_items_count_multiple, order.itemsCount));
 
                     if (order.isVerified) {
                         txtVerifiedBadge.setVisibility(View.VISIBLE);
@@ -843,12 +914,12 @@ public class MainActivity extends AppCompatActivity {
 
         imgResultIcon.setImageResource(R.drawable.ic_error_cross);
 
-        txtResultStatus.setText("🚨 DUPLICATE RECEIPT — DO NOT ACCEPT!");
+        txtResultStatus.setText(getString(R.string.duplicate_title));
         txtResultStatus.setTextColor(ContextCompat.getColor(this, R.color.status_red));
         txtResultStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
         txtResultStatus.setTypeface(null, Typeface.BOLD);
 
-        txtResultBadge.setText("⛔ DUPLICATE");
+        txtResultBadge.setText("⛔ " + getString(R.string.badge_duplicate));
         txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
         txtResultBadge.setTextColor(ContextCompat.getColor(this, R.color.status_red));
         txtResultBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
@@ -902,7 +973,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void toggleOrderSelection(OpenOrder order) {
         if (isCurrentResultDuplicate) {
-            Toast.makeText(this, "🚨 CANNOT LINK: This receipt is a duplicate — already used!", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.cannot_link_duplicate), Toast.LENGTH_LONG).show();
             playBeep(false);
             vibrateError();
             return;
@@ -928,7 +999,7 @@ public class MainActivity extends AppCompatActivity {
     private void updateSelectedOrderBanner() {
         if (selectedOrder != null) {
             bannerSelectedOrder.setVisibility(View.VISIBLE);
-            txtSelectedOrderTitle.setText(String.format(Locale.US, "🎯 Target: %s (Bill: %.2f ETB)", selectedOrder.displayTitle, selectedOrder.total));
+            txtSelectedOrderTitle.setText(getString(R.string.order_selected_format, String.format(Locale.US, "%s (%.2f ETB)", selectedOrder.displayTitle, selectedOrder.total)));
         } else {
             bannerSelectedOrder.setVisibility(View.GONE);
         }
@@ -1589,16 +1660,16 @@ public class MainActivity extends AppCompatActivity {
             String errorMsg = json.optString("error", receipt != null ? receipt.optString("errorMessage", "") : "");
 
             if (isDuplicate) {
-                applyDuplicateAlertStyle(!errorMsg.isEmpty() ? errorMsg : "🚨 DUPLICATE SLIP: Previously scanned and paid on Cashier PC!");
+                applyDuplicateAlertStyle(!errorMsg.isEmpty() ? errorMsg : getString(R.string.duplicate_pos_msg));
                 return;
             }
 
             if (isReceiverMismatch) {
                 lastVerifiedRef = "";
-                txtResultBadge.setText("WRONG RECV");
+                txtResultBadge.setText(getString(R.string.badge_wrong_recv));
                 txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
                 txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
-                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : "🚨 RECEIVER MISMATCH: Payment was NOT credited to your business account!");
+                txtResultPosMatch.setText(!errorMsg.isEmpty() ? errorMsg : getString(R.string.receiver_mismatch_msg, cachedTelebirrReceiver));
                 if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
                 playBeep(false);
                 vibrateError();
@@ -2064,7 +2135,7 @@ public class MainActivity extends AppCompatActivity {
                 txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.verified_title));
                 txtResultStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
 
-                txtResultBadge.setText("GENUINE");
+                txtResultBadge.setText(getString(R.string.badge_genuine));
                 txtResultBadge.setBackgroundResource(R.drawable.badge_status_green);
                 txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_green));
 
@@ -2098,7 +2169,7 @@ public class MainActivity extends AppCompatActivity {
                 txtResultStatus.setText(statusTitle != null ? statusTitle : getString(R.string.failed_title));
                 txtResultStatus.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
 
-                txtResultBadge.setText("FAILED");
+                txtResultBadge.setText(getString(R.string.badge_failed));
                 txtResultBadge.setBackgroundResource(R.drawable.badge_status_red);
                 txtResultBadge.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.status_red));
 
@@ -2354,7 +2425,7 @@ public class MainActivity extends AppCompatActivity {
             for (int i = 0; i < arr.length(); i++) {
                 total += arr.getJSONObject(i).optDouble("amount", 0.0);
             }
-            txtTodaySummary.setText(String.format(Locale.US, "Today: %d receipts • %.2f ETB", arr.length(), total));
+            txtTodaySummary.setText(getString(R.string.today_summary_format, arr.length(), String.format(Locale.US, "%.2f ETB", total)));
         } catch (Exception ignored) {}
     }
 

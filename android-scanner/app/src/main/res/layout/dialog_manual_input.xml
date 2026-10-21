@@ -10,7 +10,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Manual Code Verification"
+        android:text="@string/manual_input_title"
         android:textColor="@color/gold"
         android:textSize="18sp"
         android:textStyle="bold" />
@@ -19,7 +19,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Type Telebirr transaction ID (e.g. DJJ7261SX7) or CBE FT reference code."
+        android:text="@string/manual_input_desc"
         android:textColor="@color/text_secondary"
         android:textSize="13sp" />
 
@@ -30,7 +30,7 @@
         android:layout_marginTop="16dp"
         android:background="@drawable/badge_chip"
         android:fontFamily="monospace"
-        android:hint="e.g. DJJ7261SX7 or FT24..."
+        android:hint="@string/manual_input_hint"
         android:inputType="textCapCharacters"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
@@ -85,7 +85,7 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="Cancel"
+            android:text="@string/btn_cancel"
             android:textColor="@color/text_secondary" />
 
         <Button
@@ -95,7 +95,7 @@
             android:layout_marginStart="12dp"
             android:layout_weight="1.5"
             android:background="@drawable/btn_gold"
-            android:text="VERIFY NOW"
+            android:text="@string/btn_verify_now"
             android:textColor="@color/bg_dark"
             android:textStyle="bold"
             app:backgroundTint="@null" />

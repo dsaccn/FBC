@@ -109,32 +109,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.5.4-scanner
-          name: "Kogna Verifier App v2.5.4"
+          tag_name: v2.5.5-scanner
+          name: "Kogna Verifier App v2.5.5"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.5.4
+            ## 📱 Kogna Verifier Android App v2.5.5
 
-            ### 🚨 Enhanced Anti-Fraud Duplicate Detection & Table Linking Guard:
-            - **Blocked Duplicate Table Linking**:
-              - Tapping an open table chip when a duplicate slip is detected is now strictly blocked with an error sound and Toast alert.
-              - Eliminates the race condition where `lastVerifiedRef` persisted after Cashier PC reported duplicate status.
-            - **Unmissable High-Visibility Duplicate Alert**:
-              - Transformed the verification card on duplicate detection into an unmistakable red alert card:
-                - 🚨 Red card background (`#3B1C1C`) and 3dp solid red border.
-                - Error cross icon (`ic_error_cross`) replacing the green checkmark.
-                - Bold red title `"🚨 DUPLICATE RECEIPT — DO NOT ACCEPT!"`.
-                - Prominent `"⛔ DUPLICATE"` badge and bold white-on-red conflict message banner.
-                - Triple-buzz error haptics to physically alert the cashier.
-            - **Automatic Card Reset on Genuine Scans**:
-              - Subsequent scans of genuine slips cleanly restore the card to the default gold/surface theme.
+            ### 🌐 Native Amharic Language Support (አማርኛ) & Top World Icon Switcher:
+            - **Top World Icon Language Switcher**:
+              - Tap the World Icon (`🌐`) at the top right to instantly choose between **English** and **አማርኛ (Amharic)**.
+              - Persists language choice across app restarts using `SharedPreferences`.
+              - Seamlessly updates the entire UI without requiring a phone restart.
+            - **Full Amharic UI Localization**:
+              - All screens, prompts, buttons, table order cards, badges, and verification results localized to Amharic (`values-am/strings.xml`).
+              - Real-time cashier status, connection alerts, and error toasts translated into natural Amharic.
+            - **Retained All v2.5.4 Anti-Fraud Duplicate Protection**:
+              - High-visibility full red alert card on duplicate slips.
+              - Strictly blocked table-linking on duplicate receipts.
             - **Permanent Release Keystore**:
-              - Signed with the official permanent Kogna certificate (`83:CA:86:A3:A8:F3:F7:9B:D3:31:16:DF:E2:BE:87:C7:CC:33:74:91:C0:61:AC:2C:FB:B1:99:B9:DC:4D:78:39`). Seamless in-place updates over v2.5.3!
+              - Signed with the official permanent Kogna certificate (`83:CA:86:A3:A8:F3:F7:9B:D3:31:16:DF:E2:BE:87:C7:CC:33:74:91:C0:61:AC:2C:FB:B1:99:B9:DC:4D:78:39`). Seamless in-place updates over v2.5.4 and v2.5.3!
 
             ### 📥 Download & Install:
             1. Download **`KognaVerifier.apk`** below to your Android device.
-            2. Tap to install (updates seamlessly over v2.5.3 without uninstalling!).
+            2. Tap to install (updates seamlessly over previous versions without uninstalling!).
           files: build-output/KognaVerifier.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

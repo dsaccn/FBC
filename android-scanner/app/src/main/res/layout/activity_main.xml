@@ -68,7 +68,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:letterSpacing="0.05"
-                    android:text="KOGNA VERIFIER"
+                    android:text="@string/app_title"
                     android:textColor="@color/gold"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -78,7 +78,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
-                    android:text="v2.5.4"
+                    android:text="v2.5.5"
                     android:textColor="@color/text_muted"
                     android:textSize="10sp"
                     android:textStyle="bold" />
@@ -88,7 +88,7 @@
                 android:id="@+id/txtPosStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="● Connecting to Cashier PC..."
+                android:text="@string/pos_status_connecting"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -103,14 +103,14 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <!-- Switch Mode: Native <-> Scanner Link -->
+            <!-- Language Switcher: English <-> Amharic -->
             <ImageButton
-                android:id="@+id/btnToggleEngine"
+                android:id="@+id/btnLanguage"
                 android:layout_width="38dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/btn_icon_translucent"
-                android:contentDescription="Switch Mode"
+                android:contentDescription="Language / ቋንቋ"
                 android:src="@drawable/ic_globe" />
 
             <!-- Flashlight Toggle -->
@@ -179,7 +179,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:letterSpacing="0.05"
-                android:text="OPEN ORDERS (0)"
+                android:text="@string/open_orders_header"
                 android:textColor="@color/gold"
                 android:textSize="12sp"
                 android:textStyle="bold" />
@@ -188,7 +188,7 @@
                 android:id="@+id/txtOrderHint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Tap a table to link payment"
+                android:text="@string/tap_table_hint"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -226,7 +226,7 @@
                 android:minWidth="0dp"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
-                android:text="✕ Clear"
+                android:text="@string/clear_selection"
                 android:textColor="@color/gold_light"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -239,7 +239,7 @@
             android:gravity="center"
             android:paddingTop="10dp"
             android:paddingBottom="10dp"
-            android:text="No open orders on Cashier PC"
+            android:text="@string/no_open_orders"
             android:textColor="@color/text_muted"
             android:textSize="12sp"
             android:visibility="gone" />
@@ -334,7 +334,7 @@
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="History"
+            android:text="@string/btn_history"
             android:textColor="@color/gold"
             android:textSize="13sp"
             app:icon="@drawable/ic_history"
@@ -376,7 +376,7 @@
                 android:layout_marginTop="16dp"
                 android:gravity="center"
                 android:maxWidth="240dp"
-                android:text="Verifying official receipt..."
+                android:text="@string/verifying_receipt"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -387,7 +387,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="Cancel"
+                android:text="@string/btn_cancel"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>
     </FrameLayout>
@@ -440,7 +440,7 @@
                         android:id="@+id/txtResultStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="PAYMENT VERIFIED"
+                        android:text="@string/verified_title"
                         android:textColor="@color/status_green"
                         android:textSize="15sp"
                         android:textStyle="bold" />
@@ -464,7 +464,7 @@
                     android:paddingTop="4dp"
                     android:paddingEnd="10dp"
                     android:paddingBottom="4dp"
-                    android:text="GENUINE"
+                    android:text="@string/badge_genuine"
                     android:textColor="@color/status_green"
                     android:textSize="11sp"
                     android:textStyle="bold" />
@@ -504,7 +504,7 @@
                     <TextView
                         android:layout_width="100dp"
                         android:layout_height="wrap_content"
-                        android:text="Payer Name"
+                        android:text="@string/label_payer_name"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                     <TextView
@@ -526,7 +526,7 @@
                     <TextView
                         android:layout_width="100dp"
                         android:layout_height="wrap_content"
-                        android:text="Receiver"
+                        android:text="@string/label_receiver"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                     <TextView
@@ -548,7 +548,7 @@
                     <TextView
                         android:layout_width="100dp"
                         android:layout_height="wrap_content"
-                        android:text="Reference"
+                        android:text="@string/label_reference"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                     <TextView
@@ -577,7 +577,7 @@
                     <TextView
                         android:layout_width="100dp"
                         android:layout_height="wrap_content"
-                        android:text="Date &amp; Time"
+                        android:text="@string/label_date_time"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                     <TextView
@@ -600,7 +600,7 @@
                     android:paddingTop="6dp"
                     android:paddingEnd="12dp"
                     android:paddingBottom="6dp"
-                    android:text="⚡ Syncing with Cashier PC..."
+                    android:text="@string/syncing_with_pos"
                     android:textColor="@color/gold"
                     android:textSize="12sp" />
 
@@ -616,7 +616,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🔗 Link this payment to Table:"
+                        android:text="@string/link_to_table_prompt"
                         android:textColor="@color/gold_light"
                         android:textSize="12sp"
                         android:textStyle="bold" />
@@ -642,7 +642,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="16dp"
                 android:background="@drawable/btn_gold"
-                android:text="↻ Try Again"
+                android:text="@string/retry_verification"
                 android:textColor="@color/bg_dark"
                 android:textSize="15sp"
                 android:textStyle="bold"

@@ -1,15 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kogna Verifier</string>
+    <string name="app_title">KOGNA VERIFIER</string>
     <string name="camera_permission_required">Camera permission is required to scan Telebirr and CBE QR codes.</string>
     <string name="scan_prompt">Align Telebirr or CBE QR slip inside frame</string>
+
+    <!-- POS Connection Status -->
+    <string name="pos_status_connecting">● Connecting to Cashier PC…</string>
+    <string name="pos_status_connected">● Cashier PC Connected</string>
+    <string name="pos_status_standalone">● Standalone (No Cashier PC)</string>
     <string name="pos_status_online">POS Online</string>
-    <string name="pos_status_standalone">Standalone</string>
+
+    <!-- Open Orders -->
+    <string name="open_orders_header">OPEN ORDERS (%d)</string>
+    <string name="tap_table_hint">Tap a table to link payment</string>
+    <string name="no_open_orders">No open orders on Cashier PC</string>
+    <string name="order_selected_format">Selected: %s</string>
+    <string name="clear_selection">✕ Clear</string>
+    <string name="link_to_table_prompt">🔗 Link this payment to Table:</string>
+    <string name="order_items_count_single">1 item</string>
+    <string name="order_items_count_multiple">%d items</string>
+
+    <!-- Today Summary -->
+    <string name="today_summary_format">Today: %d receipts • %s</string>
+    <string name="btn_history">History</string>
+
+    <!-- Loading Overlay -->
+    <string name="verifying_receipt">Verifying official receipt…</string>
+    <string name="btn_cancel">Cancel</string>
+
+    <!-- Result Card -->
     <string name="verified_title">PAYMENT VERIFIED</string>
     <string name="failed_title">VERIFICATION FAILED</string>
+    <string name="duplicate_title">🚨 DUPLICATE RECEIPT — DO NOT ACCEPT!</string>
+    <string name="wrong_receiver_title">RECEIVER MISMATCH</string>
+
+    <!-- Badges -->
+    <string name="badge_genuine">GENUINE</string>
+    <string name="badge_duplicate">DUPLICATE</string>
+    <string name="badge_wrong_recv">WRONG RECV</string>
+    <string name="badge_failed">FAILED</string>
+    <string name="badge_verified">VERIFIED</string>
+
+    <!-- Detail Fields -->
+    <string name="label_payer_name">Payer Name</string>
+    <string name="label_receiver">Receiver</string>
+    <string name="label_reference">Reference</string>
+    <string name="label_date_time">Date &amp; Time</string>
+    <string name="ref_copied">Reference copied to clipboard</string>
+
+    <!-- Result Card Actions -->
     <string name="scan_next">SCAN NEXT RECEIPT</string>
-    <string name="view_official_slip">View Official Bank Slip</string>
+    <string name="view_official_slip">VIEW OFFICIAL BANK SLIP</string>
+    <string name="retry_verification">↻ Try Again</string>
+
+    <!-- Sync Messages -->
+    <string name="syncing_with_pos">⚡ Syncing with Cashier PC…</string>
+    <string name="duplicate_pos_msg">🚨 DUPLICATE SLIP: Previously scanned and paid on Cashier PC!</string>
+    <string name="receiver_mismatch_msg">⚠️ Receiver mismatch: Expected %s</string>
+    <string name="cannot_link_duplicate">🚨 Cannot link: Duplicate receipt!</string>
+
+    <!-- Language Selection -->
+    <string name="choose_language_title">Choose Language / ቋንቋ ይምረጡ</string>
+    <string name="lang_english">English</string>
+    <string name="lang_amharic">አማርኛ (Amharic)</string>
+    <string name="lang_switched">Language switched to English</string>
+
+    <!-- Dialogs -->
     <string name="manual_input_title">Enter Transaction Code</string>
-    <string name="settings_title">POS Connection Settings</string>
-    <string name="history_title">Today\'s Scans</string>
+    <string name="manual_input_desc">Type Telebirr transaction ID (e.g. DJJ7261SX7) or CBE FT reference code.</string>
+    <string name="manual_input_hint">e.g. DJJ7261SX7 or FT24…</string>
+    <string name="btn_verify_now">VERIFY NOW</string>
+
+    <string name="settings_title">Cashier PC Connection</string>
+    <string name="settings_desc">Connects this phone directly to your Cashier PC to view open tables and sync orders.</string>
+    <string name="quick_presets">Quick Presets:</string>
+    <string name="preset_cloud">Cloud Tunnel</string>
+    <string name="preset_local">Local Wi-Fi</string>
+    <string name="label_pc_url">Cashier PC URL</string>
+    <string name="label_security_key">Scanner Security Key</string>
+    <string name="btn_test_connection">TEST CONNECTION &amp; FIND OPEN ORDERS</string>
+    <string name="btn_save_connect">SAVE &amp; CONNECT</string>
+    <string name="btn_close">Close</string>
+
+    <string name="history_title">Today\'s Scanned Receipts</string>
+    <string name="history_total_format">Today\'s Total: %s (%d scans)</string>
+    <string name="history_empty">No receipts verified today yet.</string>
+    <string name="btn_clear_history">Clear History</string>
 </resources>
