@@ -793,7 +793,7 @@ export default function QRScannerPage() {
         status: isNetTimeout ? 'PENDING' : 'FAILED',
         isTimeout: isNetTimeout,
         errorMessage: isNetTimeout
-          ? `Network timed out connecting to ${{ CBE: 'CBE', TELEBIRR: 'Ethio Telecom', DASHEN: 'Dashen', AWASH: 'Awash', BOA: 'BOA' }[detectedProv] || 'bank'}. Tap "Open Official Slip in Browser" below.`
+          ? `Network timed out connecting to ${detectedProv === 'CBE' ? 'CBE' : detectedProv === 'TELEBIRR' ? 'Ethio Telecom' : detectedProv === 'DASHEN' ? 'Dashen' : detectedProv === 'AWASH' ? 'Awash' : detectedProv === 'BOA' ? 'BOA' : 'bank'}. Tap "Open Official Slip in Browser" below.`
           : (err.message || 'Network connection failed while verifying with bank server.'),
       }
       setVerifiedResult(netErrorReceipt)
