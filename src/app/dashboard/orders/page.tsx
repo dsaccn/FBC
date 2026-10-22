@@ -358,6 +358,7 @@ export default function OrdersPage() {
     let cbeCount = 0
     let otherCount = 0
     let totalDiscounts = 0
+    let totalTips = 0
     let paidCount = 0
 
     let openTotalValue = 0
@@ -375,6 +376,8 @@ export default function OrdersPage() {
         paidCount++
         totalPaidRevenue += total
         totalDiscounts += o.payment?.discount || 0
+        const tipMatch = (o.payment?.notes || '').match(/\[Tip:\s*([\d.]+)\s*ETB\]/i)
+        if (tipMatch) totalTips += parseFloat(tipMatch[1])
 
         const methodStr = (o.payment?.method || 'Cash').toLowerCase()
         if (methodStr.includes('cash')) {
@@ -397,6 +400,7 @@ export default function OrdersPage() {
       totalPaidRevenue,
       paidCount,
       totalDiscounts,
+      totalTips,
       totalCash,
       cashCount,
       totalTelebirr,
@@ -465,6 +469,7 @@ export default function OrdersPage() {
         <div class="row"><span>TOTAL PAID SALES:</span><span>${reportStats.totalPaidRevenue.toFixed(2)} ETB</span></div>
         <div class="row"><span>Paid Orders Count:</span><span>${reportStats.paidCount}</span></div>
         ${reportStats.totalDiscounts > 0 ? `<div class="row"><span>Total Discounts:</span><span>-${reportStats.totalDiscounts.toFixed(2)} ETB</span></div>` : ''}
+        ${reportStats.totalTips > 0 ? `<div class="row"><span>Waiter Tips (held):</span><span>${reportStats.totalTips.toFixed(2)} ETB</span></div>` : ''}
         <hr/>
         <div style="font-size: 12px; margin-bottom: 4px;"><b>PAYMENT BREAKDOWN:</b></div>
         <div class="row"><span>  [CASH] In Drawer:</span><span>${reportStats.totalCash.toFixed(2)} ETB (${reportStats.cashCount})</span></div>
@@ -936,6 +941,14 @@ export default function OrdersPage() {
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--gold)' }}>{reportStats.totalPaidRevenue.toFixed(2)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right' }}>100%</td>
                       </tr>
+                      {reportStats.totalTips > 0 && (
+                        <tr style={{ borderTop: '2px dashed rgba(201,168,76,0.3)', background: 'rgba(201,168,76,0.04)' }}>
+                          <td style={{ padding: '8px 12px', fontWeight: '700', color: 'var(--gold)' }}>💝 Waiter Tips (held)</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--gold)' }}>{reportStats.totalTips.toFixed(2)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: '10px', color: 'var(--text-muted)' }}>for staff</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
