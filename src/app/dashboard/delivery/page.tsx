@@ -133,14 +133,9 @@ export default function DeliveryPage() {
   const [addItemsMobileTab, setAddItemsMobileTab] = useState<'MENU' | 'CART'>('MENU')
   const [addingItems, setAddingItems] = useState(false)
 
-  // Merge payment
+  // Merge orders
   const [mergeSelected, setMergeSelected] = useState<Set<string>>(new Set())
-  const [showMergePayModal, setShowMergePayModal] = useState(false)
-  const [mergePayMethod, setMergePayMethod] = useState('Cash')
-  const [mergeDiscountValue, setMergeDiscountValue] = useState('')
-  const [mergeTipValue, setMergeTipValue] = useState('')
-  const [mergePayNotes, setMergePayNotes] = useState('')
-  const [mergePaying, setMergePaying] = useState(false)
+  const [mergingOrders, setMergingOrders] = useState(false)
 
   // Current session user
   const [sessionUser, setSessionUser] = useState<{ id: string; fullName: string; role: string } | null>(null)
@@ -739,48 +734,36 @@ export default function DeliveryPage() {
 
   const selectedMergeOrders = orders.filter(o => mergeSelected.has(o.id) && o.status === 'OPEN')
 
-  const handleMergePayment = async () => {
+  const handleMergeOrders = async () => {
     if (selectedMergeOrders.length < 2) return
-    const discount = parseFloat(mergeDiscountValue) || 0
-    const tip = parseFloat(mergeTipValue) || 0
-    const isTransfer = mergePayMethod !== 'Cash'
-    const totalSubtotal = selectedMergeOrders.reduce((s, o) =>
-      s + o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((ss, i) => ss + i.menuItem.price * i.quantity, 0), 0)
+    // Use the oldest order as primary (first created)
+    const sorted = [...selectedMergeOrders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    const primaryOrder = sorted[0]
+    const mergeOrderIds = sorted.slice(1).map(o => o.id)
 
-    setMergePaying(true)
+    setMergingOrders(true)
     try {
-      await Promise.all(selectedMergeOrders.map(async (order) => {
-        const orderSub = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
-        const orderDiscount = totalSubtotal > 0 ? discount * (orderSub / totalSubtotal) : 0
-        const orderTip = isTransfer && totalSubtotal > 0 ? tip * (orderSub / totalSubtotal) : 0
-        const amount = Math.max(0, orderSub - orderDiscount + orderTip)
-        await fetch('/api/payments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: order.id,
-            cashierId: sessionUser?.id,
-            amount,
-            method: mergePayMethod,
-            discount: orderDiscount,
-            discountType: 'fixed',
-            notes: mergePayNotes.trim() || undefined,
-          }),
-        })
-      }))
-      toast.success(`${selectedMergeOrders.length} orders settled (${mergePayMethod})`)
-      setShowMergePayModal(false)
-      setMergeSelected(new Set())
-      setMergeDiscountValue('')
-      setMergeTipValue('')
-      setMergePayNotes('')
-      await loadOrders(false)
+      const res = await fetch('/api/delivery-orders/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryOrderId: primaryOrder.id, mergeOrderIds }),
+      })
+      if (res.ok) {
+        const names = selectedMergeOrders.map(o => parseDeliveryMeta(o.table.number, o.orderItems).orderName).join(' + ')
+        toast.success(`Merged into one order (${names})`)
+        setMergeSelected(new Set())
+        await loadOrders(false)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Failed to merge orders')
+      }
     } catch {
-      toast.error('Error processing merge payment')
+      toast.error('Network error merging orders')
     } finally {
-      setMergePaying(false)
+      setMergingOrders(false)
     }
   }
+
 
   // Filtered menu items for order creation dialog
   const filteredMenuItems = useMemo(() => {
@@ -1208,8 +1191,8 @@ export default function DeliveryPage() {
               <button className="btn btn-ghost btn-sm" style={{ fontSize: '12px', color: '#94A3B8', padding: '6px 12px' }} onClick={() => setMergeSelected(new Set())}>
                 Clear
               </button>
-              <button className="btn btn-gold btn-sm" style={{ fontSize: '13px', fontWeight: '700', padding: '8px 18px' }} onClick={() => setShowMergePayModal(true)}>
-                <CreditCard size={14} /> Pay Together
+              <button className="btn btn-gold btn-sm" style={{ fontSize: '13px', fontWeight: '700', padding: '8px 18px' }} onClick={handleMergeOrders} disabled={mergingOrders}>
+                <GitMerge size={14} /> {mergingOrders ? 'Merging...' : 'Merge into One Order'}
               </button>
             </div>
           </div>
@@ -2170,110 +2153,6 @@ export default function DeliveryPage() {
         </Portal>
       )}
 
-      {/* ── Modal: Merge Payment ─────────────────────────────────────────────── */}
-      {showMergePayModal && (
-        <Portal>
-          <div className="modal-overlay" onClick={() => setShowMergePayModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(5, 4, 2, 0.88)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '24px', borderRadius: '16px', border: '1px solid var(--black-border)', background: 'var(--black-card)', boxShadow: '0 25px 60px rgba(0,0,0,0.85)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <GitMerge size={18} style={{ color: '#38bdf8' }} />
-                  <h3 style={{ fontSize: '17px', fontWeight: '700', margin: 0 }}>Pay {selectedMergeOrders.length} Orders Together</h3>
-                </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowMergePayModal(false)}><X size={18} /></button>
-              </div>
-
-              {/* Orders summary */}
-              <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {selectedMergeOrders.map(order => {
-                  const meta = parseDeliveryMeta(order.table.number, order.orderItems)
-                  const sub = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
-                  return (
-                    <div key={order.id} style={{ background: 'var(--black-surface)', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)' }}>{meta.orderName}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{order.orderItems.filter(i => i.status !== 'CANCELLED').length} items</div>
-                      </div>
-                      <span style={{ fontSize: '14px', fontWeight: '700' }}>{sub.toFixed(2)} ETB</span>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Payment Method */}
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Payment Method</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {PAYMENT_METHODS.map(m => (
-                    <button key={m} type="button" className={`btn btn-sm ${mergePayMethod === m ? 'btn-gold' : 'btn-outline'}`} style={{ fontSize: '12px', padding: '5px 12px' }} onClick={() => setMergePayMethod(m)}>{m}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tip for non-cash payments */}
-              {mergePayMethod !== 'Cash' && (
-                <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: 'var(--gold)' }}>💝 Tip (Optional)</label>
-                  <input type="number" placeholder="0.00 ETB" value={mergeTipValue} onChange={e => setMergeTipValue(e.target.value)} className="input" style={{ width: '100%' }} min="0" step="5" />
-                </div>
-              )}
-
-              {/* Discount */}
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Discount (ETB)</label>
-                <input type="number" placeholder="0.00" value={mergeDiscountValue} onChange={e => setMergeDiscountValue(e.target.value)} className="input" style={{ width: '100%' }} />
-              </div>
-
-              {/* Notes */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Payment Reference / Notes</label>
-                <input type="text" placeholder="e.g. Telebirr ref, driver name..." value={mergePayNotes} onChange={e => setMergePayNotes(e.target.value)} className="input" style={{ width: '100%' }} />
-              </div>
-
-              {/* Total */}
-              {(() => {
-                const totalSub = selectedMergeOrders.reduce((s, o) =>
-                  s + o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((ss, i) => ss + i.menuItem.price * i.quantity, 0), 0)
-                const disc = parseFloat(mergeDiscountValue) || 0
-                const tip = parseFloat(mergeTipValue) || 0
-                const isTransfer = mergePayMethod !== 'Cash'
-                const finalAmt = Math.max(0, totalSub - disc + (isTransfer ? tip : 0))
-                return (
-                  <div style={{ padding: '12px', background: 'var(--black-surface)', borderRadius: '8px', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Combined Subtotal</span>
-                      <span>{totalSub.toFixed(2)} ETB</span>
-                    </div>
-                    {disc > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                        <span style={{ color: 'var(--warning-light)' }}>Discount</span>
-                        <span style={{ color: 'var(--warning-light)' }}>-{disc.toFixed(2)} ETB</span>
-                      </div>
-                    )}
-                    {tip > 0 && isTransfer && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                        <span style={{ color: 'var(--gold)' }}>💝 Tip</span>
-                        <span style={{ color: 'var(--gold)' }}>+{tip.toFixed(2)} ETB</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--black-border)' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '600' }}>Total to Pay:</span>
-                      <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gold)' }}>{finalAmt.toFixed(2)} ETB</span>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowMergePayModal(false)}>Cancel</button>
-                <button className="btn btn-gold" style={{ flex: 1.5 }} onClick={handleMergePayment} disabled={mergePaying}>
-                  {mergePaying ? 'Processing...' : `Settle ${selectedMergeOrders.length} Orders`}
-                </button>
-              </div>
-            </div>
-          </div>
-        </Portal>
-      )}
     </div>
   )
 }
