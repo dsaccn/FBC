@@ -522,6 +522,118 @@ export default function DeliveryPage() {
     printTicketHtml(html)
   }
 
+  // ── Print Bill (pre-payment itemized printout) ───────────────────────────────
+  const printBill = (order: DeliveryOrder) => {
+    const meta = parseDeliveryMeta(order.table.number, order.orderItems)
+    const activeItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
+    const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+    const discount = order.payment?.discount || 0
+    const totalDue = Math.max(0, subtotal - discount)
+    const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Bill - ${meta.orderName}</title>
+        <style>
+          @page { margin: 0; size: 80mm auto; }
+          *, *:before, *:after { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 12px 14px;
+            font-family: 'Courier New', Courier, monospace;
+            width: 100%;
+            font-size: 13px;
+            color: #000;
+            background: #fff;
+            line-height: 1.35;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .title { font-size: 18px; font-weight: 900; letter-spacing: 1.5px; }
+          .bill-badge {
+            display: inline-block;
+            border: 2px solid #000;
+            padding: 4px 18px;
+            font-size: 15px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            margin: 6px 0;
+          }
+          .box {
+            border: 1px dashed #000;
+            padding: 8px 10px;
+            margin: 8px 0;
+            background: #fbfbfb;
+          }
+          hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+          .item-note { font-size: 11px; color: #333; padding-left: 12px; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="title">Kogna Coffee</div>
+          <div style="font-size: 11px; margin-top: 2px;">Addis Ababa, Ethiopia</div>
+          <div class="bill-badge">BILL</div>
+        </div>
+
+        <div class="box">
+          <div style="font-size: 15px; font-weight: 900;">${meta.orderName}</div>
+          ${meta.phone ? `<div><b>Phone:</b> ${meta.phone}</div>` : ''}
+          ${meta.address ? `<div><b>Address:</b> ${meta.address}</div>` : ''}
+        </div>
+
+        <div style="font-size: 12px;">
+          <div><b>Server:</b> ${order.waiter?.fullName || 'Staff'}</div>
+          <div><b>Time:</b> ${now}</div>
+        </div>
+
+        <hr/>
+        <div class="bold" style="font-size: 12px; margin-bottom: 6px;">ITEMS:</div>
+        ${activeItems.map(item => {
+          const itemNoteClean = item.notes?.replace(/\[.*?\]/, '').trim()
+          return `
+            <div style="margin-bottom: 6px;">
+              <div class="row">
+                <span class="bold">${item.quantity}x ${item.menuItem.name}</span>
+                <span>${(item.menuItem.price * item.quantity).toFixed(2)} ETB</span>
+              </div>
+              ${itemNoteClean ? `<div class="item-note">Note: ${itemNoteClean}</div>` : ''}
+            </div>
+          `
+        }).join('')}
+
+        <hr/>
+        ${discount > 0 ? `
+          <div class="row">
+            <span>Subtotal:</span>
+            <span>${subtotal.toFixed(2)} ETB</span>
+          </div>
+          <div class="row">
+            <span>Discount:</span>
+            <span>-${discount.toFixed(2)} ETB</span>
+          </div>
+        ` : ''}
+        <div class="row bold" style="font-size: 16px; margin-top: 4px; border-top: 2px solid #000; padding-top: 6px;">
+          <span>AMOUNT DUE:</span>
+          <span>${totalDue.toFixed(2)} ETB</span>
+        </div>
+
+        <hr/>
+        <div class="center" style="font-size: 11px; margin-top: 8px; color: #444;">
+          Thank you — please proceed to payment
+        </div>
+        <div class="center" style="font-size: 12px; font-weight: 900; margin-top: 6px; letter-spacing: 1.5px;">
+          <b>MEBA TECH PRO</b>
+        </div>
+      </body>
+      </html>
+    `
+    printTicketHtml(html)
+  }
+
   // ── Print Kitchen Prep Slip ──────────────────────────────────────────────────
   const printKitchenSlip = (order: DeliveryOrder) => {
     const meta = parseDeliveryMeta(order.table.number, order.orderItems)
@@ -1091,7 +1203,7 @@ export default function DeliveryPage() {
                       <Printer size={14} /> Receipt
                     </button>
 
-                    {/* Print Kitchen Slip */}
+                    {/* Print Bill */}
                     <button
                       className="btn btn-ghost btn-sm"
                       style={{
@@ -1099,10 +1211,10 @@ export default function DeliveryPage() {
                         background: '#F8FAFC', border: '1.5px solid #CBD5E1',
                         color: '#0F172A', borderRadius: '8px'
                       }}
-                      onClick={() => printKitchenSlip(order)}
-                      title="Print Kitchen Preparation Slip"
+                      onClick={() => printBill(order)}
+                      title="Print itemized bill for customer"
                     >
-                      <ChefHat size={14} /> Kitchen
+                      <FileText size={14} /> Bill
                     </button>
 
                     {/* Settle Payment if Open */}

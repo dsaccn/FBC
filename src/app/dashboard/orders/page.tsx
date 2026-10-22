@@ -438,6 +438,107 @@ export default function OrdersPage() {
     })
   }, [orders, filter, searchQuery])
 
+  // Print Bill (pre-payment itemized printout for table orders)
+  const printBill = (order: Order) => {
+    const activeItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
+    const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+    const discount = order.payment?.discount || 0
+    const totalDue = Math.max(0, subtotal - discount)
+    const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
+    const tableLabel = order.table?.number || 'Table'
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Bill - ${tableLabel}</title>
+        <style>
+          @page { margin: 0; size: 80mm auto; }
+          *, *:before, *:after { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 12px 14px;
+            font-family: 'Courier New', Courier, monospace;
+            width: 100%;
+            font-size: 13px;
+            color: #000;
+            background: #fff;
+            line-height: 1.35;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .title { font-size: 18px; font-weight: 900; letter-spacing: 1.5px; }
+          .bill-badge {
+            display: inline-block;
+            border: 2px solid #000;
+            padding: 4px 18px;
+            font-size: 15px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            margin: 6px 0;
+          }
+          hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+          .item-note { font-size: 11px; color: #333; padding-left: 12px; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="title">Kogna Coffee</div>
+          <div style="font-size: 11px; margin-top: 2px;">Addis Ababa, Ethiopia</div>
+          <div class="bill-badge">BILL</div>
+        </div>
+
+        <div style="font-size: 12px; margin: 8px 0;">
+          <div><b>Table:</b> ${tableLabel}</div>
+          <div><b>Server:</b> ${order.waiter?.fullName || 'Staff'}</div>
+          <div><b>Time:</b> ${now}</div>
+        </div>
+
+        <hr/>
+        <div class="bold" style="font-size: 12px; margin-bottom: 6px;">ITEMS:</div>
+        ${activeItems.map(item => {
+          const itemNoteClean = item.notes?.replace(/\[.*?\]/, '').trim()
+          return `
+            <div style="margin-bottom: 6px;">
+              <div class="row">
+                <span class="bold">${item.quantity}x ${item.menuItem.name}</span>
+                <span>${(item.menuItem.price * item.quantity).toFixed(2)} ETB</span>
+              </div>
+              ${itemNoteClean ? `<div class="item-note">Note: ${itemNoteClean}</div>` : ''}
+            </div>
+          `
+        }).join('')}
+
+        <hr/>
+        ${discount > 0 ? `
+          <div class="row">
+            <span>Subtotal:</span>
+            <span>${subtotal.toFixed(2)} ETB</span>
+          </div>
+          <div class="row">
+            <span>Discount:</span>
+            <span>-${discount.toFixed(2)} ETB</span>
+          </div>
+        ` : ''}
+        <div class="row bold" style="font-size: 16px; margin-top: 4px; border-top: 2px solid #000; padding-top: 6px;">
+          <span>AMOUNT DUE:</span>
+          <span>${totalDue.toFixed(2)} ETB</span>
+        </div>
+
+        <hr/>
+        <div class="center" style="font-size: 11px; margin-top: 8px; color: #444;">
+          Thank you — please proceed to payment
+        </div>
+        <div class="center" style="font-size: 12px; font-weight: 900; margin-top: 6px; letter-spacing: 1.5px;">
+          <b>MEBA TECH PRO</b>
+        </div>
+      </body>
+      </html>
+    `
+    printTicketHtml(html)
+  }
+
   // Print Cashier / Staff Shift Report on Thermal Slip
   const printShiftSummary = () => {
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
@@ -747,6 +848,13 @@ export default function OrdersPage() {
                     <Link href={`/dashboard/orders/${order.id}`} className="btn btn-outline btn-sm">
                       <Eye size={13} /> View
                     </Link>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => printBill(order)}
+                      title="Print itemized bill for customer"
+                    >
+                      <FileText size={13} /> Bill
+                    </button>
                     {order.status === 'OPEN' && (
                       <>
                         <Link
