@@ -51,7 +51,10 @@ export async function GET(req: Request) {
     await ensureFreshPull()
 
     const orders = await prisma.order.findMany({
-      where: { status: 'OPEN' },
+      where: {
+        status: 'OPEN',
+        orderItems: { some: { status: { not: 'CANCELLED' } } },
+      },
       include: {
         table: true,
         orderItems: {

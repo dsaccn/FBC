@@ -52,13 +52,18 @@ export async function GET(req: Request) {
 
     if (status === 'OPEN') {
       whereClause.status = 'OPEN'
+      whereClause.orderItems = { some: { status: { not: 'CANCELLED' } } }
     } else if (status === 'PAID' || status === 'CANCELLED') {
       whereClause.status = status
       if (from || to) whereClause.createdAt = dateWhere
     } else {
+      const openCondition = {
+        status: 'OPEN',
+        orderItems: { some: { status: { not: 'CANCELLED' } } }
+      }
       if (from || to) {
         whereClause.OR = [
-          { status: 'OPEN' },
+          openCondition,
           { createdAt: dateWhere }
         ]
       }

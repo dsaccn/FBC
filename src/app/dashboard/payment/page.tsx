@@ -64,7 +64,8 @@ export default function PaymentPage() {
       ])
       if (ordRes.ok) {
         const ords = await ordRes.json()
-        setOrders(ords)
+        const validOrds = ords.filter((o: Order) => o.orderItems && o.orderItems.some(i => i.status !== 'CANCELLED'))
+        setOrders(validOrds)
         setSelectedOrder(prev => {
           if (prev) {
             const found = ords.find((o: Order) => o.id === prev.id)
