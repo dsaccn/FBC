@@ -48,7 +48,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 })
     }
 
-    const orderTotal = targetOrder.orderItems.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
+    const activeItems = targetOrder.orderItems.filter(i => i.status !== 'CANCELLED')
+    const orderTotal = activeItems.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
 
     let finalAmount = typeof amount === 'number' ? amount : parseFloat(amount || '0')
     let finalPayer = payerName || null

@@ -115,7 +115,8 @@ export async function POST(req: Request) {
             }
           })
 
-          const orderTotal = targetOrder?.orderItems?.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
+          const activeItems = (targetOrder?.orderItems || []).filter(i => i.status !== 'CANCELLED')
+          const orderTotal = activeItems.reduce((acc, i) => acc + (i.menuItem?.price || 0) * i.quantity, 0) || 0
           const orderUnderpaid = Boolean(orderTotal > 0 && !isNaN(parsedAmount) && parsedAmount < orderTotal - 0.5)
 
           if (orderUnderpaid) {
