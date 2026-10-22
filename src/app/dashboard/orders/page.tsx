@@ -366,6 +366,17 @@ export default function OrdersPage() {
     let openCount = 0
     let cancelledCount = 0
 
+    // Precompute cashier-match check for tip attribution
+    const selName = selectedStaffObj?.fullName?.toLowerCase().trim()
+    const isCashierMatch = (o: Order) => {
+      if (selectedStaffId === 'ALL') return true
+      return (
+        o.payment?.cashierId === selectedStaffId ||
+        o.payment?.cashier?.id === selectedStaffId ||
+        (!!selName && o.payment?.cashier?.fullName?.toLowerCase().trim() === selName)
+      )
+    }
+
     for (const o of targetOrders) {
       if (o.status === 'OPEN') {
         openCount++
@@ -377,8 +388,11 @@ export default function OrdersPage() {
         paidCount++
         totalPaidRevenue += total
         totalDiscounts += o.payment?.discount || 0
-        const tipMatch = (o.payment?.notes || '').match(/\[Tip:\s*([\d.]+)\s*ETB\]/i)
-        if (tipMatch) totalTips += parseFloat(tipMatch[1])
+        // Tips are a cashier-side metric — only count when selected person processed the payment
+        if (isCashierMatch(o)) {
+          const tipMatch = (o.payment?.notes || '').match(/\[Tip:\s*([\d.]+)\s*ETB\]/i)
+          if (tipMatch) totalTips += parseFloat(tipMatch[1])
+        }
 
         const methodStr = (o.payment?.method || 'Cash').toLowerCase()
         if (methodStr.includes('cash')) {
