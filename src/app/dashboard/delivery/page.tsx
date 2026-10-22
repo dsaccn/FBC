@@ -607,6 +607,71 @@ export default function DeliveryPage() {
     printTicketHtml(html)
   }
 
+  // ── Print Add-On Kitchen Slip (new items added to existing order) ────────────
+  const printAddOnKitchenSlip = (order: DeliveryOrder, newItems: typeof addItemsCart) => {
+    const meta = parseDeliveryMeta(order.table.number, order.orderItems)
+    const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>ADD ON - ${meta.orderName}</title>
+        <style>
+          @page { margin: 0; size: 80mm auto; }
+          *, *:before, *:after { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 12px 14px;
+            font-family: 'Courier New', Courier, monospace;
+            width: 100%;
+            font-size: 14px;
+            color: #000;
+            background: #fff;
+            font-weight: bold;
+          }
+          .center { text-align: center; }
+          hr { border: none; border-top: 2px dashed #000; margin: 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div style="font-size: 18px; font-weight: 900; letter-spacing: 1.5px;">Kogna Coffee</div>
+          <div style="font-size: 11px; font-weight: normal; margin-top: 2px;">Addis Ababa, Ethiopia</div>
+          <div style="border: 3px solid #000; display: inline-block; padding: 5px 16px; margin: 8px 0; font-size: 18px; font-weight: 900; letter-spacing: 2px;">
+            ➕ ADD ON
+          </div>
+          <div style="font-size: 13px; font-weight: 700; letter-spacing: 1px;">${meta.type === 'DELIVERY' ? '🛵 DELIVERY' : '🥡 TAKEAWAY'}</div>
+        </div>
+        <hr/>
+        <div style="font-size: 16px; margin: 6px 0;">
+          ORDER: <span style="background: #000; color: #fff; padding: 1px 6px;">${meta.orderName}</span>
+        </div>
+        <div style="font-size: 12px; font-weight: normal;">
+          <div><b>Time:</b> ${now}</div>
+          <div><b>Server:</b> ${order.waiter?.fullName || 'Staff'}</div>
+        </div>
+        <hr/>
+        <div style="font-size: 13px; margin-bottom: 8px;">ADDITIONAL ITEMS:</div>
+        ${newItems.map(c => {
+          const note = c.notes?.trim()
+          return `
+            <div style="margin-bottom: 8px; font-size: 15px;">
+              <div>[  ] <b>${c.quantity}x</b> ${c.menuItem.name}</div>
+              ${note ? `<div style="font-size: 12px; font-weight: normal; color: #333; padding-left: 20px;">>>> NOTE: ${note}</div>` : ''}
+            </div>
+          `
+        }).join('')}
+        <hr/>
+        <div class="center" style="font-size: 11px; font-weight: normal; margin-top: 4px; letter-spacing: 1px;">
+          MEBA TECH PRO
+        </div>
+      </body>
+      </html>
+    `
+    printTicketHtml(html)
+  }
+
   // Add-items cart helpers
   const addToAddItemsCart = (item: MenuItem) => {
     setAddItemsCart(prev => {
@@ -647,6 +712,8 @@ export default function DeliveryPage() {
       })
       if (res.ok) {
         toast.success('Items added to order!')
+        // Print add-on kitchen slip for the newly added items before clearing cart
+        printAddOnKitchenSlip(orderToAddItems, addItemsCart)
         setOrderToAddItems(null)
         setAddItemsCart([])
         await loadOrders(false)
