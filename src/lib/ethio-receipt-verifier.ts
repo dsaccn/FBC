@@ -772,149 +772,94 @@ export async function verifyBoaReceipt(urlOrId: string): Promise<VerifiedReceipt
   const clean = urlOrId.trim().replace(/[\\|\/]BNK\b.*/i, '')
   // Extract transaction ID from URL or use as-is
   const trxId = clean.match(/[?&]trx=([A-Za-z0-9_-]+)/i)?.[1] || clean.replace(/^https?:\/\/[^?]+\?trx=/i, '') || clean
-  const slipUrl = clean.startsWith('http') ? clean : `https://cs.bankofabyssinia.com/slip/?trx=${trxId}`
-
-  if (!isValidBankUrl(slipUrl)) {
-    return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: 'Invalid BOA receipt URL domain' }
-  }
+  const slipUrl = `https://cs.bankofabyssinia.com/slip/?trx=${trxId}`
 
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9,am;q=0.8',
+    'Accept': 'application/json',
+    'Referer': slipUrl,
   }
 
+  // BOA's official JSON API (discovered from JS bundle: /api/onlineSlip/getDetails/?id={trxId})
+  const apiUrl = `https://cs.bankofabyssinia.com/api/onlineSlip/getDetails/?id=${trxId}`
+
   try {
-    const res = await fetch(slipUrl, { headers, signal: AbortSignal.timeout(12000) })
+    const res = await fetch(apiUrl, { headers, signal: AbortSignal.timeout(12000) })
 
     if (!res.ok) {
-      return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: `BOA server returned HTTP ${res.status}. Check the transaction ID.` }
+      return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: `BOA API returned HTTP ${res.status}.` }
     }
 
-    const html = await res.text()
+    const data = await res.json()
 
-    // Strategy 1: Extract __NEXT_DATA__ (Next.js SSR)
-    const nextDataMatch = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)
-    if (nextDataMatch) {
-      try {
-        const data = JSON.parse(nextDataMatch[1])
-        const slip = data?.props?.pageProps?.slip || data?.props?.pageProps?.transaction || data?.props?.pageProps?.data || {}
-        const rawAmount = slip.amount || slip.transactionAmount || slip.credit_amount || slip.debitAmount
-        const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
-        if (amount && amount > 0) {
-          return {
-            success: true,
-            provider: 'BOA',
-            reference: slip.transactionId || slip.trxId || slip.referenceNo || trxId,
-            payerName: slip.senderName || slip.debitAccountName || slip.from_name || undefined,
-            payerAccountOrPhone: slip.senderAccount || slip.debitAccountNo || undefined,
-            receiverName: slip.receiverName || slip.creditAccountName || slip.to_name || undefined,
-            receiverAccount: slip.receiverAccount || slip.creditAccountNo || undefined,
-            amount,
-            currency: 'ETB',
-            dateTime: slip.transactionDate || slip.createdAt || slip.date || undefined,
-            status: 'COMPLETED',
-          }
-        }
-      } catch {}
+    // Response shape: { header: { status: "success" }, body: [{ "Payer's Name": "...", "Amount": "...", ... }] }
+    const body = Array.isArray(data?.body) ? data.body[0] : null
+
+    if (!body) {
+      return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: 'BOA returned empty response.' }
     }
 
-    // Strategy 2: Generic window.__INITIAL_STATE__ or window.__APP_STATE__
-    const stateMatch = html.match(/window\.__(?:INITIAL|APP|REDUX|STORE)_STATE__\s*=\s*({[\s\S]*?})(?:\s*;|\s*<\/script>)/i)
-    if (stateMatch) {
-      try {
-        const state = JSON.parse(stateMatch[1])
-        // Walk common paths: state.slip, state.transaction, state.receipt
-        const candidates = [state.slip, state.transaction, state.receipt, state?.data?.slip, state?.app?.slip].filter(Boolean)
-        for (const slip of candidates) {
-          const rawAmount = slip?.amount || slip?.transactionAmount
-          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
-          if (amount && amount > 0) {
-            return {
-              success: true,
-              provider: 'BOA',
-              reference: slip?.transactionId || slip?.referenceNo || trxId,
-              payerName: slip?.senderName || undefined,
-              payerAccountOrPhone: slip?.senderAccount || undefined,
-              receiverName: slip?.receiverName || undefined,
-              receiverAccount: slip?.receiverAccount || undefined,
-              amount,
-              currency: 'ETB',
-              dateTime: slip?.transactionDate || undefined,
-              status: 'COMPLETED',
-            }
-          }
-        }
-      } catch {}
-    }
+    const payerName = body["Payer's Name"] || body["Sender Name"] || body["payer_name"] || ''
 
-    // Strategy 3: JSON blob in any <script> tag containing transaction keywords
-    const scriptTags = [...html.matchAll(/<script(?![^>]+src=)[^>]*>([\s\S]*?)<\/script>/gi)]
-    for (const [, content] of scriptTags) {
-      if (!/amount|transaction|sender|receiver/i.test(content)) continue
-      const jsonMatch = content.match(/(\{[\s\S]*"amount"[\s\S]*?\})/i)
-      if (jsonMatch) {
-        try {
-          const obj = JSON.parse(jsonMatch[1])
-          const rawAmount = obj.amount || obj.transactionAmount
-          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
-          if (amount && amount > 0) {
-            return {
-              success: true,
-              provider: 'BOA',
-              reference: obj.transactionId || obj.referenceNo || trxId,
-              payerName: obj.senderName || undefined,
-              receiverName: obj.receiverName || undefined,
-              amount,
-              currency: 'ETB',
-              dateTime: obj.transactionDate || undefined,
-              status: 'COMPLETED',
-            }
-          }
-        } catch {}
+    if (!payerName || payerName === 'Invalid reference number' || /invalid/i.test(payerName)) {
+      return {
+        success: false,
+        provider: 'BOA',
+        reference: trxId,
+        currency: 'ETB',
+        status: 'FAILED',
+        errorMessage: 'BOA: Invalid or unrecognised transaction reference. Check the ID and try again.',
       }
     }
 
-    // Strategy 4: Probe BOA's likely public transaction API endpoint
-    const apiUrl = `https://cs.bankofabyssinia.com/api/slip/${trxId}`
-    const isApiDomain = isValidBankUrl(apiUrl)
-    if (isApiDomain) {
-      try {
-        const apiRes = await fetch(apiUrl, {
-          headers: { ...headers, 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(8000),
-        })
-        if (apiRes.ok) {
-          const apiData = await apiRes.json()
-          const rawAmount = apiData.amount || apiData.transactionAmount || apiData.credit_amount
-          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
-          if (amount && amount > 0) {
-            return {
-              success: true,
-              provider: 'BOA',
-              reference: apiData.transactionId || apiData.referenceNo || trxId,
-              payerName: apiData.senderName || apiData.from_name || undefined,
-              payerAccountOrPhone: apiData.senderAccount || undefined,
-              receiverName: apiData.receiverName || apiData.to_name || undefined,
-              receiverAccount: apiData.receiverAccount || undefined,
-              amount,
-              currency: 'ETB',
-              dateTime: apiData.transactionDate || apiData.date || undefined,
-              status: 'COMPLETED',
-            }
-          }
-        }
-      } catch {}
+    // Extract amount — BOA returns it as string e.g. "1,250.00"
+    const rawAmount = body['Amount'] || body['Transaction Amount'] || body['amount'] || body['Credit Amount'] || ''
+    const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
+
+    const receiverName    = body["Beneficiary Name"] || body["Receiver Name"] || body["receiver_name"] || undefined
+    const receiverAccount = body["Beneficiary Account"] || body["Receiver Account"] || body["receiver_account"] || undefined
+    const payerAccount    = body["Payer's Account"] || body["Sender Account"] || body["payer_account"] || undefined
+    const dateTime        = body["Transaction Date"] || body["Date"] || body["date"] || undefined
+    const reference       = body["Transaction Reference"] || body["Reference No"] || body["reference"] || trxId
+
+    // Check receiver account matches Kogna's configured CBE account
+    const settings = await getPaymentSettings()
+    let isReceiverMatched = true
+    if (settings.cbeReceiverAccount && settings.cbeReceiverAccount.trim() && receiverAccount) {
+      isReceiverMatched = matchMaskedAccountOrPhone(settings.cbeReceiverAccount, receiverAccount)
     }
 
-    // The page requires JavaScript rendering — cannot parse server-side
+    if (!isReceiverMatched) {
+      return {
+        success: false,
+        provider: 'BOA',
+        reference,
+        payerName,
+        payerAccountOrPhone: payerAccount,
+        receiverName,
+        receiverAccount,
+        amount,
+        currency: 'ETB',
+        dateTime,
+        status: 'FAILED',
+        isReceiverMatched: false,
+        errorMessage: `RECEIVER MISMATCH: BOA transfer credited to ${receiverAccount}, NOT your official CBE account (${settings.cbeReceiverAccount})!`,
+      }
+    }
+
     return {
-      success: false,
+      success: !!(amount && amount > 0),
       provider: 'BOA',
-      reference: trxId,
+      reference,
+      payerName,
+      payerAccountOrPhone: payerAccount,
+      receiverName,
+      receiverAccount,
+      isReceiverMatched,
+      amount,
       currency: 'ETB',
-      status: 'UNKNOWN',
-      errorMessage: 'BOA receipt page requires JavaScript rendering. Ask the customer to show the official slip on their screen and verify the amount manually.',
+      dateTime,
+      status: (amount && amount > 0) ? 'COMPLETED' : 'FAILED',
     }
   } catch (err: any) {
     const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
