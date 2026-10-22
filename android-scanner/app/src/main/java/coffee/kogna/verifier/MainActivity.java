@@ -1325,6 +1325,24 @@ public class MainActivity extends AppCompatActivity {
                         boolean won = evaluateInstantTelebirr(payment.reference, receipt, html, payment.slipUrl, isResolved);
                         if (won) return;
                     }
+
+                    // Candidate swap retry: If verification failed and reference contains 'O' or '0', try the alternate candidate
+                    if (attempt == 1 && (payment.reference.contains("O") || payment.reference.contains("0"))) {
+                        String altRef = payment.reference.contains("O")
+                                ? payment.reference.replace('O', '0')
+                                : payment.reference.replace('0', 'O');
+                        if (!altRef.equals(payment.reference)) {
+                            DetectedPayment altPayment = new DetectedPayment();
+                            altPayment.provider = payment.provider;
+                            altPayment.reference = altRef;
+                            altPayment.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + altRef;
+                            altPayment.isTelebirr = true;
+
+                            Request altReq = directReq.newBuilder().url(altPayment.slipUrl).build();
+                            executeTelebirrDirect(2, altPayment, client, altReq, isResolved, triggerPosFallback, checkAllFailed, directFinished);
+                            return;
+                        }
+                    }
                 }
 
                 directFinished.set(true);

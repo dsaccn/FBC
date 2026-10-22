@@ -187,7 +187,17 @@ public class ReceiptParserTest {
         assertEquals("v2-948fha83hf928hf9", v2Result.reference);
         assertEquals("CBE", v2Result.provider);
 
-        // 5. Negative Test: Random cafe menu text or chatter should NEVER falsely trigger
+        // 5. OCR Misread Normalization: Telebirr 'O' (letter) misread instead of '0' (digit)
+        String tbOcrMisread = "የሂሳብ እንቅስቃሴ ቁጥርዎ DJMO5ZHSXC ነው። https://transactioninfo.ethiotelecom.et/receipt/DJMO5ZHSXC";
+        ReceiptParser.DetectedPayment tbNormalized = ReceiptParser.extractReferenceFromOcrText(tbOcrMisread);
+        assertNotNull(tbNormalized);
+        assertEquals("Letter 'O' must be normalized to digit '0' in Telebirr references", "DJM05ZHSXC", tbNormalized.reference);
+
+        // 6. OCR Misread Normalization: Standalone raw Telebirr code with 'O'
+        ReceiptParser.DetectedPayment tbRawO = ReceiptParser.detectPayment("DJMO5ZHSXC");
+        assertEquals("DJM05ZHSXC", tbRawO.reference);
+
+        // 7. Negative Test: Random cafe menu text or chatter should NEVER falsely trigger
         String randomMenuText = "Welcome to Kogna Coffee! Fresh Ethiopian Yirgacheffe, Macchiato, and Croissant. Total: 250 ETB.";
         assertNull("Random text must not produce a payment reference", ReceiptParser.extractReferenceFromOcrText(randomMenuText));
         assertNull("Empty text must return null", ReceiptParser.extractReferenceFromOcrText(""));

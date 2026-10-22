@@ -88,6 +88,7 @@ public final class ReceiptParser {
             String fullId = cbeFtUrl.group(1).toUpperCase();
             if (fullId.startsWith("FT")) {
                 String ft = fullId.length() > 12 ? fullId.substring(0, 12) : fullId;
+                ft = normalizeOcrReference("CBE", ft);
                 res.provider = "CBE";
                 res.reference = ft;
                 res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
@@ -101,6 +102,7 @@ public final class ReceiptParser {
         if (directFt.find()) {
             String fullFt = directFt.group(1).toUpperCase();
             String ft = fullFt.length() > 12 ? fullFt.substring(0, 12) : fullFt;
+            ft = normalizeOcrReference("CBE", ft);
             res.provider = "CBE";
             res.reference = ft;
             res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
@@ -122,7 +124,7 @@ public final class ReceiptParser {
         // 3. Telebirr URL: /receipt/([A-Za-z0-9_-]+)
         Matcher tbUrl = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
         if (tbUrl.find()) {
-            String code = tbUrl.group(1).toUpperCase();
+            String code = normalizeOcrReference("TELEBIRR", tbUrl.group(1));
             res.provider = "TELEBIRR";
             res.reference = code;
             res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
@@ -144,6 +146,7 @@ public final class ReceiptParser {
                     }
                     String code = ascii.toString().trim().toUpperCase();
                     if (code.matches("^[A-Za-z0-9]{8,14}$")) {
+                        code = normalizeOcrReference("TELEBIRR", code);
                         res.provider = "TELEBIRR";
                         res.reference = code;
                         res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
@@ -157,7 +160,7 @@ public final class ReceiptParser {
         // 5. Amharic or English SMS text
         Matcher smsTagMatch = Pattern.compile("(?:የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥር(?:ዎ)?|የግብይት\\s*ቁጥር|Transaction\\s*(?:number|no|id)|Txn\\s*ID|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
         if (smsTagMatch.find()) {
-            String code = smsTagMatch.group(1).toUpperCase();
+            String code = normalizeOcrReference("TELEBIRR", smsTagMatch.group(1));
             res.provider = "TELEBIRR";
             res.reference = code;
             res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
@@ -171,7 +174,7 @@ public final class ReceiptParser {
             String candidate = codeMatch.group(1);
             if (!candidate.equalsIgnoreCase("TELEBIRR") && !candidate.equalsIgnoreCase("ETHIOTELE") &&
                 !candidate.equalsIgnoreCase("COMMERCIAL") && !candidate.matches("^\\d+$") && !candidate.matches("^[A-Za-z]+$")) {
-                String code = candidate.toUpperCase();
+                String code = normalizeOcrReference("TELEBIRR", candidate);
                 res.provider = "TELEBIRR";
                 res.reference = code;
                 res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
@@ -184,16 +187,49 @@ public final class ReceiptParser {
         String cleanedAlpha = clean.replaceAll("[^A-Za-z0-9_-]", "");
         if (cleanedAlpha.toUpperCase().startsWith("FT")) {
             res.provider = "CBE";
-            res.reference = cleanedAlpha.toUpperCase();
+            res.reference = normalizeOcrReference("CBE", cleanedAlpha);
             res.slipUrl = "https://apps.cbe.com.et:100/?id=" + res.reference;
             res.isCbe = true;
         } else {
             res.provider = "TELEBIRR";
-            res.reference = cleanedAlpha.toUpperCase();
+            res.reference = normalizeOcrReference("TELEBIRR", cleanedAlpha);
             res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + res.reference;
             res.isTelebirr = true;
         }
         return res;
+    }
+
+    /**
+     * Normalize OCR misread characters in Ethiopian payment references:
+     * - In Telebirr (e.g. DJM05ZHSXC), OCR engines (Google ML Kit) consistently confuse
+     *   the digit '0' (zero) with the uppercase letter 'O'. Telebirr transaction codes
+     *   use digit 0, never letter O.
+     * - In CBE FT codes, the first 5 characters after FT (positions 2-6, e.g. FT26295...) are strictly
+     *   digits (year YY + day-of-year DDD), where OCR frequently confuses 'O'->'0', 'I'/'L'->'1', 'S'->'5'.
+     */
+    public static String normalizeOcrReference(String provider, String rawRef) {
+        if (rawRef == null) return "";
+        String ref = rawRef.trim().toUpperCase();
+
+        if ("TELEBIRR".equalsIgnoreCase(provider) || ref.startsWith("DJ") || ref.contains("TRANSACTIONINFO")) {
+            // Fix OCR misreading digit 0 as letter O in Telebirr
+            return ref.replace('O', '0');
+        }
+
+        if ("CBE".equalsIgnoreCase(provider) || ref.startsWith("FT")) {
+            if (ref.startsWith("FT") && ref.length() >= 7) {
+                char[] chars = ref.toCharArray();
+                for (int i = 2; i < Math.min(7, chars.length); i++) {
+                    if (chars[i] == 'O') chars[i] = '0';
+                    else if (chars[i] == 'I' || chars[i] == 'L') chars[i] = '1';
+                    else if (chars[i] == 'S') chars[i] = '5';
+                    else if (chars[i] == 'B') chars[i] = '8';
+                }
+                return new String(chars);
+            }
+        }
+
+        return ref;
     }
 
     /**
@@ -208,7 +244,7 @@ public final class ReceiptParser {
         // 1. Direct Telebirr receipt URL in SMS or screen (e.g. https://transactioninfo.ethiotelecom.et/receipt/DJM05ZHSXC)
         Matcher tbUrl = Pattern.compile("(?:https?://)?(?:www\\.)?transactioninfo\\.ethiotelecom\\.et/receipt/([A-Za-z0-9_-]{8,14})", Pattern.CASE_INSENSITIVE).matcher(ocrText);
         if (tbUrl.find()) {
-            String code = tbUrl.group(1).toUpperCase();
+            String code = normalizeOcrReference("TELEBIRR", tbUrl.group(1));
             DetectedPayment res = new DetectedPayment();
             res.provider = "TELEBIRR";
             res.reference = code;
@@ -220,7 +256,7 @@ public final class ReceiptParser {
         // 2. CBE FT code in USSD/SMS (e.g. FT26295ZFD3H - exactly 12 characters, starting with FT)
         Matcher ftMatch = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(ocrText);
         if (ftMatch.find()) {
-            String ft = ftMatch.group(1).toUpperCase();
+            String ft = normalizeOcrReference("CBE", ftMatch.group(1));
             DetectedPayment res = new DetectedPayment();
             res.provider = "CBE";
             res.reference = ft;
@@ -244,7 +280,7 @@ public final class ReceiptParser {
         // 4. Telebirr tagged SMS reference (Amharic "የሂሳብ እንቅስቃሴ ቁጥርዎ", "የግብይት ቁጥር", or English "Txn ID", "Transaction No")
         Matcher tbTagMatch = Pattern.compile("(?:የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥር(?:ዎ)?|የግብይት\\s*ቁጥር|Transaction\\s*(?:number|no|id)|Txn\\s*ID|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(ocrText);
         if (tbTagMatch.find()) {
-            String code = tbTagMatch.group(1).toUpperCase();
+            String code = normalizeOcrReference("TELEBIRR", tbTagMatch.group(1));
             DetectedPayment res = new DetectedPayment();
             res.provider = "TELEBIRR";
             res.reference = code;
@@ -256,7 +292,7 @@ public final class ReceiptParser {
         // 5. High-confidence Telebirr code pattern starting with "DJ" (standard Telebirr prefix like DJM05ZHSXC, DJJ7261SX7)
         Matcher djMatch = Pattern.compile("\\b(DJ[0-9A-Za-z]{8})\\b", Pattern.CASE_INSENSITIVE).matcher(ocrText);
         if (djMatch.find()) {
-            String code = djMatch.group(1).toUpperCase();
+            String code = normalizeOcrReference("TELEBIRR", djMatch.group(1));
             DetectedPayment res = new DetectedPayment();
             res.provider = "TELEBIRR";
             res.reference = code;

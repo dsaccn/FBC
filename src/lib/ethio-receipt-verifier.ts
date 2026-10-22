@@ -117,16 +117,21 @@ export function extractTelebirrTransactionId(raw: string): string {
   const clean = (raw || '').trim()
   if (!clean) return ''
 
+  const norm = (code: string) => {
+    const upper = (code || '').toUpperCase()
+    return upper.startsWith('DJ') || upper.length === 10 ? upper.replace(/O/g, '0') : upper
+  }
+
   // 1. If it's a URL
   const urlMatch = clean.match(/\/receipt\/([A-Za-z0-9_-]+)/i)
   if (urlMatch) {
-    return urlMatch[1].toUpperCase()
+    return norm(urlMatch[1])
   }
 
   // 2. Structured SMS or text tag: "Transaction number: DJJ7261SX7", "Txn ID: DJJ7261SX7", "የግብይት ቁጥር: DJJ7261SX7"
-  const smsTagMatch = clean.match(/(?:Transaction\s*(?:number|no|id)|Txn\s*ID|የግብይት\s*ቁጥር|Receipt\s*(?:no|number)|Ref(?:erence)?(?:\s*No)?)[:\s]+([A-Za-z0-9]{8,14})/i)
+  const smsTagMatch = clean.match(/(?:የሂሳብ\s*እንቅስቃሴ\s*ቁጥር(?:ዎ)?|የግብይት\s*ቁጥር|Transaction\s*(?:number|no|id)|Txn\s*ID|Receipt\s*(?:no|number)|Ref(?:erence)?(?:\s*No)?)[:\s]+([A-Za-z0-9]{8,14})/i)
   if (smsTagMatch) {
-    return smsTagMatch[1].toUpperCase()
+    return norm(smsTagMatch[1])
   }
 
   // 3. If it's a Base64-encoded Telebirr SuperApp QR code
@@ -136,7 +141,7 @@ export function extractTelebirrTransactionId(raw: string): string {
     if (match) {
       const ascii = Buffer.from(match[1], 'hex').toString('utf8')
       if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
-        return ascii.toUpperCase()
+        return norm(ascii)
       }
     }
   } catch {}
@@ -147,12 +152,12 @@ export function extractTelebirrTransactionId(raw: string): string {
     try {
       const ascii = Buffer.from(directMatch[1], 'hex').toString('utf8')
       if (/^[A-Za-z0-9]{8,14}$/.test(ascii)) {
-        return ascii.toUpperCase()
+        return norm(ascii)
       }
     } catch {}
   }
 
-  // 5. Look for standalone 10-character Telebirr reference code in sentence or SMS text (e.g. DJJ7261SX7)
+  // 5. Look for standalone 10-character Telebirr reference code in sentence or SMS text (e.g. DJJ7261SX7 or DJM05ZHSXC)
   const tokens = clean.split(/[\s,.;:()!?-]+/)
   for (const token of tokens) {
     const cleanTok = token.replace(/[^A-Za-z0-9]/g, '')
@@ -163,12 +168,13 @@ export function extractTelebirrTransactionId(raw: string): string {
       !/^[0-9]+$/i.test(cleanTok) &&
       !/^(TELEBIRR|ETHIOTELE|COMMERCIAL)/i.test(cleanTok)
     ) {
-      return cleanTok.toUpperCase()
+      return norm(cleanTok)
     }
   }
 
   // 6. Default clean alphanumeric code
-  return clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+  let candidate = clean.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase()
+  return norm(candidate)
 }
 
 /**
@@ -371,7 +377,26 @@ export async function verifyTelebirrReceipt(
     }
 
     const html = await res.text()
-    return parseTelebirrReceiptHtml(html, transactionId, accountDigits)
+    const result = await parseTelebirrReceiptHtml(html, transactionId, accountDigits)
+    // If invalid receipt and ID contains '0' or 'O', attempt candidate retry
+    if (!result.success && (transactionId.includes('0') || transactionId.includes('O'))) {
+      const altCandidate = transactionId.includes('O')
+        ? transactionId.replace(/O/g, '0')
+        : transactionId.replace(/0/g, 'O')
+      if (altCandidate !== transactionId) {
+        try {
+          const altRes = await fetchTelebirrWithRetry(`https://transactioninfo.ethiotelecom.et/receipt/${altCandidate}`, 2)
+          if (altRes.ok) {
+            const altHtml = await altRes.text()
+            const altResult = await parseTelebirrReceiptHtml(altHtml, altCandidate, accountDigits)
+            if (altResult.success) {
+              return altResult
+            }
+          }
+        } catch {}
+      }
+    }
+    return result
   } catch (err: any) {
     const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
     return {

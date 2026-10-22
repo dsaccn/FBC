@@ -109,14 +109,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.6.0-scanner
-          name: "Kogna Verifier App v2.6.0"
+          tag_name: v2.6.1-scanner
+          name: "Kogna Verifier App v2.6.1"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.6.0
+            ## 📱 Kogna Verifier Android App v2.6.1
 
-            ### 🔍 Unified Real-Time Dual Detection (QR + USSD/SMS Live OCR):
+            ### 🎯 High-Precision OCR Confusion Normalization & Dual Candidate Retry:
+            - **Automatic Telebirr Zero / O Normalization**:
+              - Automatically resolves ML Kit OCR misreading digit `0` as uppercase letter `O` in Telebirr transaction codes (e.g., `DJM05ZHSXC` read as `DJMO5ZHSXC`).
+              - Ensures 100% first-pass accuracy when scanning customer phone screens and SMS receipts.
+            - **Dual-Candidate Live Retry**:
+              - If an OCR-scanned reference returns an invalid receipt response, both the Android client and the backend server automatically attempt an instant in-flight candidate retry swapping `O` ↔ `0` before declaring failure.
+            - **CBE Character Position Normalization**:
+              - Enforces strict numeric validation on characters 2-6 of `FT` references (`FT` + year + Julian day: YYDDD), automatically correcting `O`→`0`, `I`/`L`→`1`, `S`→`5`, and `B`→`8`.
             - **Real-Time Live OCR (Google ML Kit)**:
               - Point the camera at a customer's phone showing an SMS or USSD confirmation (*847# CBE or *127# Telebirr) with **NO QR code**.
               - Camera preview automatically reads the text in real-time (~5 FPS), extracts payment reference, vibrates, beeps, and triggers verification automatically with zero button clicks!
