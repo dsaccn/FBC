@@ -768,7 +768,8 @@ export async function verifyCbeReceipt(
  * Official slip URL: https://cs.bankofabyssinia.com/slip/?trx={id}
  */
 export async function verifyBoaReceipt(urlOrId: string): Promise<VerifiedReceipt> {
-  const clean = urlOrId.trim()
+  // Strip BOA QR suffix: "{trxId}\BNK" or "{trxId}|BNK"
+  const clean = urlOrId.trim().replace(/[\\|\/]BNK\b.*/i, '')
   // Extract transaction ID from URL or use as-is
   const trxId = clean.match(/[?&]trx=([A-Za-z0-9_-]+)/i)?.[1] || clean.replace(/^https?:\/\/[^?]+\?trx=/i, '') || clean
   const slipUrl = clean.startsWith('http') ? clean : `https://cs.bankofabyssinia.com/slip/?trx=${trxId}`
@@ -1115,7 +1116,8 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
   const isBoa =
     provider === 'BOA' ||
     /bankofabyssinia\.com/i.test(clean) ||
-    /[?&]trx=/i.test(clean)
+    /[?&]trx=/i.test(clean) ||
+    /[\\|\/]BNK\b/i.test(clean)
 
   const extractedTelebirrId = extractTelebirrTransactionId(clean)
   const isTelebirr =

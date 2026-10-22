@@ -54,6 +54,8 @@ function detectPortalProvider(input: string): 'DASHEN' | 'AWASH' | 'BOA' | null 
   if (/dashensuperapp\.com/i.test(input)) return 'DASHEN'
   if (/awashbank\.com/i.test(input)) return 'AWASH'
   if (/bankofabyssinia\.com/i.test(input)) return 'BOA'
+  // BOA native QR payload: "{trxId}\BNK" or "{trxId}|BNK"
+  if (/[\\|\/]BNK\b/i.test(input)) return 'BOA'
   return null
 }
 
