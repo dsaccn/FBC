@@ -15,6 +15,17 @@
     <string name="open_orders_header">ክፍት ትዕዛዞች (%d)</string>
     <string name="tap_table_hint">ክፍያውን ለማያያዝ ጠረጴዛ ይጫኑ</string>
     <string name="no_open_orders">በካሸር ኮምፒውተር ላይ ክፍት ትዕዛዝ የለም</string>
+
+    <!-- Orders-First Hub -->
+    <string name="filter_all">ሁሉም</string>
+    <string name="filter_tables">ጠረጴዛዎች</string>
+    <string name="filter_delivery">ዴሊቨሪ</string>
+    <string name="btn_scan_fab">ደረሰኝ ስካን</string>
+    <string name="btn_close_scanner">ወደ ትዕዛዞች ተመለስ</string>
+    <string name="order_type_table">ጠረጴዛ</string>
+    <string name="order_type_delivery">ዴሊቨሪ</string>
+    <string name="order_type_takeaway">የይዞታ</string>
+
     <string name="order_selected_format">የተመረጠ: %s</string>
     <string name="clear_selection">✕ ሰርዝ</string>
     <string name="link_to_table_prompt">🔗 ክፍያውን ከጠረጴዛ ጋር ያያይዙ:</string>

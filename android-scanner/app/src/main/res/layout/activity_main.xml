@@ -21,6 +21,7 @@
         android:id="@+id/barcodeView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -77,7 +78,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
-                    android:text="v2.6.1"
+                    android:text="v2.6.2"
                     android:textColor="@color/text_muted"
                     android:textSize="10sp"
                     android:textStyle="bold" />
@@ -325,18 +326,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar">
 
-        <!-- Reticle — 35% bias places it slightly above center -->
+        <!-- Reticle Frame — centered in scanner area -->
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/reticleContainer"
-            android:layout_width="250dp"
-            android:layout_height="250dp"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
             android:background="@drawable/bg_reticle_frame"
-            app:layout_constraintBottom_toTopOf="@id/txtPrompt"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.35"
-            app:layout_constraintVertical_chainStyle="packed">
+            app:layout_constraintBottom_toTopOf="@id/btnCloseScanner"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintVertical_bias="0.4">
 
             <View
                 android:id="@+id/laserLine"
@@ -346,39 +346,44 @@
                 app:layout_constraintTop_toTopOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
-        <!-- Scan Prompt -->
+        <!-- Scan Prompt directly below the frame -->
         <TextView
             android:id="@+id/txtPrompt"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="32dp"
-            android:layout_marginTop="12dp"
-            android:layout_marginEnd="32dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/badge_chip"
             android:gravity="center"
-            android:paddingStart="16dp"
+            android:paddingStart="18dp"
             android:paddingTop="8dp"
-            android:paddingEnd="16dp"
+            android:paddingEnd="18dp"
             android:paddingBottom="8dp"
             android:text="@string/scan_prompt"
             android:textColor="@color/gold_light"
-            android:textSize="13sp"
-            app:layout_constraintEnd_toEndOf="parent"
+            android:textSize="12sp"
+            app:layout_constraintTop_toBottomOf="@id/reticleContainer"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/reticleContainer" />
+            app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- Back to Orders Button -->
-        <Button
+        <!-- Back to Orders Button with Crisp Vector Icon -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCloseScanner"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
-            android:layout_marginBottom="12dp"
-            android:paddingStart="24dp"
+            android:layout_marginBottom="16dp"
+            android:paddingStart="20dp"
             android:paddingEnd="24dp"
             android:text="@string/btn_close_scanner"
-            android:textColor="@color/gold_light"
+            android:textColor="@color/gold"
             android:textSize="13sp"
+            android:textStyle="bold"
+            app:cornerRadius="22dp"
+            app:icon="@drawable/ic_arrow_back"
+            app:iconPadding="8dp"
+            app:iconTint="@color/gold"
+            app:strokeColor="@color/gold_dark"
+            app:strokeWidth="1dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />

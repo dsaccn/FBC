@@ -21,7 +21,7 @@
     <string name="filter_tables">Tables</string>
     <string name="filter_delivery">Delivery</string>
     <string name="btn_scan_fab">Scan Receipt</string>
-    <string name="btn_close_scanner">← Back to Orders</string>
+    <string name="btn_close_scanner">Back to Orders</string>
     <string name="order_type_table">TABLE</string>
     <string name="order_type_delivery">DELIVERY</string>
     <string name="order_type_takeaway">TAKEAWAY</string>

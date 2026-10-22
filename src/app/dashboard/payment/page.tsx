@@ -22,11 +22,7 @@ interface Order {
   verifiedAt?: string | null
 }
 
-const PAYMENT_METHODS = [
-  'Cash', 'Telebirr', 'CBE',
-  'Abyssinia', 'Awash', 'Dashen', 'BOA',
-  'Hibret', 'Wegagen', 'Nib', 'Oromia', 'Amhara',
-]
+const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
 
 export default function PaymentPage() {
   const searchParams = useSearchParams()
@@ -933,7 +929,7 @@ export default function PaymentPage() {
 
             {/* Method */}
             <label className="input-label">Payment Method</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
               {PAYMENT_METHODS.map(m => (
                 <button key={m} className={`btn btn-sm ${method === m ? 'btn-gold' : 'btn-outline'}`} onClick={() => setMethod(m)}>{m}</button>
               ))}

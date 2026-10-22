@@ -12,20 +12,7 @@ import Portal from '@/components/Portal'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
 
-const PAYMENT_METHODS = [
-  'Cash',
-  'Telebirr',
-  'CBE',
-  'Abyssinia',
-  'Awash',
-  'Dashen',
-  'BOA',
-  'Hibret',
-  'Wegagen',
-  'Nib',
-  'Oromia',
-  'Amhara',
-]
+const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
 
 interface MenuItem {
   id: string

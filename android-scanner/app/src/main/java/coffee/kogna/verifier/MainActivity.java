@@ -276,7 +276,8 @@ public class MainActivity extends AppCompatActivity {
         setupListeners();
         setupScanner();
 
-        // Camera starts paused — orders grid is the default state
+        // Camera starts paused & hidden — orders grid is the default state
+        barcodeView.setVisibility(View.GONE);
         barcodeView.pause();
 
         checkCameraPermission();
@@ -607,6 +608,8 @@ public class MainActivity extends AppCompatActivity {
             }
         } else if (cardResult.getVisibility() == View.VISIBLE) {
             resetScannerToActive();
+        } else if (isScannerOpen) {
+            closeScannerOverlay();
         } else {
             super.onBackPressed();
         }
@@ -614,6 +617,11 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupScanner() {
         barcodeView.setStatusText(""); // Hide default camera status label
+        try {
+            if (barcodeView.getViewFinder() != null) {
+                barcodeView.getViewFinder().setVisibility(View.GONE);
+            }
+        } catch (Exception ignored) {}
 
         try {
             CameraSettings cameraSettings = barcodeView.getBarcodeView().getCameraSettings();
@@ -2384,6 +2392,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void openScannerOverlay() {
         isScannerOpen = true;
+        barcodeView.setVisibility(View.VISIBLE);
         if (ordersSection != null) ordersSection.setVisibility(View.GONE);
         if (scannerOverlay != null) scannerOverlay.setVisibility(View.VISIBLE);
         if (fabOpenScanner != null) fabOpenScanner.setVisibility(View.GONE);
@@ -2394,6 +2403,7 @@ public class MainActivity extends AppCompatActivity {
     private void closeScannerOverlay() {
         isScannerOpen = false;
         if (!isWebViewMode) barcodeView.pause();
+        barcodeView.setVisibility(View.GONE);
         if (laserLine != null) laserLine.clearAnimation();
         if (scannerOverlay != null) scannerOverlay.setVisibility(View.GONE);
         if (ordersSection != null) ordersSection.setVisibility(View.VISIBLE);
