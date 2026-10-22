@@ -44,9 +44,14 @@ export default function ReceiptVerifier({
   const normalizedMethod = method.toUpperCase()
   const isCbe = normalizedMethod.includes('CBE')
   const isTelebirr = normalizedMethod.includes('TELEBIRR')
+  const isDashen = normalizedMethod.includes('DASHEN')
+  const isAwash = normalizedMethod.includes('AWASH')
 
-  // Only CBE and Telebirr support automated receipt verification
-  if (!isCbe && !isTelebirr) return null
+  const providerLabel = isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : isDashen ? 'Dashen' : isAwash ? 'Awash' : ''
+  const providerEnum: 'CBE' | 'TELEBIRR' | 'DASHEN' | 'AWASH' = isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : isDashen ? 'DASHEN' : 'AWASH'
+
+  // Only CBE, Telebirr, Dashen, and Awash support automated receipt verification
+  if (!isCbe && !isTelebirr && !isDashen && !isAwash) return null
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -72,7 +77,7 @@ export default function ReceiptVerifier({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: isCbe ? 'CBE' : 'TELEBIRR',
+          provider: providerEnum,
           referenceOrUrl: refInput.trim(),
           accountDigits: accountInput.trim() || undefined,
           expectedAmount,
@@ -120,7 +125,7 @@ export default function ReceiptVerifier({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <ShieldCheck size={16} color="var(--gold)" />
           <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--gold)' }}>
-            Verify Official {isCbe ? 'CBE' : 'Telebirr'} Receipt
+            Verify Official {providerLabel} Receipt
           </span>
         </div>
         {verifiedReceipt && (
@@ -139,13 +144,13 @@ export default function ReceiptVerifier({
         <div>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>
-              {isCbe ? 'CBE FT Reference (or full URL)' : 'Telebirr Transaction ID (or full URL)'}
+              {isCbe ? 'CBE FT Reference (or full URL)' : isTelebirr ? 'Telebirr Transaction ID (or full URL)' : isDashen ? 'DashenSuperApp Receipt URL' : 'AwashPay Receipt URL'}
             </label>
             <input
               type="text"
               className="input"
               style={{ width: '100%', fontSize: '12px', height: '32px' }}
-              placeholder={isCbe ? 'e.g. FT25211G11JQ' : 'e.g. CHQ0FJ403O'}
+              placeholder={isCbe ? 'e.g. FT25211G11JQ' : isTelebirr ? 'e.g. CHQ0FJ403O' : isDashen ? 'https://receipt.dashensuperapp.com/receipt/...' : 'https://awashpay.awashbank.com:8225/-...'}
               value={refInput}
               onChange={e => setRefInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleVerify() } }}
@@ -168,7 +173,7 @@ export default function ReceiptVerifier({
             disabled={loading || !refInput.trim()}
           >
             {loading ? (
-              <><RefreshCw size={13} className="animate-spin" /> Verifying with {isCbe ? 'CBE' : 'Telebirr'}...</>
+              <><RefreshCw size={13} className="animate-spin" /> Verifying with {providerLabel}...</>
             ) : (
               <><ShieldCheck size={14} /> Verify &amp; Match Amount</>
             )}

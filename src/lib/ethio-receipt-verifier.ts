@@ -27,7 +27,7 @@ export interface VerifiedReceipt {
 }
 
 export interface VerifyReceiptParams {
-  provider?: 'TELEBIRR' | 'CBE' | 'AUTO'
+  provider?: 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'AUTO'
   referenceOrUrl: string
   accountDigits?: string // Used for CBE (last 8 digits of receiver account)
   expectedAmount?: number
@@ -562,6 +562,10 @@ export function isValidBankUrl(rawUrl: string): boolean {
       'mbreceipt.cbe.com.et',
       'ethiotelecom.et',
       'transactioninfo.ethiotelecom.et',
+      'receipt.dashensuperapp.com',
+      'dashensuperapp.com',
+      'awashpay.awashbank.com',
+      'awashbank.com',
     ]
 
     return allowed.some(domain => hostname === domain || hostname.endsWith('.' + domain))
@@ -756,6 +760,153 @@ export async function verifyCbeReceipt(
 }
 
 /**
+ * Verify Dashen Bank receipt via official DashenSuperApp PDF receipt link
+ * Official endpoint: https://receipt.dashensuperapp.com/receipt/{id}
+ */
+export async function verifyDashenReceipt(urlOrId: string): Promise<VerifiedReceipt> {
+  let url = urlOrId.trim()
+  if (!url.startsWith('http')) {
+    url = `https://receipt.dashensuperapp.com/receipt/${url}`
+  }
+
+  if (!isValidBankUrl(url)) {
+    return { success: false, provider: 'DASHEN', reference: urlOrId, currency: 'ETB', status: 'FAILED', errorMessage: 'Invalid Dashen receipt URL domain' }
+  }
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/pdf,*/*',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (!res.ok) {
+      return { success: false, provider: 'DASHEN', reference: urlOrId, currency: 'ETB', status: 'FAILED', errorMessage: `Dashen server returned HTTP ${res.status}. Check the receipt link.` }
+    }
+
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('pdf')) {
+      return { success: false, provider: 'DASHEN', reference: urlOrId, currency: 'ETB', status: 'FAILED', errorMessage: 'Dashen receipt not found. Make sure you paste the full receipt link from the DashenSuperApp.' }
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer())
+    const pdfParse = require('pdf-parse/lib/pdf-parse.js')
+    const pdfData = await pdfParse(buf)
+    const text = pdfData?.text || ''
+
+    const ex = (p: RegExp) => { const m = text.match(p); return m ? m[1].trim() : undefined }
+
+    // Extract fields using patterns from the ethiobank_receipts library
+    const senderName    = ex(/Account Holder Name:\s*(.+)/i)
+    const beneficAccount = ex(/Account Number:\s*(\d+)/i)
+    const rawAmount     = ex(/Transaction Amount\s*([\d,.]+)\s*ETB/i)
+    const dateStr       = ex(/Date:\s*(.+)/i)
+    const reference     = ex(/Transfer Reference:\s*(.+)/i) || ex(/Transaction Ref:\s*(.+)/i)
+
+    const amount = rawAmount ? parseFloat(rawAmount.replace(/,/g, '')) : undefined
+
+    return {
+      success: !!(amount && amount > 0),
+      provider: 'DASHEN',
+      reference: reference || urlOrId,
+      payerName: senderName,
+      receiverAccount: beneficAccount,
+      amount,
+      currency: 'ETB',
+      dateTime: dateStr,
+      status: (amount && amount > 0) ? 'COMPLETED' : 'FAILED',
+      rawText: text.slice(0, 300),
+    }
+  } catch (err: any) {
+    const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
+    return {
+      success: false,
+      provider: 'DASHEN',
+      reference: urlOrId,
+      currency: 'ETB',
+      status: isTimeout ? 'PENDING' : 'FAILED',
+      isTimeout,
+      errorMessage: isTimeout ? 'Dashen server timed out. Try again or verify manually.' : `Dashen verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
+ * Verify Awash Bank receipt via official AwashPay HTML receipt link
+ * Official endpoint: https://awashpay.awashbank.com:8225/-{id}
+ */
+export async function verifyAwashReceipt(urlOrId: string): Promise<VerifiedReceipt> {
+  let url = urlOrId.trim()
+  if (!url.startsWith('http')) {
+    url = `https://awashpay.awashbank.com:8225/-${url}`
+  }
+
+  if (!isValidBankUrl(url)) {
+    return { success: false, provider: 'AWASH', reference: urlOrId, currency: 'ETB', status: 'FAILED', errorMessage: 'Invalid Awash receipt URL domain' }
+  }
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+        'Accept': 'text/html,*/*',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (!res.ok) {
+      return { success: false, provider: 'AWASH', reference: urlOrId, currency: 'ETB', status: 'FAILED', errorMessage: `Awash server returned HTTP ${res.status}. Check the receipt link.` }
+    }
+
+    const html = await res.text()
+
+    // Parse HTML table: each row has 3 <td> cells: key | ":" | value
+    const stripTags = (s: string) => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, '').trim()
+    const data: Record<string, string> = {}
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi
+    let rowMatch
+    while ((rowMatch = rowRegex.exec(html)) !== null) {
+      const cells = [...rowMatch[1].matchAll(cellRegex)].map(m => stripTags(m[1]))
+      if (cells.length >= 3 && cells[0]) {
+        data[cells[0].replace(/:$/, '').trim()] = cells[2]
+      }
+    }
+
+    const rawAmount = data['Amount'] || data['Transaction Amount'] || ''
+    const amount = rawAmount ? parseFloat(rawAmount.replace(/[^0-9.]/g, '')) : undefined
+    const txId = data['Transaction ID'] || data['Transaction Reference'] || urlOrId
+
+    return {
+      success: !!(amount && amount > 0),
+      provider: 'AWASH',
+      reference: txId,
+      payerName: data['Sender Name'],
+      payerAccountOrPhone: data['Sender Account'],
+      receiverName: data['Beneficiary name'] || data['Beneficiary Name'],
+      receiverAccount: data['Beneficiary Account'],
+      amount,
+      currency: 'ETB',
+      dateTime: data['Transaction Time'] || data['Transaction Date'],
+      status: (amount && amount > 0) ? 'COMPLETED' : 'FAILED',
+    }
+  } catch (err: any) {
+    const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
+    return {
+      success: false,
+      provider: 'AWASH',
+      reference: urlOrId,
+      currency: 'ETB',
+      status: isTimeout ? 'PENDING' : 'FAILED',
+      isTimeout,
+      errorMessage: isTimeout ? 'Awash server timed out. Try again or verify manually.' : `Awash verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
  * Universal Receipt Verifier
  * Auto-detects whether the input is a Telebirr code/link, CBE code/link, etc.
  */
@@ -774,13 +925,22 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
     }
   }
 
-  // Detect based on explicit provider or pattern
+  // Detect based on explicit provider or URL pattern
   const isCbe =
     provider === 'CBE' ||
     clean.toUpperCase().startsWith('FT') ||
     /cbe\.com\.et/i.test(clean) ||
     clean.startsWith('v2-') ||
     /mbrecie?pt/i.test(clean)
+
+  const isDashen =
+    provider === 'DASHEN' ||
+    /dashensuperapp\.com/i.test(clean)
+
+  const isAwash =
+    provider === 'AWASH' ||
+    /awashpay\.awashbank\.com/i.test(clean) ||
+    /awashbank\.com/i.test(clean)
 
   const extractedTelebirrId = extractTelebirrTransactionId(clean)
   const isTelebirr =
@@ -789,11 +949,19 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
     clean.includes('telebirr') ||
     clean.startsWith('ODAx') ||
     clean.startsWith('8018') ||
-    (!isCbe && extractedTelebirrId !== clean && /^[A-Za-z0-9]{8,14}$/.test(extractedTelebirrId)) ||
-    (!isCbe && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
+    (!isCbe && !isDashen && !isAwash && extractedTelebirrId !== clean && /^[A-Za-z0-9]{8,14}$/.test(extractedTelebirrId)) ||
+    (!isCbe && !isDashen && !isAwash && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
 
   if (isCbe) {
     return verifyCbeReceipt(clean, accountDigits)
+  }
+
+  if (isDashen) {
+    return verifyDashenReceipt(clean)
+  }
+
+  if (isAwash) {
+    return verifyAwashReceipt(clean)
   }
 
   if (isTelebirr) {
