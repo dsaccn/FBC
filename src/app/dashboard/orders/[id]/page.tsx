@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { Printer, FileText, X, CheckCircle, AlertCircle, Plus, Unlink, Merge, Scissors, Users } from 'lucide-react'
+import { Printer, FileText, X, CheckCircle, AlertCircle, Plus, Unlink, Merge, Scissors } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
@@ -47,9 +47,7 @@ export default function OrderDetailPage() {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const [showSplitModal, setShowSplitModal] = useState(false)
-  const [splitMode, setSplitMode] = useState<'equal' | 'items'>('equal')
-  const [splitCount, setSplitCount] = useState(2)
-  const [itemAssignments, setItemAssignments] = useState<Record<string, number>>({}) // splitId → person (1-based)
+  const [itemAssignments, setItemAssignments] = useState<Record<string, number>>({}) // splitId → 1 or 2
   const [splitCreating, setSplitCreating] = useState(false)
   const [splitResult, setSplitResult] = useState<{ id: string; label: string; total: number }[] | null>(null)
 
@@ -72,8 +70,6 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (searchParams.get('split') === 'true' && order) {
       setShowSplitModal(true)
-      setSplitMode('items')
-      setSplitCount(2)
       setItemAssignments({})
       setSplitResult(null)
     }
@@ -356,7 +352,7 @@ export default function OrderDetailPage() {
           {order.status === 'OPEN' && (
             <>
               <button className="btn btn-outline btn-sm" onClick={printBill}><FileText size={14} /> Print Bill</button>
-              <button className="btn btn-outline btn-sm" onClick={() => { setShowSplitModal(true); setSplitMode('equal'); setSplitCount(2); setItemAssignments({}) }} style={{ borderColor: 'rgba(201,168,76,0.5)', color: 'var(--gold)' }}><Scissors size={14} /> Separate Bill</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setShowSplitModal(true); setItemAssignments({}); setSplitResult(null) }} style={{ borderColor: 'rgba(201,168,76,0.5)', color: 'var(--gold)' }}><Scissors size={14} /> Separate Bill</button>
               {order.table.mergeGroupId && (
                 <button className="btn btn-outline btn-sm" onClick={handleUnmerge} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <Unlink size={14} /> Unmerge Tables
@@ -420,11 +416,14 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Separate Bill Modal */}
+      {/* Separate Bill Modal — always 2 people, by-items only */}
       {showSplitModal && (() => {
+        const GOLD = '#C9A84C'
+        const BLUE = '#38bdf8'
+        const P_COLORS = [GOLD, BLUE]
+
         const expandedItems = activeItems.flatMap(item =>
           Array.from({ length: item.quantity }, (_, i) => ({
-            id: item.id,
             splitId: `${item.id}_${i}`,
             menuItemId: item.menuItem.id,
             name: item.menuItem.name,
@@ -433,16 +432,29 @@ export default function OrderDetailPage() {
           }))
         )
 
+        // Assign item to person; auto-fill all still-unassigned items to the other person
+        const assignItem = (splitId: string, person: 1 | 2) => {
+          setItemAssignments(prev => {
+            const next = { ...prev, [splitId]: person }
+            const other = person === 1 ? 2 : 1
+            expandedItems.forEach(e => {
+              if (!next[e.splitId]) next[e.splitId] = other
+            })
+            return next
+          })
+        }
+
+        const personItems = (p: number) => expandedItems.filter(e => (itemAssignments[e.splitId] ?? 0) === p)
+        const personTotal = (p: number) => personItems(p).reduce((s, e) => s + e.price, 0)
+        const allAssigned = expandedItems.every(e => (itemAssignments[e.splitId] ?? 0) > 0)
+
         const handleCreateSeparateOrders = async () => {
-          if (!allAssigned) return
           setSplitCreating(true)
           try {
-            const splits = Array.from({ length: splitCount }, (_, i) => i + 1)
-              .map(pNum => ({
-                label: `Person ${pNum} of ${splitCount}`,
-                items: personItems(pNum).map(e => ({ menuItemId: e.menuItemId, quantity: 1, notes: e.notes })),
-              }))
-              .filter(s => s.items.length > 0)
+            const splits = [1, 2].map(p => ({
+              label: `Person ${p} of 2`,
+              items: personItems(p).map(e => ({ menuItemId: e.menuItemId, quantity: 1, notes: e.notes })),
+            })).filter(s => s.items.length > 0)
 
             const res = await fetch('/api/orders/split', {
               method: 'POST',
@@ -458,20 +470,14 @@ export default function OrderDetailPage() {
             setSplitCreating(false)
           }
         }
-        const COLORS = ['#C9A84C', '#38bdf8', '#86efac', '#f97316', '#e879f9', '#fb7185', '#a3e635', '#67e8f9']
-        const perPersonEqual = splitCount > 0 ? total / splitCount : 0
-
-        const personItems = (pNum: number) => expandedItems.filter(e => (itemAssignments[e.splitId] ?? 0) === pNum)
-        const personTotal = (pNum: number) => personItems(pNum).reduce((s, e) => s + e.price, 0)
-        const assignedCount = expandedItems.filter(e => (itemAssignments[e.splitId] ?? 0) > 0).length
-        const allAssigned = assignedCount === expandedItems.length
 
         return (
           <Portal>
-            <div className="modal-overlay" onClick={() => setShowSplitModal(false)}>
-              <div className="modal" style={{ maxWidth: '520px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-overlay" onClick={() => { setShowSplitModal(false); setSplitResult(null) }}>
+              <div className="modal" style={{ maxWidth: '480px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+
                 {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Scissors size={18} color="var(--gold)" />
                     <span style={{ fontWeight: '700', fontSize: '16px' }}>Separate Bill — Table {order!.table.number}</span>
@@ -479,29 +485,27 @@ export default function OrderDetailPage() {
                   <button className="btn btn-ghost btn-sm" onClick={() => { setShowSplitModal(false); setSplitResult(null) }}><X size={16} /></button>
                 </div>
 
-                {/* ── Success state after orders created ── */}
-                {splitResult && (
+                {/* ── Success state ── */}
+                {splitResult ? (
                   <div>
                     <div style={{ background: 'rgba(82,183,136,0.08)', border: '1px solid var(--success-light)', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', textAlign: 'center' }}>
                       <CheckCircle size={22} color="var(--success-light)" style={{ marginBottom: '6px' }} />
                       <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--success-light)' }}>Separate orders created!</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Original order cancelled. Each person can now pay independently.</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Each person can now pay independently via phone.</div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {splitResult.map((o, i) => (
-                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: `1.5px solid ${COLORS[i] || '#ccc'}`, background: `${COLORS[i]}12` }}>
+                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: `1.5px solid ${P_COLORS[i]}`, background: `${P_COLORS[i]}14` }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: COLORS[i] || '#ccc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', color: '#000' }}>{i + 1}</span>
+                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: P_COLORS[i], display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', color: '#000' }}>{i + 1}</span>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '13px' }}>{o.label}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order #{o.id.slice(-6).toUpperCase()}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>#{o.id.slice(-6).toUpperCase()}</div>
                             </div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <span style={{ fontWeight: '700', color: 'var(--gold)' }}>{o.total.toFixed(2)} ETB</span>
-                            <Link href={`/dashboard/payment?orderId=${o.id}`} className="btn btn-gold btn-sm" style={{ fontSize: '12px', padding: '5px 10px' }} onClick={() => setShowSplitModal(false)}>
-                              Pay
-                            </Link>
+                            <Link href={`/dashboard/payment?orderId=${o.id}`} className="btn btn-gold btn-sm" style={{ fontSize: '12px', padding: '5px 10px' }} onClick={() => setShowSplitModal(false)}>Pay</Link>
                           </div>
                         </div>
                       ))}
@@ -510,102 +514,35 @@ export default function OrderDetailPage() {
                       Back to Orders
                     </button>
                   </div>
-                )}
-
-                {!splitResult && (<>
-
-                {/* Mode tabs */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
-                  {(['equal', 'items'] as const).map(m => (
-                    <button key={m} onClick={() => setSplitMode(m)}
-                      style={{ flex: 1, padding: '8px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer', border: '1.5px solid', transition: 'all 0.15s',
-                        background: splitMode === m ? 'var(--gold)' : 'transparent',
-                        color: splitMode === m ? '#000' : 'var(--text-secondary)',
-                        borderColor: splitMode === m ? 'var(--gold)' : 'var(--black-border)' }}>
-                      {m === 'equal' ? '⚖ Equal Split' : '🍽 By Items'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* People count selector (both modes) */}
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    <Users size={12} style={{ display: 'inline', marginRight: '4px' }} />
-                    Number of people
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {[2, 3, 4, 5, 6, 7, 8].map(n => (
-                      <button key={n} onClick={() => setSplitCount(n)}
-                        style={{ width: '38px', height: '38px', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', border: '2px solid',
-                          background: splitCount === n ? COLORS[n - 2] || 'var(--gold)' : 'transparent',
-                          color: splitCount === n ? '#000' : 'var(--text-secondary)',
-                          borderColor: splitCount === n ? COLORS[n - 2] || 'var(--gold)' : 'var(--black-border)' }}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <hr style={{ border: 'none', borderTop: '1px solid var(--black-border)', margin: '0 0 16px' }} />
-
-                {/* ── Equal Split mode ── */}
-                {splitMode === 'equal' && (
+                ) : (
                   <div>
-                    <div style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Each person pays</div>
-                      <div style={{ fontSize: '26px', fontWeight: '900', color: 'var(--gold)' }}>{perPersonEqual.toFixed(2)} ETB</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{total.toFixed(2)} ETB ÷ {splitCount} people</div>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {Array.from({ length: splitCount }, (_, i) => i + 1).map(pNum => (
-                        <div key={pNum} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--black-border)', background: 'var(--card-bg)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: COLORS[pNum - 1] || '#ccc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', color: '#000' }}>{pNum}</span>
-                            <span style={{ fontWeight: '600' }}>Person {pNum}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontWeight: '700', color: 'var(--gold)' }}>{perPersonEqual.toFixed(2)} ETB</span>
-                            <button className="btn btn-outline btn-sm" style={{ fontSize: '12px', padding: '5px 10px' }}
-                              onClick={() => printSplitBill(pNum, activeItems.map(i => ({ name: i.menuItem.name, price: i.menuItem.price / i.quantity, quantity: 1, notes: i.notes })), perPersonEqual, `Person ${pNum} of ${splitCount}`)}>
-                              <Printer size={13} /> Print
-                            </button>
-                          </div>
+                    {/* Legend */}
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+                      {[1, 2].map(p => (
+                        <div key={p} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600' }}>
+                          <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: P_COLORS[p - 1], display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px', color: '#000' }}>{p}</span>
+                          Person {p}
                         </div>
                       ))}
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>Tap to assign</span>
                     </div>
-                    <button className="btn btn-gold btn-sm" style={{ width: '100%', marginTop: '14px', padding: '10px' }}
-                      onClick={() => {
-                        for (let p = 1; p <= splitCount; p++) {
-                          printSplitBill(p, activeItems.map(i => ({ name: i.menuItem.name, price: i.menuItem.price / i.quantity, quantity: 1, notes: i.notes })), perPersonEqual, `Person ${p} of ${splitCount}`)
-                        }
-                      }}>
-                      <Printer size={14} /> Print All {splitCount} Bills
-                    </button>
-                  </div>
-                )}
 
-                {/* ── By Items mode ── */}
-                {splitMode === 'items' && (
-                  <div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                      Tap a person number on each item row to assign it. Items with quantity &gt; 1 are shown as separate units.
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                      {expandedItems.map((item, idx) => {
+                    {/* Item rows */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                      {expandedItems.map(item => {
                         const assigned = itemAssignments[item.splitId] ?? 0
                         return (
-                          <div key={item.splitId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '8px', border: `1.5px solid ${assigned > 0 ? COLORS[assigned - 1] || '#ccc' : 'var(--black-border)'}`, background: assigned > 0 ? `${COLORS[assigned - 1]}18` : 'var(--card-bg)', transition: 'all 0.15s' }}>
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', minWidth: '16px' }}>{idx + 1}.</span>
+                          <div key={item.splitId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderRadius: '8px', border: `1.5px solid ${assigned > 0 ? P_COLORS[assigned - 1] : 'var(--black-border)'}`, background: assigned > 0 ? `${P_COLORS[assigned - 1]}14` : 'var(--card-bg)', transition: 'all 0.15s' }}>
                             <span style={{ flex: 1, fontSize: '13px', fontWeight: '500' }}>{item.name}</span>
-                            <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600', marginRight: '6px' }}>{item.price.toFixed(2)}</span>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              {Array.from({ length: splitCount }, (_, i) => i + 1).map(pNum => (
-                                <button key={pNum} onClick={() => setItemAssignments(prev => ({ ...prev, [item.splitId]: prev[item.splitId] === pNum ? 0 : pNum }))}
-                                  style={{ width: '26px', height: '26px', borderRadius: '50%', fontWeight: '700', fontSize: '12px', cursor: 'pointer', border: '2px solid',
-                                    background: assigned === pNum ? COLORS[pNum - 1] || '#ccc' : 'transparent',
-                                    color: assigned === pNum ? '#000' : 'var(--text-muted)',
-                                    borderColor: COLORS[pNum - 1] || 'var(--black-border)' }}>
-                                  {pNum}
+                            <span style={{ fontSize: '12px', color: 'var(--gold)', fontWeight: '600' }}>{item.price.toFixed(2)}</span>
+                            <div style={{ display: 'flex', gap: '5px', marginLeft: '8px' }}>
+                              {[1, 2].map(p => (
+                                <button key={p} onClick={() => assignItem(item.splitId, p as 1 | 2)}
+                                  style={{ width: '28px', height: '28px', borderRadius: '50%', fontWeight: '700', fontSize: '13px', cursor: 'pointer', border: '2px solid',
+                                    background: assigned === p ? P_COLORS[p - 1] : 'transparent',
+                                    color: assigned === p ? '#000' : 'var(--text-muted)',
+                                    borderColor: P_COLORS[p - 1] }}>
+                                  {p}
                                 </button>
                               ))}
                             </div>
@@ -615,54 +552,45 @@ export default function OrderDetailPage() {
                     </div>
 
                     {/* Per-person totals */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                      {Array.from({ length: splitCount }, (_, i) => i + 1).map(pNum => {
-                        const pItems = personItems(pNum)
-                        const pTotal = personTotal(pNum)
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                      {[1, 2].map(p => {
+                        const pItems = personItems(p)
+                        const pTotal = personTotal(p)
                         return (
-                          <div key={pNum} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: `1.5px solid ${COLORS[pNum - 1] || 'var(--black-border)'}`, background: `${COLORS[pNum - 1]}12` }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: COLORS[pNum - 1] || '#ccc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px', color: '#000' }}>{pNum}</span>
-                              <span style={{ fontSize: '13px' }}>{pItems.length} item{pItems.length !== 1 ? 's' : ''}</span>
+                          <div key={p} style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: `1.5px solid ${P_COLORS[p - 1]}`, background: `${P_COLORS[p - 1]}10`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: P_COLORS[p - 1], display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '12px', color: '#000' }}>{p}</span>
+                              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{pItems.length} item{pItems.length !== 1 ? 's' : ''}</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontWeight: '700', color: pTotal > 0 ? 'var(--gold)' : 'var(--text-muted)' }}>{pTotal.toFixed(2)} ETB</span>
-                              <button className="btn btn-outline btn-sm" style={{ fontSize: '12px', padding: '5px 10px' }} disabled={pItems.length === 0}
-                                onClick={() => printSplitBill(pNum, pItems.map(e => ({ name: e.name, price: e.price, quantity: 1 })), pTotal, `Person ${pNum} of ${splitCount}`)}>
-                                <Printer size={13} /> Print
-                              </button>
-                            </div>
+                            <span style={{ fontWeight: '700', fontSize: '14px', color: pTotal > 0 ? 'var(--gold)' : 'var(--text-muted)' }}>{pTotal.toFixed(2)}</span>
                           </div>
                         )
                       })}
                     </div>
 
-                    {!allAssigned && (
-                      <div style={{ fontSize: '12px', color: 'var(--warning-light)', marginBottom: '10px' }}>
-                        ⚠ {expandedItems.length - assignedCount} item{expandedItems.length - assignedCount !== 1 ? 's' : ''} not yet assigned
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '9px' }} disabled={!allAssigned}
                         onClick={() => {
-                          for (let p = 1; p <= splitCount; p++) {
+                          [1, 2].forEach(p => {
                             const pItems = personItems(p)
-                            if (pItems.length > 0) printSplitBill(p, pItems.map(e => ({ name: e.name, price: e.price, quantity: 1 })), personTotal(p), `Person ${p} of ${splitCount}`)
-                          }
+                            if (pItems.length > 0) printSplitBill(p, pItems.map(e => ({ name: e.name, price: e.price, quantity: 1 })), personTotal(p), `Person ${p} of 2`)
+                          })
                         }}>
                         <Printer size={13} /> Print Bills
                       </button>
                       <button className="btn btn-gold btn-sm" style={{ flex: 1, padding: '9px', fontWeight: '700' }} disabled={!allAssigned || splitCreating}
                         onClick={handleCreateSeparateOrders}>
-                        {splitCreating ? 'Creating...' : <><Scissors size={13} /> Create Separate Orders</>}
+                        {splitCreating ? 'Creating...' : <><Scissors size={13} /> Create Orders</>}
                       </button>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>
-                      &quot;Create Separate Orders&quot; registers each person&apos;s items as a real order — the phone can verify payment independently.
-                    </div>
+                    {!allAssigned && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>
+                        Tap a person number on each item to assign it
+                      </div>
+                    )}
                   </div>
                 )}
-                </>)}
               </div>
             </div>
           </Portal>
