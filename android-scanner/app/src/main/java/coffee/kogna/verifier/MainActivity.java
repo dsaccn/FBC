@@ -204,10 +204,23 @@ public class MainActivity extends AppCompatActivity {
         public double total;
         public int itemsCount;
         public boolean isVerified;
+        public boolean isDelivery;
+        public boolean isTakeaway;
     }
 
     private final List<OpenOrder> currentOpenOrders = new ArrayList<>();
     private OpenOrder selectedOrder = null;
+
+    // Orders-First Hub state
+    private LinearLayout ordersSection;
+    private View scannerOverlay;
+    private View fabOpenScanner;
+    private Button btnCloseScanner;
+    private TextView chipAll;
+    private TextView chipTables;
+    private TextView chipDelivery;
+    private boolean isScannerOpen = false;
+    private String activeFilter = "ALL";
 
     private SharedPreferences prefs;
     private OkHttpClient httpClient;
@@ -262,7 +275,9 @@ public class MainActivity extends AppCompatActivity {
         setupWebView();
         setupListeners();
         setupScanner();
-        startLaserAnimation();
+
+        // Camera starts paused — orders grid is the default state
+        barcodeView.pause();
 
         checkCameraPermission();
         discoverAndConnectCashierPc(false);
@@ -337,6 +352,14 @@ public class MainActivity extends AppCompatActivity {
         btnDeselectOrder = findViewById(R.id.btnDeselectOrder);
         layoutOrdersList = findViewById(R.id.layoutOrdersList);
         txtNoOrdersNotice = findViewById(R.id.txtNoOrdersNotice);
+
+        ordersSection = findViewById(R.id.ordersSection);
+        scannerOverlay = findViewById(R.id.scannerOverlay);
+        fabOpenScanner = findViewById(R.id.fabOpenScanner);
+        btnCloseScanner = findViewById(R.id.btnCloseScanner);
+        chipAll = findViewById(R.id.chipAll);
+        chipTables = findViewById(R.id.chipTables);
+        chipDelivery = findViewById(R.id.chipDelivery);
 
         loadingOverlay = findViewById(R.id.loadingOverlay);
         txtLoadingMsg = findViewById(R.id.txtLoadingMsg);
@@ -457,6 +480,12 @@ public class MainActivity extends AppCompatActivity {
         btnHistory.setOnClickListener(v -> showHistoryDialog());
 
         btnDeselectOrder.setOnClickListener(v -> clearSelectedOrder());
+
+        if (fabOpenScanner != null) fabOpenScanner.setOnClickListener(v -> openScannerOverlay());
+        if (btnCloseScanner != null) btnCloseScanner.setOnClickListener(v -> closeScannerOverlay());
+        if (chipAll != null) chipAll.setOnClickListener(v -> setActiveFilter("ALL"));
+        if (chipTables != null) chipTables.setOnClickListener(v -> setActiveFilter("TABLE"));
+        if (chipDelivery != null) chipDelivery.setOnClickListener(v -> setActiveFilter("DELIVERY"));
         btnScanNext.setOnClickListener(v -> resetScannerToActive());
         btnRetryVerification.setOnClickListener(v -> {
             if (isVerifying) return;
@@ -808,7 +837,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!isWebViewMode) barcodeView.resume();
+        // Only resume camera if scanner overlay was explicitly open
+        if (!isWebViewMode && isScannerOpen) barcodeView.resume();
         discoverAndConnectCashierPc(false);
         mainHandler.post(orderPollRunnable);
     }
@@ -971,52 +1001,17 @@ public class MainActivity extends AppCompatActivity {
                     order.total = obj.optDouble("total", 0.0);
                     order.itemsCount = obj.optInt("itemsCount", 0);
                     order.isVerified = obj.optBoolean("isVerified", false);
+                    order.isDelivery = obj.optBoolean("isDelivery", false);
+                    order.isTakeaway = obj.optBoolean("isTakeaway", false);
                     currentOpenOrders.add(order);
                 }
             }
 
-            // Update header count
-            txtOpenOrdersHeader.setText(getString(R.string.open_orders_header, currentOpenOrders.size()));
+            // Update filter chip labels with live counts
+            updateChipCounts();
 
-            // Render order cards
-            layoutOrdersList.removeAllViews();
-            if (currentOpenOrders.isEmpty()) {
-                txtNoOrdersNotice.setVisibility(View.VISIBLE);
-                layoutOrdersList.setVisibility(View.GONE);
-            } else {
-                txtNoOrdersNotice.setVisibility(View.GONE);
-                layoutOrdersList.setVisibility(View.VISIBLE);
-                LayoutInflater inflater = LayoutInflater.from(this);
-
-                for (final OpenOrder order : currentOpenOrders) {
-                    View cardView = inflater.inflate(R.layout.item_open_order, layoutOrdersList, false);
-
-                    TextView txtTitle = cardView.findViewById(R.id.txtOrderTitle);
-                    TextView txtTotal = cardView.findViewById(R.id.txtOrderTotal);
-                    TextView txtCount = cardView.findViewById(R.id.txtOrderItemsCount);
-                    TextView txtVerifiedBadge = cardView.findViewById(R.id.txtOrderVerifiedBadge);
-
-                    txtTitle.setText(order.displayTitle);
-                    txtTotal.setText(String.format(Locale.US, "%.2f ETB", order.total));
-                    txtCount.setText(order.itemsCount == 1 ? getString(R.string.order_items_count_single) : getString(R.string.order_items_count_multiple, order.itemsCount));
-
-                    if (order.isVerified) {
-                        txtVerifiedBadge.setVisibility(View.VISIBLE);
-                    } else {
-                        txtVerifiedBadge.setVisibility(View.GONE);
-                    }
-
-                    // Selection state styling
-                    if (selectedOrder != null && selectedOrder.id.equals(order.id)) {
-                        cardView.setBackgroundResource(R.drawable.bg_order_chip_selected);
-                    } else {
-                        cardView.setBackgroundResource(R.drawable.bg_order_chip);
-                    }
-
-                    cardView.setOnClickListener(v -> toggleOrderSelection(order));
-                    layoutOrdersList.addView(cardView);
-                }
-            }
+            // Render 2-column grid with active filter and sort
+            refreshOrderGrid();
 
             // Check if selected order was removed or completed on POS
             if (selectedOrder != null) {
@@ -1127,7 +1122,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // If a verified receipt is currently shown on the screen, touching any table directly attaches the payment!
+        // If a verified receipt is currently shown, tap = link payment
         if (cardResult != null && cardResult.getVisibility() == View.VISIBLE && lastVerifiedRef != null && !lastVerifiedRef.isEmpty()) {
             linkVerifiedReceiptToOrder(order);
             return;
@@ -1139,9 +1134,9 @@ public class MainActivity extends AppCompatActivity {
             selectedOrder = order;
             updateSelectedOrderBanner();
             playBeep(true);
+            // Auto-open scanner so cashier can scan immediately after selecting a table
+            openScannerOverlay();
         }
-        // Refresh card backgrounds
-        fetchOpenOrders(false);
     }
 
     private void updateSelectedOrderBanner() {
@@ -2364,15 +2359,180 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // ══════════════════════════════════════════════════
+    // 📋 ORDERS-FIRST HUB — Grid, Filters, Scanner Toggle
+    // ══════════════════════════════════════════════════
+
+    private void openScannerOverlay() {
+        isScannerOpen = true;
+        if (ordersSection != null) ordersSection.setVisibility(View.GONE);
+        if (scannerOverlay != null) scannerOverlay.setVisibility(View.VISIBLE);
+        if (fabOpenScanner != null) fabOpenScanner.setVisibility(View.GONE);
+        if (!isWebViewMode) barcodeView.resume();
+        startLaserAnimation();
+    }
+
+    private void closeScannerOverlay() {
+        isScannerOpen = false;
+        if (!isWebViewMode) barcodeView.pause();
+        if (laserLine != null) laserLine.clearAnimation();
+        if (scannerOverlay != null) scannerOverlay.setVisibility(View.GONE);
+        if (ordersSection != null) ordersSection.setVisibility(View.VISIBLE);
+        if (fabOpenScanner != null) fabOpenScanner.setVisibility(View.VISIBLE);
+    }
+
+    private void setActiveFilter(String filter) {
+        activeFilter = filter;
+        updateChipSelection();
+        refreshOrderGrid();
+    }
+
+    private void updateChipSelection() {
+        if (chipAll == null) return;
+        boolean isAll = "ALL".equals(activeFilter);
+        boolean isTable = "TABLE".equals(activeFilter);
+        boolean isDelivery = "DELIVERY".equals(activeFilter);
+        chipAll.setBackgroundResource(isAll ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
+        chipAll.setTextColor(ContextCompat.getColor(this, isAll ? R.color.gold : R.color.text_secondary));
+        chipTables.setBackgroundResource(isTable ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
+        chipTables.setTextColor(ContextCompat.getColor(this, isTable ? R.color.gold : R.color.text_secondary));
+        chipDelivery.setBackgroundResource(isDelivery ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
+        chipDelivery.setTextColor(ContextCompat.getColor(this, isDelivery ? R.color.gold : R.color.text_secondary));
+    }
+
+    private void updateChipCounts() {
+        if (chipAll == null) return;
+        int tableCount = 0, deliveryCount = 0;
+        for (OpenOrder o : currentOpenOrders) {
+            if (o.isDelivery || o.isTakeaway) deliveryCount++;
+            else tableCount++;
+        }
+        chipAll.setText(getString(R.string.filter_all) + " (" + currentOpenOrders.size() + ")");
+        chipTables.setText(getString(R.string.filter_tables) + " (" + tableCount + ")");
+        chipDelivery.setText(getString(R.string.filter_delivery) + " (" + deliveryCount + ")");
+    }
+
+    private void refreshOrderGrid() {
+        renderOrderGrid(getFilteredSortedOrders());
+    }
+
+    private List<OpenOrder> getFilteredSortedOrders() {
+        List<OpenOrder> tables = new ArrayList<>();
+        List<OpenOrder> deliveries = new ArrayList<>();
+
+        for (OpenOrder o : currentOpenOrders) {
+            if (o.isDelivery || o.isTakeaway) deliveries.add(o);
+            else tables.add(o);
+        }
+
+        // Sort dine-in tables numerically
+        Collections.sort(tables, (a, b) -> Integer.compare(extractTableNumber(a.displayTitle), extractTableNumber(b.displayTitle)));
+        // Sort delivery/takeaway alphabetically
+        Collections.sort(deliveries, (a, b) -> a.displayTitle.compareToIgnoreCase(b.displayTitle));
+
+        List<OpenOrder> result = new ArrayList<>();
+        if ("ALL".equals(activeFilter)) {
+            result.addAll(tables);
+            result.addAll(deliveries);
+        } else if ("TABLE".equals(activeFilter)) {
+            result.addAll(tables);
+        } else {
+            result.addAll(deliveries);
+        }
+        return result;
+    }
+
+    private int extractTableNumber(String title) {
+        Matcher m = Pattern.compile("\\d+").matcher(title);
+        if (m.find()) {
+            try { return Integer.parseInt(m.group()); } catch (Exception ignored) {}
+        }
+        return 999;
+    }
+
+    private void renderOrderGrid(List<OpenOrder> orders) {
+        if (layoutOrdersList == null) return;
+        layoutOrdersList.removeAllViews();
+
+        if (orders.isEmpty()) {
+            txtNoOrdersNotice.setVisibility(View.VISIBLE);
+            return;
+        }
+        txtNoOrdersNotice.setVisibility(View.GONE);
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        int marginPx = dpToPx(4);
+
+        for (int i = 0; i < orders.size(); i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowParams.setMargins(0, 0, 0, marginPx);
+            row.setLayoutParams(rowParams);
+
+            addCardToRow(row, orders.get(i), inflater);
+
+            if (i + 1 < orders.size()) {
+                addCardToRow(row, orders.get(i + 1), inflater);
+            } else {
+                // Empty spacer to keep first card half-width
+                View spacer = new View(this);
+                spacer.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                row.addView(spacer);
+            }
+
+            layoutOrdersList.addView(row);
+        }
+    }
+
+    private void addCardToRow(LinearLayout row, OpenOrder order, LayoutInflater inflater) {
+        View card = inflater.inflate(R.layout.item_open_order, row, false);
+
+        TextView txtTitle = card.findViewById(R.id.txtOrderTitle);
+        TextView txtTotal = card.findViewById(R.id.txtOrderTotal);
+        TextView txtCount = card.findViewById(R.id.txtOrderItemsCount);
+        TextView txtVerifiedBadge = card.findViewById(R.id.txtOrderVerifiedBadge);
+        TextView txtTypeBadge = card.findViewById(R.id.txtOrderTypeBadge);
+
+        txtTitle.setText(order.displayTitle);
+        txtTotal.setText(String.format(Locale.US, "%.2f ETB", order.total));
+        txtCount.setText(order.itemsCount == 1
+                ? getString(R.string.order_items_count_single)
+                : getString(R.string.order_items_count_multiple, order.itemsCount));
+        txtVerifiedBadge.setVisibility(order.isVerified ? View.VISIBLE : View.GONE);
+
+        if (txtTypeBadge != null) {
+            if (order.isDelivery) {
+                txtTypeBadge.setText("🛵 DELIVERY");
+                txtTypeBadge.setTextColor(ContextCompat.getColor(this, R.color.delivery_blue));
+            } else if (order.isTakeaway) {
+                txtTypeBadge.setText("📦 TAKEAWAY");
+                txtTypeBadge.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+            } else {
+                txtTypeBadge.setText("🍽 TABLE");
+                txtTypeBadge.setTextColor(ContextCompat.getColor(this, R.color.gold));
+            }
+        }
+
+        card.setBackgroundResource(selectedOrder != null && selectedOrder.id.equals(order.id)
+                ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
+
+        card.setOnClickListener(v -> toggleOrderSelection(order));
+        row.addView(card);
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
     private void resetScannerToActive() {
         mainHandler.post(() -> {
             isCurrentResultDuplicate = false;
             resetCardToDefaultStyle();
             cardResult.setVisibility(View.GONE);
             layoutPostScanTablePicker.setVisibility(View.GONE);
-            if (btnRetryVerification != null) {
-                btnRetryVerification.setVisibility(View.GONE);
-            }
+            if (btnRetryVerification != null) btnRetryVerification.setVisibility(View.GONE);
             lastVerifiedRef = "";
             lastVerifiedProvider = "";
             lastVerifiedAmount = 0.0;
@@ -2380,7 +2540,8 @@ public class MainActivity extends AppCompatActivity {
             lastVerifiedReceiver = "";
             hideLoading();
             isVerifying = false;
-            if (!isWebViewMode) barcodeView.resume();
+            // Resume scanning if scanner overlay is still open
+            if (isScannerOpen && !isWebViewMode) barcodeView.resume();
             fetchOpenOrders(false);
         });
     }
