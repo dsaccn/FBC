@@ -109,19 +109,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.6.1-scanner
-          name: "Kogna Verifier App v2.6.1"
+          tag_name: v2.6.2-scanner
+          name: "Kogna Verifier App v2.6.2"
           draft: false
           prerelease: false
           body: |
-            ## 📱 Kogna Verifier Android App v2.6.1
+            ## 📱 Kogna Verifier Android App v2.6.2
 
-            ### 🎯 High-Precision OCR Confusion Normalization & Dual Candidate Retry:
-            - **Automatic Telebirr Zero / O Normalization**:
-              - Automatically resolves ML Kit OCR misreading digit `0` as uppercase letter `O` in Telebirr transaction codes (e.g., `DJM05ZHSXC` read as `DJMO5ZHSXC`).
-              - Ensures 100% first-pass accuracy when scanning customer phone screens and SMS receipts.
-            - **Dual-Candidate Live Retry**:
-              - If an OCR-scanned reference returns an invalid receipt response, both the Android client and the backend server automatically attempt an instant in-flight candidate retry swapping `O` ↔ `0` before declaring failure.
+            ### 🎯 Viewfinder Fix & Orders-First UI Polish:
+            - **Eliminated Dual Conflicting Reticles**: Disabled ZXing's default internal `ViewfinderView` (grey cut-out square and red laser line) that clashed with the custom gold reticle frame.
+            - **Vector Back Button**: Fixed broken unicode square glyph (`[]`) by replacing it with a crisp Material vector back arrow (`ic_arrow_back.xml`).
+            - **Reticle & Prompt Centering**: Perfectly balanced reticle frame in the center of the camera preview with the prompt badge cleanly positioned beneath it.
+            - **Camera Lifecycle & Performance**: Viewfinder hardware preview is kept completely hidden and paused while browsing the Orders Hub, resuming smoothly only when scanning.
+            - **Hardware Back Button Support**: Tapping Android back from scanner now returns seamlessly to the Orders Hub.
             - **CBE Character Position Normalization**:
               - Enforces strict numeric validation on characters 2-6 of `FT` references (`FT` + year + Julian day: YYDDD), automatically correcting `O`→`0`, `I`/`L`→`1`, `S`→`5`, and `B`→`8`.
             - **Real-Time Live OCR (Google ML Kit)**:
