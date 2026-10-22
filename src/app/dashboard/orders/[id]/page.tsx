@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Printer, X, CheckCircle, AlertCircle, Plus, Unlink, Merge } from 'lucide-react'
+import { Printer, FileText, X, CheckCircle, AlertCircle, Plus, Unlink, Merge } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
@@ -137,6 +137,58 @@ export default function OrderDetailPage() {
 
   function setMangerPassword(v: string) { setManagerPassword(v) }
 
+  function printBill() {
+    if (!order) return
+    const activeItems = order.orderItems.filter(i => i.status !== 'CANCELLED')
+    const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+    const discount = order.payment?.discount || 0
+    const totalDue = Math.max(0, subtotal - discount)
+    const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
+    const html = `<html>
+      <head>
+        <title>Bill</title>
+        <style>
+          @page { margin: 0; size: 80mm auto; }
+          *, *:before, *:after { box-sizing: border-box; }
+          body { margin: 0; padding: 10px 15px; font-family: 'Courier New', monospace; width: 100%; font-size: 13px; color: #000; background: #fff; line-height: 1.35; }
+          hr { border-top: 1px dashed #000; border-bottom: none; border-left: none; border-right: none; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        </style>
+      </head>
+      <body>
+      <div style="text-align:center;margin-bottom:10px;">
+        <b style="font-size:18px;letter-spacing:2px;">Kogna Coffee</b><br/>
+        <span style="font-size:11px;">Addis Ababa, Ethiopia</span><br/>
+        <hr/>
+        <b style="font-size:15px;letter-spacing:2px;">BILL</b>
+      </div>
+      <div style="margin-bottom:8px;font-size:12px;">
+        <b>Table:</b> ${order.table.number}<br/>
+        <b>Waiter:</b> ${order.waiter.fullName}<br/>
+        <b>Time:</b> ${now}
+      </div>
+      <hr/>
+      ${activeItems.map(i => `
+        <div class="row">
+          <span><b>${i.quantity}x</b> ${i.menuItem.name}</span>
+          <span>${(i.menuItem.price * i.quantity).toFixed(2)} ETB</span>
+        </div>
+      `).join('')}
+      <hr/>
+      ${discount > 0 ? `
+        <div class="row"><span>Subtotal</span><span>${subtotal.toFixed(2)} ETB</span></div>
+        <div class="row"><span>Discount</span><span>-${discount.toFixed(2)} ETB</span></div>
+      ` : ''}
+      <div class="row" style="font-weight:bold;font-size:16px;border-top:2px solid #000;padding-top:6px;margin-top:4px;">
+        <span>AMOUNT DUE</span><span>${totalDue.toFixed(2)} ETB</span>
+      </div>
+      <hr/>
+      <div style="text-align:center;font-size:11px;color:#444;margin-top:6px;">Thank you — please proceed to payment</div>
+      <div style="text-align:center;font-size:12px;font-weight:900;color:#000;letter-spacing:1.5px;margin-top:6px;"><b>MEBA TECH PRO</b></div>
+    </body></html>`
+    printTicketHtml(html)
+  }
+
   function printReceipt() {
     if (!order) return
     const total = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
@@ -241,6 +293,7 @@ export default function OrderDetailPage() {
           {order.status === 'PAID' && <button className="btn btn-outline btn-sm" onClick={printReceipt}><Printer size={14} /> Print Receipt</button>}
           {order.status === 'OPEN' && (
             <>
+              <button className="btn btn-outline btn-sm" onClick={printBill}><FileText size={14} /> Print Bill</button>
               {order.table.mergeGroupId && (
                 <button className="btn btn-outline btn-sm" onClick={handleUnmerge} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <Unlink size={14} /> Unmerge Tables
