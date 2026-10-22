@@ -88,9 +88,12 @@ export interface OpenOrder {
  * - Telebirr URLs (https://transactioninfo.ethiotelecom.et/receipt/...)
  * - Telebirr SuperApp Base64 QR code (EMVCo with 000A[20 hex chars] -> ASCII)
  * - Telebirr 10-char alphanumeric codes (DJJ7261SX7)
+ * - Dashen SuperApp URLs (https://receipt.dashensuperapp.com/receipt/{id})
+ * - Awash Pay URLs (https://awashpay.awashbank.com:8225/-{id})
+ * - Bank of Abyssinia slip URLs (https://cs.bankofabyssinia.com/slip/?trx={id})
  */
 export interface DetectedTransaction {
-  provider: 'TELEBIRR' | 'CBE' | 'UNKNOWN'
+  provider: 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA' | 'UNKNOWN'
   reference: string
   officialUrl?: string
   isTelebirrCandidate: boolean
@@ -98,7 +101,7 @@ export interface DetectedTransaction {
 
 function detectProviderAndCleanRef(
   raw: string,
-  defaultProvider: 'AUTO' | 'TELEBIRR' | 'CBE' = 'AUTO'
+  defaultProvider: 'AUTO' | 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA' = 'AUTO'
 ): DetectedTransaction {
   const clean = (raw || '').trim()
   if (!clean) {
@@ -162,6 +165,42 @@ function detectProviderAndCleanRef(
       provider: 'CBE',
       reference: token,
       officialUrl: clean.startsWith('http') ? clean : `https://${clean}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // 3a. Bank of Abyssinia (BOA) slip URL: cs.bankofabyssinia.com/slip/?trx={id}
+  const boaTrxMatch = clean.match(/[?&]trx=([A-Za-z0-9_-]+)/i)
+  if (boaTrxMatch || /bankofabyssinia\.com/i.test(clean)) {
+    const trxId = boaTrxMatch ? boaTrxMatch[1] : clean.replace(/^https?:\/\/[^?]+\?trx=/i, '')
+    return {
+      provider: 'BOA',
+      reference: trxId,
+      officialUrl: `https://cs.bankofabyssinia.com/slip/?trx=${trxId}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // 3b. Dashen SuperApp receipt URL: receipt.dashensuperapp.com/receipt/{id}
+  const dashenMatch = clean.match(/dashensuperapp\.com\/receipt\/([A-Za-z0-9_-]+)/i)
+  if (dashenMatch || /dashensuperapp\.com/i.test(clean)) {
+    const receiptId = dashenMatch ? dashenMatch[1] : clean.split('/').pop() || clean
+    return {
+      provider: 'DASHEN',
+      reference: receiptId,
+      officialUrl: clean.startsWith('http') ? clean : `https://receipt.dashensuperapp.com/receipt/${receiptId}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  // 3c. AwashPay receipt URL: awashpay.awashbank.com:8225/-{id}
+  const awashMatch = clean.match(/awashbank\.com[^/]*\/\-?([A-Za-z0-9_-]+)/i)
+  if (awashMatch || /awashbank\.com/i.test(clean)) {
+    const awashId = awashMatch ? awashMatch[1] : clean.split('-').pop() || clean
+    return {
+      provider: 'AWASH',
+      reference: awashId,
+      officialUrl: clean.startsWith('http') ? clean : `https://awashpay.awashbank.com:8225/-${awashId}`,
       isTelebirrCandidate: false,
     }
   }
@@ -243,6 +282,34 @@ function detectProviderAndCleanRef(
     }
   }
 
+  if (defaultProvider === 'DASHEN') {
+    return {
+      provider: 'DASHEN',
+      reference: clean,
+      officialUrl: clean.startsWith('http') ? clean : `https://receipt.dashensuperapp.com/receipt/${clean}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  if (defaultProvider === 'AWASH') {
+    const awashId = clean.replace(/^-/, '')
+    return {
+      provider: 'AWASH',
+      reference: awashId,
+      officialUrl: clean.startsWith('http') ? clean : `https://awashpay.awashbank.com:8225/-${awashId}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
+  if (defaultProvider === 'BOA') {
+    return {
+      provider: 'BOA',
+      reference: clean,
+      officialUrl: `https://cs.bankofabyssinia.com/slip/?trx=${clean}`,
+      isTelebirrCandidate: false,
+    }
+  }
+
   // Generic fallback
   const fallbackCode = clean.replace(/[^A-Za-z0-9_-]/g, '')
   return {
@@ -255,7 +322,7 @@ function detectProviderAndCleanRef(
 export default function QRScannerPage() {
   const [mode, setMode] = useState<'camera' | 'manual'>('camera')
   const [manualCode, setManualCode] = useState('')
-  const [manualProvider, setManualProvider] = useState<'AUTO' | 'TELEBIRR' | 'CBE'>('AUTO')
+  const [manualProvider, setManualProvider] = useState<'AUTO' | 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA'>('AUTO')
   const [manualAccountDigits, setManualAccountDigits] = useState('')
   const [expectedAmount, setExpectedAmount] = useState('')
 
@@ -493,7 +560,7 @@ export default function QRScannerPage() {
         setExpectedAmount(amt)
         expectedAmountRef.current = amt
       }
-      if (prov === 'TELEBIRR' || prov === 'CBE') {
+      if (prov === 'TELEBIRR' || prov === 'CBE' || prov === 'DASHEN' || prov === 'AWASH' || prov === 'BOA') {
         setManualProvider(prov)
       }
     }
@@ -542,8 +609,8 @@ export default function QRScannerPage() {
 
   // Call the backend verification API with automatic retry
   const verifyReference = useCallback(async (
-    codeOrUrl: string, 
-    prov: 'AUTO' | 'TELEBIRR' | 'CBE' = 'AUTO', 
+    codeOrUrl: string,
+    prov: 'AUTO' | 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA' = 'AUTO', 
     accountDigits?: string,
     expAmt?: number,
     htmlOverride?: string
@@ -707,7 +774,7 @@ export default function QRScannerPage() {
           payerAccountOrPhone: finalReceiptPayload?.payerAccountOrPhone,
           amount: typeof finalReceiptPayload?.amount === 'number' ? finalReceiptPayload.amount : undefined,
           dateTime: finalReceiptPayload?.dateTime,
-          errorMessage: finalResultData?.error || finalReceiptPayload?.errorMessage || (isGatewayDelay ? (detectedProv === 'CBE' ? 'CBE receipt gateway timed out. Tap "Open Official CBE Slip in Browser" below.' : 'Ethio Telecom receipt gateway timed out. Tap "Open Official Slip in Browser" below.') : 'Receipt verification server could not validate this transaction.'),
+          errorMessage: finalResultData?.error || finalReceiptPayload?.errorMessage || (isGatewayDelay ? (() => { const p = detectedProv; return p === 'CBE' ? 'CBE receipt gateway timed out. Tap "Open Official CBE Slip in Browser" below.' : p === 'TELEBIRR' ? 'Ethio Telecom receipt gateway timed out. Tap "Open Official Slip in Browser" below.' : p === 'DASHEN' ? 'Dashen server timed out. Tap "Open Official Dashen Slip in Browser" below.' : p === 'AWASH' ? 'Awash server timed out. Tap "Open Official Awash Slip in Browser" below.' : p === 'BOA' ? 'BOA server timed out. Tap "Open Official BOA Slip in Browser" below.' : 'Bank server timed out. Tap "Open Official Slip in Browser" below.' })() : 'Receipt verification server could not validate this transaction.'),
         }
 
         setVerifiedResult(failReceipt)
@@ -726,7 +793,7 @@ export default function QRScannerPage() {
         status: isNetTimeout ? 'PENDING' : 'FAILED',
         isTimeout: isNetTimeout,
         errorMessage: isNetTimeout
-          ? `Network timed out connecting to ${detectedProv === 'CBE' ? 'CBE' : (detectedProv === 'TELEBIRR' ? 'Ethio Telecom' : 'bank')}. Tap "Open Official Slip in Browser" below.`
+          ? `Network timed out connecting to ${{ CBE: 'CBE', TELEBIRR: 'Ethio Telecom', DASHEN: 'Dashen', AWASH: 'Awash', BOA: 'BOA' }[detectedProv] || 'bank'}. Tap "Open Official Slip in Browser" below.`
           : (err.message || 'Network connection failed while verifying with bank server.'),
       }
       setVerifiedResult(netErrorReceipt)
@@ -2695,6 +2762,9 @@ export default function QRScannerPage() {
                     <option value="AUTO">Auto Detect</option>
                     <option value="TELEBIRR">Telebirr</option>
                     <option value="CBE">CBE Birr / CBE</option>
+                    <option value="DASHEN">Dashen SuperApp</option>
+                    <option value="AWASH">Awash Pay</option>
+                    <option value="BOA">Abyssinia (BOA)</option>
                   </select>
                 </div>
 
