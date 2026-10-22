@@ -1508,11 +1508,30 @@ public class MainActivity extends AppCompatActivity {
             if (isResolved.compareAndSet(false, true)) {
                 cancelAllVerificationCalls();
                 mainHandler.post(() -> {
+                    final String prov = payment.provider != null ? payment.provider.toUpperCase() : "";
                     if (isCbeFt) {
                         showVerificationResult(
                                 false, "CBE", payment.reference, 0.0, "-", "-",
                                 "-", "CBE FT SLIP", payment.slipUrl,
                                 "❌ CBE FT slips need the Cashier PC — open the official slip"
+                        );
+                    } else if ("BOA".equals(prov)) {
+                        showVerificationResult(
+                                false, "BOA", payment.reference, 0.0, "-", "-",
+                                "-", "BOA SLIP", payment.slipUrl,
+                                "❌ BOA receipt needs Cashier PC. Tap 'View Official Bank Slip' to open cs.bankofabyssinia.com"
+                        );
+                    } else if ("AWASH".equals(prov)) {
+                        showVerificationResult(
+                                false, "AWASH", payment.reference, 0.0, "-", "-",
+                                "-", "AWASH SLIP", payment.slipUrl,
+                                "❌ Awash receipt needs Cashier PC. Tap 'View Official Bank Slip' to open awashpay.awashbank.com"
+                        );
+                    } else if ("DASHEN".equals(prov)) {
+                        showVerificationResult(
+                                false, "DASHEN", payment.reference, 0.0, "-", "-",
+                                "-", "DASHEN SLIP", payment.slipUrl,
+                                "❌ Dashen receipt needs Cashier PC. Tap 'View Official Bank Slip' to open receipt.dashensuperapp.com"
                         );
                     } else {
                         showVerificationResult(

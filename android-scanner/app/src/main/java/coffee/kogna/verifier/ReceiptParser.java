@@ -22,6 +22,9 @@ public final class ReceiptParser {
         public String slipUrl = "";
         public boolean isTelebirr = false;
         public boolean isCbe = false;
+        public boolean isBoa = false;
+        public boolean isAwash = false;
+        public boolean isDashen = false;
     }
 
     public static class TelebirrReceipt {
@@ -59,6 +62,51 @@ public final class ReceiptParser {
             return res;
         }
         String clean = rawInput.trim();
+
+        // 0a. BOA QR code: "{trxId}\BNK" or "{trxId}|BNK" — Bank of Abyssinia native QR format
+        //     Must run BEFORE CBE FT rule because BOA trxIds often start with "FT" (interbank ref).
+        Matcher boaQrMatch = Pattern.compile("^([A-Za-z0-9_-]+)[\\\\|/]BNK\\b", Pattern.CASE_INSENSITIVE).matcher(clean);
+        if (boaQrMatch.find()) {
+            String trxId = boaQrMatch.group(1);
+            res.provider = "BOA";
+            res.reference = trxId;
+            res.slipUrl = "https://cs.bankofabyssinia.com/slip/?trx=" + trxId;
+            res.isBoa = true;
+            return res;
+        }
+
+        // 0b. BOA slip URL: cs.bankofabyssinia.com/slip/?trx=...
+        if (clean.toLowerCase().contains("bankofabyssinia.com")) {
+            Matcher boaUrlMatch = Pattern.compile("[?&]trx=([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
+            String trxId = boaUrlMatch.find() ? boaUrlMatch.group(1) : clean.replaceAll(".*[?&]trx=", "").split("[&#]")[0];
+            res.provider = "BOA";
+            res.reference = trxId.isEmpty() ? clean : trxId;
+            res.slipUrl = clean.startsWith("http") ? clean : "https://cs.bankofabyssinia.com/slip/?trx=" + trxId;
+            res.isBoa = true;
+            return res;
+        }
+
+        // 0c. Awash slip URL: awashpay.awashbank.com:8225/-{id}
+        if (clean.toLowerCase().contains("awashbank.com")) {
+            Matcher awashMatch = Pattern.compile("awashpay\\.awashbank\\.com[^/]*/-([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
+            String txId = awashMatch.find() ? awashMatch.group(1) : "";
+            res.provider = "AWASH";
+            res.reference = txId.isEmpty() ? clean : txId;
+            res.slipUrl = clean.startsWith("http") ? clean : "https://awashpay.awashbank.com:8225/-" + txId;
+            res.isAwash = true;
+            return res;
+        }
+
+        // 0d. Dashen slip URL: receipt.dashensuperapp.com/receipt/{id}
+        if (clean.toLowerCase().contains("dashensuperapp.com")) {
+            Matcher dashenMatch = Pattern.compile("/receipt/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(clean);
+            String txId = dashenMatch.find() ? dashenMatch.group(1) : "";
+            res.provider = "DASHEN";
+            res.reference = txId.isEmpty() ? clean : txId;
+            res.slipUrl = clean.startsWith("http") ? clean : "https://receipt.dashensuperapp.com/receipt/" + txId;
+            res.isDashen = true;
+            return res;
+        }
 
         // 1. CBE Modern Mobile Banking QR code / URL (mbreciept.cbe.com.et/v2-... or mb.cbe.com.et/...)
         Matcher cbeV2Url = Pattern.compile("(?:https?://)?(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})", Pattern.CASE_INSENSITIVE).matcher(clean);
