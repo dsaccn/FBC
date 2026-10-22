@@ -522,27 +522,120 @@ export function backgroundSync(): void {
 }
 
 let _backgroundPullTimer: NodeJS.Timeout | null = null
+let _fullSyncTimer: NodeJS.Timeout | null = null
+
+/**
+ * Fast-path pull: only syncs verification fields and status on currently-OPEN orders.
+ * Runs every 5s — single batch query to Neon, very lightweight, won't block the event loop.
+ */
+export async function pullOrderVerification(): Promise<void> {
+  if (process.env.VERCEL) return
+  try {
+    const pg = getPool()
+
+    const localOpen = await prisma.order.findMany({
+      where: { status: 'OPEN' },
+      select: { id: true, verifiedRef: true, verifiedAmount: true, verifiedProvider: true, tableId: true },
+    })
+    if (localOpen.length === 0) return
+
+    const ids = localOpen.map(o => o.id)
+    const { rows } = await pg.query(
+      `SELECT id, "tableId", status, "verifiedRef", "verifiedProvider", "verifiedAmount",
+              "verifiedPayer", "verifiedReceiver", "verifiedAt"
+       FROM "Order" WHERE id = ANY($1)`,
+      [ids]
+    )
+
+    for (const co of rows) {
+      const local = localOpen.find(o => o.id === co.id)
+      if (!local) continue
+
+      const cloudRef = co.verifiedRef ? String(co.verifiedRef).trim().toUpperCase() : null
+      const localRef = local.verifiedRef ? String(local.verifiedRef).trim().toUpperCase() : null
+      const cloudAmt = co.verifiedAmount != null ? Number(co.verifiedAmount) : null
+      const localAmt = local.verifiedAmount != null ? Number(local.verifiedAmount) : null
+
+      const verificationChanged = cloudRef !== localRef || cloudAmt !== localAmt || co.verifiedProvider !== local.verifiedProvider
+
+      if (verificationChanged && cloudRef) {
+        await prisma.order.update({
+          where: { id: co.id },
+          data: {
+            verifiedRef: cloudRef,
+            verifiedProvider: co.verifiedProvider ?? null,
+            verifiedAmount: cloudAmt,
+            verifiedPayer: co.verifiedPayer ?? null,
+            verifiedReceiver: co.verifiedReceiver ?? null,
+            verifiedAt: co.verifiedAt ? new Date(co.verifiedAt) : null,
+          },
+        })
+
+        if (cloudRef !== localRef) {
+          const table = await prisma.table.findUnique({ where: { id: co.tableId }, select: { number: true } })
+          broadcastVerificationEvent({
+            type: 'ORDER_VERIFIED',
+            orderId: co.id,
+            tableNumber: table?.number,
+            reference: cloudRef,
+            provider: co.verifiedProvider || 'AUTO',
+            amount: cloudAmt ?? undefined,
+            payerName: co.verifiedPayer || undefined,
+            receiverName: co.verifiedReceiver || undefined,
+            timestamp: co.verifiedAt ? new Date(co.verifiedAt).toISOString() : new Date().toISOString(),
+          })
+        }
+      }
+
+      // If cloud closed the order (PAID/CANCELLED), apply it locally
+      if ((co.status === 'PAID' || co.status === 'CANCELLED')) {
+        await prisma.order.update({
+          where: { id: co.id },
+          data: { status: co.status, pendingSync: false },
+        }).catch(() => {})
+        await prisma.table.update({
+          where: { id: co.tableId },
+          data: { status: 'FREE' },
+        }).catch(() => {})
+      }
+    }
+  } catch (e: any) {
+    console.warn('[pullOrderVerification]', e?.message)
+    if (e?.code === 'ECONNREFUSED' || e?.code === 'ETIMEDOUT' || e?.code === 'ENOTFOUND') resetPool()
+  }
+}
 
 /**
  * Autonomous background pull loop for local POS server.
- * Ensures orders created on Vercel or cloud are synced down to SQLite automatically.
+ *
+ * Two-speed design to prevent event-loop starvation:
+ *  - Fast timer (every 5s): only syncs OPEN-order verification & status (lightweight, single batch query)
+ *  - Slow timer (every 5min): full bidirectional sync of all metadata + orders
  */
 export function startBackgroundPullLoop(intervalMs = 5000): void {
   if (process.env.VERCEL) return
   if (_backgroundPullTimer) return
 
+  // Fast loop — only order verification, non-blocking
   _backgroundPullTimer = setInterval(async () => {
     try {
-      if (!isSyncing) {
-        await pullFromCloud()
-      }
+      await pullOrderVerification()
     } catch (e) {
       console.warn('[BackgroundPullLoop]', String(e))
     }
   }, intervalMs)
+  if (typeof _backgroundPullTimer.unref === 'function') _backgroundPullTimer.unref()
 
-  if (typeof _backgroundPullTimer.unref === 'function') {
-    _backgroundPullTimer.unref()
+  // Slow loop — full sync every 5 minutes (won't run until 5min after startup)
+  if (!_fullSyncTimer) {
+    _fullSyncTimer = setInterval(async () => {
+      try {
+        if (!isSyncing) await syncBothDirections()
+      } catch (e) {
+        console.warn('[BackgroundFullSync]', String(e))
+      }
+    }, 5 * 60 * 1000)
+    if (typeof _fullSyncTimer.unref === 'function') _fullSyncTimer.unref()
   }
 }
 
