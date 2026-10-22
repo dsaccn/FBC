@@ -559,6 +559,7 @@ export async function pullOrderVerification(): Promise<void> {
       const verificationChanged = cloudRef !== localRef || cloudAmt !== localAmt || co.verifiedProvider !== local.verifiedProvider
 
       if (verificationChanged && cloudRef) {
+        // Verification set or changed on cloud — apply locally and notify cashier
         await prisma.order.update({
           where: { id: co.id },
           data: {
@@ -585,6 +586,24 @@ export async function pullOrderVerification(): Promise<void> {
             timestamp: co.verifiedAt ? new Date(co.verifiedAt).toISOString() : new Date().toISOString(),
           })
         }
+      } else if (verificationChanged && !cloudRef && localRef) {
+        // Verification was cleared on cloud (payment cancelled / re-scan) — clear it locally too
+        await prisma.order.update({
+          where: { id: co.id },
+          data: {
+            verifiedRef: null,
+            verifiedProvider: null,
+            verifiedAmount: null,
+            verifiedPayer: null,
+            verifiedReceiver: null,
+            verifiedAt: null,
+          },
+        })
+        broadcastVerificationEvent({
+          type: 'ORDER_CLEARED',
+          orderId: co.id,
+          timestamp: new Date().toISOString(),
+        })
       }
 
       // If cloud closed the order (PAID/CANCELLED), apply it locally
