@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     }
 
     const trimmedInput = referenceOrUrl.trim()
-    const isCbeInput = /cbe/i.test(trimmedInput) || /^v2-[A-Za-z0-9_-]+/i.test(trimmedInput) || /^FT/i.test(trimmedInput)
+    const isCbeInput = /cbe/i.test(trimmedInput) || /^v2-[A-Za-z0-9_-]+/i.test(trimmedInput) || /^FT[0-9A-Za-z]{10}/i.test(trimmedInput)
     const extractedRef = extractTransactionReference(trimmedInput) || (isCbeInput ? trimmedInput : extractTelebirrTransactionId(trimmedInput)) || trimmedInput
 
     // 🚨 1. DUPLICATE PROTECTION: Run FIRST! Instant check in local DB/Neon (<2ms) before slow bank networks
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             reference: extractedRef,
             provider: (provider && provider !== 'AUTO')
               ? provider
-              : (isCbeInput || extractedRef.startsWith('FT') || extractedRef.startsWith('v2-') ? 'CBE' : 'TELEBIRR'),
+              : (isCbeInput || /^FT[0-9A-Za-z]{10}/i.test(extractedRef) || extractedRef.startsWith('v2-') ? 'CBE' : 'TELEBIRR'),
             status: 'FAILED',
             isDuplicate: true,
             errorMessage: duplicateConflict.errorMessage,

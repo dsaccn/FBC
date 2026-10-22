@@ -597,7 +597,7 @@ export async function verifyCbeReceipt(
   }
 
   // 1. Check for modern CBE mobile banking receipt link or token (mbreciept.cbe.com.et/{token} or v2-{token})
-  const isFtCode = /^FT/i.test(clean) || /[?&]id=FT/i.test(clean)
+  const isFtCode = /^FT[0-9A-Za-z]{10}/i.test(clean) || /[?&]id=FT[0-9A-Za-z]{10}/i.test(clean)
   if (!isFtCode) {
     const modernMatch = clean.match(/(?:(?:mbrecie?pt|mb)\.cbe\.com\.et\/)(v2-[A-Za-z0-9_-]+|[A-Za-z0-9_-]{16,})/i) ||
                         clean.match(/^(v2-[A-Za-z0-9_-]+)/i)
@@ -1098,7 +1098,7 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
   // Detect based on explicit provider or URL pattern
   const isCbe =
     provider === 'CBE' ||
-    clean.toUpperCase().startsWith('FT') ||
+    /^FT[0-9A-Za-z]{10}/i.test(clean) ||
     /cbe\.com\.et/i.test(clean) ||
     clean.startsWith('v2-') ||
     /mbrecie?pt/i.test(clean)
