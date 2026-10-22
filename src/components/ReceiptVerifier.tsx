@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, X } from 'lucide-react'
+import { ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, X, ArrowRight } from 'lucide-react'
 
 export const DEFAULT_CBE_ACCOUNT = ''
 
@@ -22,10 +22,39 @@ export interface VerifiedReceiptData {
 }
 
 interface ReceiptVerifierProps {
-  method: string // 'Telebirr' | 'CBE' | 'Cash' | etc.
+  method: string // 'Telebirr' | 'CBE' | 'Cash' | 'Dashen' | 'Awash' | 'BOA' | 'Hibret' | etc.
   expectedAmount: number
   onVerified?: (receipt: VerifiedReceiptData) => void
   onClear?: () => void
+}
+
+// Banks that have a publicly-queryable receipt portal
+const PORTAL_BANKS: Record<string, { provider: 'DASHEN' | 'AWASH' | 'BOA'; label: string; urlHint: string; placeholder: string }> = {
+  DASHEN: {
+    provider: 'DASHEN',
+    label: 'Dashen',
+    urlHint: 'receipt.dashensuperapp.com',
+    placeholder: 'https://receipt.dashensuperapp.com/receipt/...',
+  },
+  AWASH: {
+    provider: 'AWASH',
+    label: 'Awash',
+    urlHint: 'awashpay.awashbank.com',
+    placeholder: 'https://awashpay.awashbank.com:8225/-...',
+  },
+  BOA: {
+    provider: 'BOA',
+    label: 'Abyssinia (BOA)',
+    urlHint: 'cs.bankofabyssinia.com',
+    placeholder: 'https://cs.bankofabyssinia.com/slip/?trx=...',
+  },
+}
+
+function detectPortalProvider(input: string): 'DASHEN' | 'AWASH' | 'BOA' | null {
+  if (/dashensuperapp\.com/i.test(input)) return 'DASHEN'
+  if (/awashbank\.com/i.test(input)) return 'AWASH'
+  if (/bankofabyssinia\.com/i.test(input)) return 'BOA'
+  return null
 }
 
 export default function ReceiptVerifier({
@@ -35,34 +64,64 @@ export default function ReceiptVerifier({
   onClear,
 }: ReceiptVerifierProps) {
   const [refInput, setRefInput] = useState('')
-  const [accountInput, setAccountInput] = useState(DEFAULT_CBE_ACCOUNT)
   const [loading, setLoading] = useState(false)
   const [verifiedReceipt, setVerifiedReceipt] = useState<VerifiedReceiptData | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
-  const [copiedAcc, setCopiedAcc] = useState(false)
+  // For private banks: which Kogna receiving rail did the customer pay to?
+  const [receivingRail, setReceivingRail] = useState<'CBE' | 'TELEBIRR'>('CBE')
 
   const normalizedMethod = method.toUpperCase()
+  const isCash = normalizedMethod.includes('CASH')
   const isCbe = normalizedMethod.includes('CBE')
   const isTelebirr = normalizedMethod.includes('TELEBIRR')
-  const isDashen = normalizedMethod.includes('DASHEN')
-  const isAwash = normalizedMethod.includes('AWASH')
-  const isBoa = normalizedMethod.includes('BOA') || normalizedMethod.includes('ABYSSINIA')
 
-  const providerLabel = isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : isDashen ? 'Dashen' : isAwash ? 'Awash' : isBoa ? 'Abyssinia (BOA)' : ''
-  const providerEnum: 'CBE' | 'TELEBIRR' | 'DASHEN' | 'AWASH' | 'BOA' = isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : isDashen ? 'DASHEN' : isAwash ? 'AWASH' : 'BOA'
+  // Any bank that is NOT a direct Kogna receiving rail is a private (interbank transfer) bank
+  const isPrivateBank = !isCash && !isCbe && !isTelebirr
 
-  // CBE, Telebirr, Dashen, Awash, and BOA support automated receipt verification
-  if (!isCbe && !isTelebirr && !isDashen && !isAwash && !isBoa) return null
+  // Private bank's known portal info (Dashen, Awash, BOA) — null for banks without portals
+  const portalBankKey = normalizedMethod.includes('DASHEN') ? 'DASHEN'
+    : normalizedMethod.includes('AWASH') ? 'AWASH'
+    : (normalizedMethod.includes('BOA') || normalizedMethod.includes('ABYSSINIA')) ? 'BOA'
+    : null
+  const portalBank = portalBankKey ? PORTAL_BANKS[portalBankKey] : null
 
-  const handleCopyAccount = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (accountInput) {
-      navigator.clipboard.writeText(accountInput)
-      setCopiedAcc(true)
-      setTimeout(() => setCopiedAcc(false), 2000)
-    }
+  // Don't render anything for Cash payments
+  if (isCash) return null
+
+  // Detect if the user pasted a private bank portal URL
+  const detectedPortal = detectPortalProvider(refInput)
+
+  // Determine the provider enum to send to the backend
+  let effectiveProvider: 'CBE' | 'TELEBIRR' | 'DASHEN' | 'AWASH' | 'BOA'
+  if (isCbe) {
+    effectiveProvider = 'CBE'
+  } else if (isTelebirr) {
+    effectiveProvider = 'TELEBIRR'
+  } else if (detectedPortal) {
+    // User pasted a slip URL from a known bank portal — verify via that portal
+    effectiveProvider = detectedPortal
+  } else {
+    // Private bank interbank transfer → verify on Kogna's receiving rail
+    effectiveProvider = receivingRail
   }
+
+  const providerLabel = isCbe ? 'CBE'
+    : isTelebirr ? 'Telebirr'
+    : detectedPortal ? PORTAL_BANKS[detectedPortal].label
+    : receivingRail === 'CBE' ? 'CBE'
+    : 'Telebirr'
+
+  const inputLabel = isCbe ? 'CBE FT Reference (or full URL)'
+    : isTelebirr ? 'Telebirr Transaction ID (or full URL)'
+    : detectedPortal ? `${PORTAL_BANKS[detectedPortal].label} Receipt URL (auto-detected)`
+    : receivingRail === 'CBE' ? 'CBE FT Reference from customer\'s slip (e.g. FT25211G11JQ)'
+    : 'Telebirr Transaction ID from customer\'s slip (e.g. CHQ0FJ403O)'
+
+  const inputPlaceholder = isCbe ? 'e.g. FT25211G11JQ'
+    : isTelebirr ? 'e.g. CHQ0FJ403O'
+    : detectedPortal ? PORTAL_BANKS[detectedPortal].placeholder
+    : receivingRail === 'CBE' ? 'e.g. FT25211G11JQ or https://mbreciept.cbe.com.et/...'
+    : 'e.g. CHQ0FJ403O or https://transactioninfo.ethiotelecom.et/...'
 
   const handleVerify = async () => {
     if (!refInput.trim()) {
@@ -78,9 +137,8 @@ export default function ReceiptVerifier({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: providerEnum,
+          provider: effectiveProvider,
           referenceOrUrl: refInput.trim(),
-          accountDigits: accountInput.trim() || undefined,
           expectedAmount,
         }),
       })
@@ -107,7 +165,6 @@ export default function ReceiptVerifier({
     setVerifiedReceipt(null)
     setErrorMsg('')
     setRefInput('')
-    setAccountInput(DEFAULT_CBE_ACCOUNT)
     if (onClear) onClear()
   }
 
@@ -126,7 +183,7 @@ export default function ReceiptVerifier({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <ShieldCheck size={16} color="var(--gold)" />
           <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--gold)' }}>
-            Verify Official {providerLabel} Receipt
+            {isPrivateBank ? `Verify Interbank Transfer (${method})` : `Verify Official ${providerLabel} Receipt`}
           </span>
         </div>
         {verifiedReceipt && (
@@ -143,15 +200,77 @@ export default function ReceiptVerifier({
 
       {!verifiedReceipt ? (
         <div>
+          {/* Private bank rail selector */}
+          {isPrivateBank && !detectedPortal && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                Customer paid from <b style={{ color: 'var(--text-primary)' }}>{method}</b> to Kogna&apos;s:
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setReceivingRail('CBE')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: receivingRail === 'CBE' ? '1.5px solid #800080' : '1px solid rgba(255,255,255,0.12)',
+                    background: receivingRail === 'CBE' ? 'rgba(128,0,128,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: receivingRail === 'CBE' ? '#c084fc' : 'var(--text-secondary)',
+                    fontSize: '11px',
+                    fontWeight: receivingRail === 'CBE' ? '700' : '500',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {receivingRail === 'CBE' && <ArrowRight size={11} />}
+                  🏦 CBE Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReceivingRail('TELEBIRR')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: receivingRail === 'TELEBIRR' ? '1.5px solid #0072CE' : '1px solid rgba(255,255,255,0.12)',
+                    background: receivingRail === 'TELEBIRR' ? 'rgba(0,114,206,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: receivingRail === 'TELEBIRR' ? '#60a5fa' : 'var(--text-secondary)',
+                    fontSize: '11px',
+                    fontWeight: receivingRail === 'TELEBIRR' ? '700' : '500',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {receivingRail === 'TELEBIRR' && <ArrowRight size={11} />}
+                  📱 Telebirr
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Portal URL hint for banks with slip portals */}
+          {isPrivateBank && portalBank && !detectedPortal && (
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '7px', lineHeight: 1.4 }}>
+              Or paste a <b style={{ color: 'var(--text-secondary)' }}>{portalBank.label} receipt URL</b> ({portalBank.urlHint}) to auto-verify from the portal.
+            </div>
+          )}
+
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>
-              {isCbe ? 'CBE FT Reference (or full URL)' : isTelebirr ? 'Telebirr Transaction ID (or full URL)' : isDashen ? 'DashenSuperApp Receipt URL' : isAwash ? 'AwashPay Receipt URL' : 'BOA Transaction ID (or cs.bankofabyssinia.com link)'}
+              {inputLabel}
             </label>
             <input
               type="text"
               className="input"
               style={{ width: '100%', fontSize: '12px', height: '32px' }}
-              placeholder={isCbe ? 'e.g. FT25211G11JQ' : isTelebirr ? 'e.g. CHQ0FJ403O' : isDashen ? 'https://receipt.dashensuperapp.com/receipt/...' : isAwash ? 'https://awashpay.awashbank.com:8225/-...' : 'https://cs.bankofabyssinia.com/slip/?trx=...'}
+              placeholder={inputPlaceholder}
               value={refInput}
               onChange={e => setRefInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleVerify() } }}
