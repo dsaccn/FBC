@@ -155,7 +155,7 @@ public final class ReceiptParser {
         }
 
         // 5. Amharic or English SMS text
-        Matcher smsTagMatch = Pattern.compile("(?:Transaction\\s*(?:number|no|id)|Txn\\s*ID|የግብይት\\s*ቁጥር|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
+        Matcher smsTagMatch = Pattern.compile("(?:የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥር(?:ዎ)?|የግብይት\\s*ቁጥር|Transaction\\s*(?:number|no|id)|Txn\\s*ID|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(clean);
         if (smsTagMatch.find()) {
             String code = smsTagMatch.group(1).toUpperCase();
             res.provider = "TELEBIRR";
@@ -194,6 +194,78 @@ public final class ReceiptParser {
             res.isTelebirr = true;
         }
         return res;
+    }
+
+    /**
+     * High-precision extraction of Ethiopian payment references from live OCR text (camera frames, SMS, USSD screens).
+     * Returns null if no high-confidence payment reference is found, preventing false positives on random text.
+     */
+    public static DetectedPayment extractReferenceFromOcrText(String ocrText) {
+        if (ocrText == null || ocrText.trim().isEmpty()) {
+            return null;
+        }
+
+        // 1. Direct Telebirr receipt URL in SMS or screen (e.g. https://transactioninfo.ethiotelecom.et/receipt/DJM05ZHSXC)
+        Matcher tbUrl = Pattern.compile("(?:https?://)?(?:www\\.)?transactioninfo\\.ethiotelecom\\.et/receipt/([A-Za-z0-9_-]{8,14})", Pattern.CASE_INSENSITIVE).matcher(ocrText);
+        if (tbUrl.find()) {
+            String code = tbUrl.group(1).toUpperCase();
+            DetectedPayment res = new DetectedPayment();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 2. CBE FT code in USSD/SMS (e.g. FT26295ZFD3H - exactly 12 characters, starting with FT)
+        Matcher ftMatch = Pattern.compile("\\b(FT[0-9A-Za-z]{10})\\b", Pattern.CASE_INSENSITIVE).matcher(ocrText);
+        if (ftMatch.find()) {
+            String ft = ftMatch.group(1).toUpperCase();
+            DetectedPayment res = new DetectedPayment();
+            res.provider = "CBE";
+            res.reference = ft;
+            res.slipUrl = "https://apps.cbe.com.et:100/?id=" + ft;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 3. Modern CBE Mobile Banking v2 token or URL (mbreciept.cbe.com.et/v2-...)
+        Matcher cbeV2Match = Pattern.compile("(?:(?:https?://)?(?:mbrecie?pt|mb)\\.cbe\\.com\\.et/)?\\b(v2-[A-Za-z0-9_-]{10,})\\b", Pattern.CASE_INSENSITIVE).matcher(ocrText);
+        if (cbeV2Match.find()) {
+            String token = cbeV2Match.group(1).replaceAll("[?#].*$", "");
+            DetectedPayment res = new DetectedPayment();
+            res.provider = "CBE";
+            res.reference = token;
+            res.slipUrl = "https://mbreciept.cbe.com.et/" + token;
+            res.isCbe = true;
+            return res;
+        }
+
+        // 4. Telebirr tagged SMS reference (Amharic "የሂሳብ እንቅስቃሴ ቁጥርዎ", "የግብይት ቁጥር", or English "Txn ID", "Transaction No")
+        Matcher tbTagMatch = Pattern.compile("(?:የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥር(?:ዎ)?|የግብይት\\s*ቁጥር|Transaction\\s*(?:number|no|id)|Txn\\s*ID|Receipt\\s*(?:no|number)|Ref(?:erence)?(?:\\s*No)?)[:\\s]+([A-Za-z0-9]{8,14})", Pattern.CASE_INSENSITIVE).matcher(ocrText);
+        if (tbTagMatch.find()) {
+            String code = tbTagMatch.group(1).toUpperCase();
+            DetectedPayment res = new DetectedPayment();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        // 5. High-confidence Telebirr code pattern starting with "DJ" (standard Telebirr prefix like DJM05ZHSXC, DJJ7261SX7)
+        Matcher djMatch = Pattern.compile("\\b(DJ[0-9A-Za-z]{8})\\b", Pattern.CASE_INSENSITIVE).matcher(ocrText);
+        if (djMatch.find()) {
+            String code = djMatch.group(1).toUpperCase();
+            DetectedPayment res = new DetectedPayment();
+            res.provider = "TELEBIRR";
+            res.reference = code;
+            res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+            res.isTelebirr = true;
+            return res;
+        }
+
+        return null;
     }
 
     /**

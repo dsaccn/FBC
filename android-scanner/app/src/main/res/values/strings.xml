@@ -3,7 +3,7 @@
     <string name="app_name">Kogna Verifier</string>
     <string name="app_title">KOGNA VERIFIER</string>
     <string name="camera_permission_required">Camera permission is required to scan Telebirr and CBE QR codes.</string>
-    <string name="scan_prompt">Align Telebirr or CBE QR slip inside frame</string>
+    <string name="scan_prompt">Align Telebirr / CBE QR slip or SMS Screen</string>
 
     <!-- POS Connection Status -->
     <string name="pos_status_connecting">● Connecting to Cashier PC…</string>

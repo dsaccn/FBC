@@ -146,4 +146,51 @@ public class ReceiptParserTest {
         assertEquals(0.0, ReceiptParser.parseDoubleSafe(null), 0.001);
         assertEquals(0.0, ReceiptParser.parseDoubleSafe(""), 0.001);
     }
+
+    @Test
+    public void testExtractReferenceFromOcrText() {
+        // 1. Real-World CBE USSD (*847#) Screen Confirmation
+        String cbeUssdText = "Completed ETB1.71 transfer From Dawit Solomon Assefa to Kidist Temesgen Aregu-6501. To test on 22/10/2026 FT26295ZFD3H Service Charge #:Next";
+        ReceiptParser.DetectedPayment cbeResult = ReceiptParser.extractReferenceFromOcrText(cbeUssdText);
+        assertNotNull("CBE USSD reference should be detected", cbeResult);
+        assertEquals("CBE", cbeResult.provider);
+        assertEquals("FT26295ZFD3H", cbeResult.reference);
+        assertTrue(cbeResult.isCbe);
+        assertFalse(cbeResult.isTelebirr);
+
+        // 2. Real-World Telebirr 127 SMS Confirmation
+        String telebirrSmsText = "ውድSolomon\n" +
+                "ወደ Eferem wondimu(0911****37) 1.00 ብር በ 22/10/2026 10:20:10 ልከዋል። የሂሳብ እንቅስቃሴ ቁጥርዎ DJM05ZHSXC ነው። " +
+                "የአገልግሎት ክፍያው 0.87 ብር ፤ የአገልግሎት ክፍያው 15% VAT 0.13 ብር ነው። አሁን ያለዎት ቀሪ ሂሳብ 49.00 ብር ነው። " +
+                "የክፍያ መረጃዎን ለማግኘት ማስፈንጠሪያውን ይጫኑ፡\n" +
+                "https://transactioninfo.ethiotelecom.et/receipt/DJM05ZHSXC\n" +
+                "በቴሌብር ስለተገለገሉ እናመሰግናለን\n" +
+                "ኢትዮ ቴሌኮም";
+        ReceiptParser.DetectedPayment tbResult = ReceiptParser.extractReferenceFromOcrText(telebirrSmsText);
+        assertNotNull("Telebirr SMS reference should be detected", tbResult);
+        assertEquals("TELEBIRR", tbResult.provider);
+        assertEquals("DJM05ZHSXC", tbResult.reference);
+        assertTrue(tbResult.isTelebirr);
+        assertFalse(tbResult.isCbe);
+
+        // 3. Telebirr SMS without link (only Amharic text)
+        String tbAmharicOnly = "የሂሳብ እንቅስቃሴ ቁጥርዎ DJJ7261SX7 ነው። የ 200 ብር ክፍያ ተፈጽሟል።";
+        ReceiptParser.DetectedPayment tbAmharicResult = ReceiptParser.extractReferenceFromOcrText(tbAmharicOnly);
+        assertNotNull(tbAmharicResult);
+        assertEquals("DJJ7261SX7", tbAmharicResult.reference);
+        assertEquals("TELEBIRR", tbAmharicResult.provider);
+
+        // 4. Modern CBE Mobile Banking v2 link
+        String cbeV2Text = "Payment successful! View receipt at https://mbreciept.cbe.com.et/v2-948fha83hf928hf9";
+        ReceiptParser.DetectedPayment v2Result = ReceiptParser.extractReferenceFromOcrText(cbeV2Text);
+        assertNotNull(v2Result);
+        assertEquals("v2-948fha83hf928hf9", v2Result.reference);
+        assertEquals("CBE", v2Result.provider);
+
+        // 5. Negative Test: Random cafe menu text or chatter should NEVER falsely trigger
+        String randomMenuText = "Welcome to Kogna Coffee! Fresh Ethiopian Yirgacheffe, Macchiato, and Croissant. Total: 250 ETB.";
+        assertNull("Random text must not produce a payment reference", ReceiptParser.extractReferenceFromOcrText(randomMenuText));
+        assertNull("Empty text must return null", ReceiptParser.extractReferenceFromOcrText(""));
+        assertNull("Null text must return null", ReceiptParser.extractReferenceFromOcrText(null));
+    }
 }

@@ -3,7 +3,7 @@
     <string name="app_name">ኮኛ ማረጋገጫ</string>
     <string name="app_title">ኮኛ ማረጋገጫ</string>
     <string name="camera_permission_required">የቴሌብር እና የንግድ ባንክ ደረሰኞችን ለመቃኘት የካሜራ ፍቃድ ያስፈልጋል።</string>
-    <string name="scan_prompt">የቴሌብር ወይም የንግድ ባንክ ደረሰኝ ምልክቱን እዚህ ውስጥ ያስተካክሉ</string>
+    <string name="scan_prompt">የቴሌብር / ንግድ ባንክ QR ወይም የSMS መልዕክት ይቃኙ</string>
 
     <!-- POS Connection Status -->
     <string name="pos_status_connecting">● ከካሸር ኮምፒውተር ጋር በመገናኘት ላይ…</string>

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { pushMenuItemStockToCloud, pushIngredientStockToCloud } from '@/lib/sync-engine'
 
 export interface OrderStockItem {
   menuItemId: string
@@ -117,6 +118,26 @@ export async function deductOrderStock(items: OrderStockItem[]) {
     })
   )
 
+  // Push updated MenuItem stock to Neon immediately so the background pull
+  // loop doesn't clobber the just-decremented local values with stale cloud data.
+  const modifiedMenuItemIds = new Set<string>()
+  for (const [menuItemId] of qtyMap) {
+    const item = fullItemMap.get(menuItemId)
+    if (!item) continue
+    modifiedMenuItemIds.add(item.parentItemId ?? menuItemId)
+  }
+  if (modifiedMenuItemIds.size > 0) {
+    const updatedMenuItems = await prisma.menuItem.findMany({
+      where: { id: { in: Array.from(modifiedMenuItemIds) } },
+      select: { id: true, stockQuantity: true, barQuantity: true },
+    })
+    await Promise.all(
+      updatedMenuItems.map(item =>
+        pushMenuItemStockToCloud(item.id, item.stockQuantity, item.barQuantity)
+      )
+    )
+  }
+
   // 2. Deduct ingredient stock based on recipes (batched)
   await deductIngredients(items)
 }
@@ -228,6 +249,19 @@ async function deductIngredients(items: OrderStockItem[]) {
         },
       })
     })
+  )
+
+  // Push updated ingredient stock to Neon immediately so the background pull
+  // loop doesn't restore stale cloud values over the just-decremented local state.
+  const ingredientIds = Array.from(deductions.keys())
+  const updatedIngredients = await prisma.ingredient.findMany({
+    where: { id: { in: ingredientIds } },
+    select: { id: true, quantity: true, barQuantity: true },
+  })
+  await Promise.all(
+    updatedIngredients.map(ing =>
+      pushIngredientStockToCloud(ing.id, ing.quantity, ing.barQuantity)
+    )
   )
 }
 

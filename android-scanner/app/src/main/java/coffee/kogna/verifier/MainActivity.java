@@ -37,6 +37,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.graphics.Bitmap;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
@@ -54,11 +55,20 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 
 import com.google.android.material.card.MaterialCardView;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.DecodeHintType;
+import com.google.zxing.LuminanceSource;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.Result;
 import com.google.zxing.ResultPoint;
 import com.journeyapps.barcodescanner.BarcodeCallback;
 import com.journeyapps.barcodescanner.BarcodeResult;
+import com.journeyapps.barcodescanner.Decoder;
+import com.journeyapps.barcodescanner.DecoderFactory;
 import com.journeyapps.barcodescanner.DecoratedBarcodeView;
 import com.journeyapps.barcodescanner.DefaultDecoderFactory;
 import com.journeyapps.barcodescanner.camera.CameraSettings;
@@ -207,6 +217,13 @@ public class MainActivity extends AppCompatActivity {
     private Handler mainHandler;
     private Runnable hedgedFallbackRunnable;
 
+    // 🧠 Google ML Kit Live Text Recognition (Dual Auto-Detection: QR + SMS/USSD OCR)
+    private TextRecognizer textRecognizer;
+    private final AtomicBoolean isOcrProcessing = new AtomicBoolean(false);
+    private long lastOcrTimestamp = 0L;
+    private long lastOcrTriggerTime = 0L;
+    private String lastDetectedOcrRef = "";
+
     // Polling runnable for real-time open orders from Cashier PC
     private final Runnable orderPollRunnable = new Runnable() {
         @Override
@@ -293,6 +310,10 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
 
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+
+        try {
+            textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        } catch (Exception ignored) {}
     }
 
     private void bindViews() {
@@ -582,7 +603,7 @@ public class MainActivity extends AppCompatActivity {
             hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
             hints.put(DecodeHintType.POSSIBLE_FORMATS, formats);
             hints.put(DecodeHintType.CHARACTER_SET, "UTF-8");
-            barcodeView.getBarcodeView().setDecoderFactory(new DefaultDecoderFactory(formats, hints, "UTF-8", 2));
+            barcodeView.getBarcodeView().setDecoderFactory(new DualDecoderFactory(formats, hints, "UTF-8"));
         } catch (Exception ignored) {}
 
         barcodeView.decodeContinuous(new BarcodeCallback() {
@@ -598,6 +619,131 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void possibleResultPoints(List<ResultPoint> resultPoints) {}
         });
+    }
+
+    /**
+     * Dual Decoder Factory: decodes QR/Barcodes via ZXing and seamlessly pipes
+     * frames without QR codes into Google ML Kit Text Recognition for real-time SMS / USSD OCR.
+     */
+    private class DualDecoderFactory implements DecoderFactory {
+        private final List<BarcodeFormat> formats;
+        private final Map<DecodeHintType, Object> hints;
+        private final String characterSet;
+
+        DualDecoderFactory(List<BarcodeFormat> formats, Map<DecodeHintType, Object> hints, String characterSet) {
+            this.formats = formats;
+            this.hints = hints;
+            this.characterSet = characterSet;
+        }
+
+        @Override
+        public Decoder createDecoder(Map<DecodeHintType, ?> baseHints) {
+            Map<DecodeHintType, Object> mergedHints = new EnumMap<>(DecodeHintType.class);
+            if (baseHints != null) {
+                mergedHints.putAll(baseHints);
+            }
+            if (this.hints != null) {
+                mergedHints.putAll(this.hints);
+            }
+            if (this.formats != null) {
+                mergedHints.put(DecodeHintType.POSSIBLE_FORMATS, this.formats);
+            }
+            if (this.characterSet != null) {
+                mergedHints.put(DecodeHintType.CHARACTER_SET, this.characterSet);
+            }
+
+            MultiFormatReader reader = new MultiFormatReader();
+            reader.setHints(mergedHints);
+
+            return new Decoder(reader) {
+                @Override
+                public Result decode(LuminanceSource source) {
+                    Result qrResult = super.decode(source);
+                    if (qrResult != null) {
+                        return qrResult;
+                    }
+
+                    // No barcode in this frame -> Run on-device ML Kit OCR for SMS / USSD text
+                    processOcrFrame(source);
+                    return null;
+                }
+            };
+        }
+    }
+
+    /**
+     * Process live camera frames for Ethiopian payment references (CBE FT... or Telebirr SMS/USSD).
+     */
+    private void processOcrFrame(LuminanceSource source) {
+        if (textRecognizer == null || isVerifying || isWebViewMode) return;
+        if (cardResult != null && cardResult.getVisibility() == View.VISIBLE) return;
+
+        long now = System.currentTimeMillis();
+        if (now - lastOcrTriggerTime < 2500) return; // Cooldown after successful scan
+        if (now - lastOcrTimestamp < 200) return;    // Throttled to ~5 frames per second
+
+        if (!isOcrProcessing.compareAndSet(false, true)) {
+            return;
+        }
+        lastOcrTimestamp = now;
+
+        try {
+            int width = source.getWidth();
+            int height = source.getHeight();
+            byte[] matrix = source.getMatrix();
+            if (matrix == null || matrix.length < width * height) {
+                isOcrProcessing.set(false);
+                return;
+            }
+
+            int[] pixels = new int[width * height];
+            for (int i = 0; i < pixels.length; i++) {
+                int grey = matrix[i] & 0xFF;
+                pixels[i] = 0xFF000000 | (grey << 16) | (grey << 8) | grey;
+            }
+            Bitmap bmp = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
+            InputImage inputImage = InputImage.fromBitmap(bmp, 0);
+
+            textRecognizer.process(inputImage)
+                    .addOnSuccessListener(visionText -> {
+                        bmp.recycle();
+                        isOcrProcessing.set(false);
+
+                        if (isVerifying || isWebViewMode || (cardResult != null && cardResult.getVisibility() == View.VISIBLE)) {
+                            return;
+                        }
+
+                        String rawText = visionText != null ? visionText.getText() : null;
+                        ReceiptParser.DetectedPayment detected = ReceiptParser.extractReferenceFromOcrText(rawText);
+                        if (detected != null && detected.reference != null && !detected.reference.trim().isEmpty()) {
+                            long triggerNow = System.currentTimeMillis();
+                            if (triggerNow - lastOcrTriggerTime < 2500) return;
+
+                            String ref = detected.reference.trim();
+                            // Debounce logic:
+                            // High-certainty patterns (CBE FT... or Telebirr slip URL) trigger immediately.
+                            // General text patterns require 2 consecutive frames to prevent motion blur misreads.
+                            boolean isHighConfidence = ref.toUpperCase().startsWith("FT") || (rawText != null && rawText.contains("transactioninfo"));
+                            if (isHighConfidence || ref.equalsIgnoreCase(lastDetectedOcrRef)) {
+                                lastOcrTriggerTime = triggerNow;
+                                lastDetectedOcrRef = "";
+                                mainHandler.post(() -> {
+                                    if (!isVerifying && !isWebViewMode && (cardResult == null || cardResult.getVisibility() != View.VISIBLE)) {
+                                        handleScannedPayload(ref);
+                                    }
+                                });
+                            } else {
+                                lastDetectedOcrRef = ref;
+                            }
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        bmp.recycle();
+                        isOcrProcessing.set(false);
+                    });
+        } catch (Throwable t) {
+            isOcrProcessing.set(false);
+        }
     }
 
     private void startLaserAnimation() {
@@ -680,6 +826,11 @@ public class MainActivity extends AppCompatActivity {
         mainHandler.removeCallbacks(orderPollRunnable);
         if (toneGenerator != null) {
             toneGenerator.release();
+        }
+        if (textRecognizer != null) {
+            try {
+                textRecognizer.close();
+            } catch (Exception ignored) {}
         }
         super.onDestroy();
     }
