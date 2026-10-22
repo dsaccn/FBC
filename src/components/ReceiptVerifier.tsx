@@ -46,12 +46,13 @@ export default function ReceiptVerifier({
   const isTelebirr = normalizedMethod.includes('TELEBIRR')
   const isDashen = normalizedMethod.includes('DASHEN')
   const isAwash = normalizedMethod.includes('AWASH')
+  const isBoa = normalizedMethod.includes('BOA') || normalizedMethod.includes('ABYSSINIA')
 
-  const providerLabel = isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : isDashen ? 'Dashen' : isAwash ? 'Awash' : ''
-  const providerEnum: 'CBE' | 'TELEBIRR' | 'DASHEN' | 'AWASH' = isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : isDashen ? 'DASHEN' : 'AWASH'
+  const providerLabel = isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : isDashen ? 'Dashen' : isAwash ? 'Awash' : isBoa ? 'Abyssinia (BOA)' : ''
+  const providerEnum: 'CBE' | 'TELEBIRR' | 'DASHEN' | 'AWASH' | 'BOA' = isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : isDashen ? 'DASHEN' : isAwash ? 'AWASH' : 'BOA'
 
-  // Only CBE, Telebirr, Dashen, and Awash support automated receipt verification
-  if (!isCbe && !isTelebirr && !isDashen && !isAwash) return null
+  // CBE, Telebirr, Dashen, Awash, and BOA support automated receipt verification
+  if (!isCbe && !isTelebirr && !isDashen && !isAwash && !isBoa) return null
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -144,13 +145,13 @@ export default function ReceiptVerifier({
         <div>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>
-              {isCbe ? 'CBE FT Reference (or full URL)' : isTelebirr ? 'Telebirr Transaction ID (or full URL)' : isDashen ? 'DashenSuperApp Receipt URL' : 'AwashPay Receipt URL'}
+              {isCbe ? 'CBE FT Reference (or full URL)' : isTelebirr ? 'Telebirr Transaction ID (or full URL)' : isDashen ? 'DashenSuperApp Receipt URL' : isAwash ? 'AwashPay Receipt URL' : 'BOA Transaction ID (or cs.bankofabyssinia.com link)'}
             </label>
             <input
               type="text"
               className="input"
               style={{ width: '100%', fontSize: '12px', height: '32px' }}
-              placeholder={isCbe ? 'e.g. FT25211G11JQ' : isTelebirr ? 'e.g. CHQ0FJ403O' : isDashen ? 'https://receipt.dashensuperapp.com/receipt/...' : 'https://awashpay.awashbank.com:8225/-...'}
+              placeholder={isCbe ? 'e.g. FT25211G11JQ' : isTelebirr ? 'e.g. CHQ0FJ403O' : isDashen ? 'https://receipt.dashensuperapp.com/receipt/...' : isAwash ? 'https://awashpay.awashbank.com:8225/-...' : 'https://cs.bankofabyssinia.com/slip/?trx=...'}
               value={refInput}
               onChange={e => setRefInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleVerify() } }}

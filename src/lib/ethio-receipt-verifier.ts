@@ -27,7 +27,7 @@ export interface VerifiedReceipt {
 }
 
 export interface VerifyReceiptParams {
-  provider?: 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'AUTO'
+  provider?: 'TELEBIRR' | 'CBE' | 'DASHEN' | 'AWASH' | 'BOA' | 'AUTO'
   referenceOrUrl: string
   accountDigits?: string // Used for CBE (last 8 digits of receiver account)
   expectedAmount?: number
@@ -566,6 +566,8 @@ export function isValidBankUrl(rawUrl: string): boolean {
       'dashensuperapp.com',
       'awashpay.awashbank.com',
       'awashbank.com',
+      'cs.bankofabyssinia.com',
+      'bankofabyssinia.com',
     ]
 
     return allowed.some(domain => hostname === domain || hostname.endsWith('.' + domain))
@@ -760,6 +762,174 @@ export async function verifyCbeReceipt(
 }
 
 /**
+ * Verify Bank of Abyssinia (BOA) receipt
+ * Primary: parse embedded JSON from the SPA's initial HTML (many React apps inject state server-side)
+ * Fallback: probe known API patterns
+ * Official slip URL: https://cs.bankofabyssinia.com/slip/?trx={id}
+ */
+export async function verifyBoaReceipt(urlOrId: string): Promise<VerifiedReceipt> {
+  const clean = urlOrId.trim()
+  // Extract transaction ID from URL or use as-is
+  const trxId = clean.match(/[?&]trx=([A-Za-z0-9_-]+)/i)?.[1] || clean.replace(/^https?:\/\/[^?]+\?trx=/i, '') || clean
+  const slipUrl = clean.startsWith('http') ? clean : `https://cs.bankofabyssinia.com/slip/?trx=${trxId}`
+
+  if (!isValidBankUrl(slipUrl)) {
+    return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: 'Invalid BOA receipt URL domain' }
+  }
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9,am;q=0.8',
+  }
+
+  try {
+    const res = await fetch(slipUrl, { headers, signal: AbortSignal.timeout(12000) })
+
+    if (!res.ok) {
+      return { success: false, provider: 'BOA', reference: trxId, currency: 'ETB', status: 'FAILED', errorMessage: `BOA server returned HTTP ${res.status}. Check the transaction ID.` }
+    }
+
+    const html = await res.text()
+
+    // Strategy 1: Extract __NEXT_DATA__ (Next.js SSR)
+    const nextDataMatch = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)
+    if (nextDataMatch) {
+      try {
+        const data = JSON.parse(nextDataMatch[1])
+        const slip = data?.props?.pageProps?.slip || data?.props?.pageProps?.transaction || data?.props?.pageProps?.data || {}
+        const rawAmount = slip.amount || slip.transactionAmount || slip.credit_amount || slip.debitAmount
+        const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
+        if (amount && amount > 0) {
+          return {
+            success: true,
+            provider: 'BOA',
+            reference: slip.transactionId || slip.trxId || slip.referenceNo || trxId,
+            payerName: slip.senderName || slip.debitAccountName || slip.from_name || undefined,
+            payerAccountOrPhone: slip.senderAccount || slip.debitAccountNo || undefined,
+            receiverName: slip.receiverName || slip.creditAccountName || slip.to_name || undefined,
+            receiverAccount: slip.receiverAccount || slip.creditAccountNo || undefined,
+            amount,
+            currency: 'ETB',
+            dateTime: slip.transactionDate || slip.createdAt || slip.date || undefined,
+            status: 'COMPLETED',
+          }
+        }
+      } catch {}
+    }
+
+    // Strategy 2: Generic window.__INITIAL_STATE__ or window.__APP_STATE__
+    const stateMatch = html.match(/window\.__(?:INITIAL|APP|REDUX|STORE)_STATE__\s*=\s*({[\s\S]*?})(?:\s*;|\s*<\/script>)/i)
+    if (stateMatch) {
+      try {
+        const state = JSON.parse(stateMatch[1])
+        // Walk common paths: state.slip, state.transaction, state.receipt
+        const candidates = [state.slip, state.transaction, state.receipt, state?.data?.slip, state?.app?.slip].filter(Boolean)
+        for (const slip of candidates) {
+          const rawAmount = slip?.amount || slip?.transactionAmount
+          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
+          if (amount && amount > 0) {
+            return {
+              success: true,
+              provider: 'BOA',
+              reference: slip?.transactionId || slip?.referenceNo || trxId,
+              payerName: slip?.senderName || undefined,
+              payerAccountOrPhone: slip?.senderAccount || undefined,
+              receiverName: slip?.receiverName || undefined,
+              receiverAccount: slip?.receiverAccount || undefined,
+              amount,
+              currency: 'ETB',
+              dateTime: slip?.transactionDate || undefined,
+              status: 'COMPLETED',
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Strategy 3: JSON blob in any <script> tag containing transaction keywords
+    const scriptTags = [...html.matchAll(/<script(?![^>]+src=)[^>]*>([\s\S]*?)<\/script>/gi)]
+    for (const [, content] of scriptTags) {
+      if (!/amount|transaction|sender|receiver/i.test(content)) continue
+      const jsonMatch = content.match(/(\{[\s\S]*"amount"[\s\S]*?\})/i)
+      if (jsonMatch) {
+        try {
+          const obj = JSON.parse(jsonMatch[1])
+          const rawAmount = obj.amount || obj.transactionAmount
+          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
+          if (amount && amount > 0) {
+            return {
+              success: true,
+              provider: 'BOA',
+              reference: obj.transactionId || obj.referenceNo || trxId,
+              payerName: obj.senderName || undefined,
+              receiverName: obj.receiverName || undefined,
+              amount,
+              currency: 'ETB',
+              dateTime: obj.transactionDate || undefined,
+              status: 'COMPLETED',
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Strategy 4: Probe BOA's likely public transaction API endpoint
+    const apiUrl = `https://cs.bankofabyssinia.com/api/slip/${trxId}`
+    const isApiDomain = isValidBankUrl(apiUrl)
+    if (isApiDomain) {
+      try {
+        const apiRes = await fetch(apiUrl, {
+          headers: { ...headers, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(8000),
+        })
+        if (apiRes.ok) {
+          const apiData = await apiRes.json()
+          const rawAmount = apiData.amount || apiData.transactionAmount || apiData.credit_amount
+          const amount = rawAmount ? parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) : undefined
+          if (amount && amount > 0) {
+            return {
+              success: true,
+              provider: 'BOA',
+              reference: apiData.transactionId || apiData.referenceNo || trxId,
+              payerName: apiData.senderName || apiData.from_name || undefined,
+              payerAccountOrPhone: apiData.senderAccount || undefined,
+              receiverName: apiData.receiverName || apiData.to_name || undefined,
+              receiverAccount: apiData.receiverAccount || undefined,
+              amount,
+              currency: 'ETB',
+              dateTime: apiData.transactionDate || apiData.date || undefined,
+              status: 'COMPLETED',
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // The page requires JavaScript rendering — cannot parse server-side
+    return {
+      success: false,
+      provider: 'BOA',
+      reference: trxId,
+      currency: 'ETB',
+      status: 'UNKNOWN',
+      errorMessage: 'BOA receipt page requires JavaScript rendering. Ask the customer to show the official slip on their screen and verify the amount manually.',
+    }
+  } catch (err: any) {
+    const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout')
+    return {
+      success: false,
+      provider: 'BOA',
+      reference: trxId,
+      currency: 'ETB',
+      status: isTimeout ? 'PENDING' : 'FAILED',
+      isTimeout,
+      errorMessage: isTimeout ? 'BOA server timed out. Try again or verify manually.' : `BOA verification error: ${err.message || String(err)}`,
+    }
+  }
+}
+
+/**
  * Verify Dashen Bank receipt via official DashenSuperApp PDF receipt link
  * Official endpoint: https://receipt.dashensuperapp.com/receipt/{id}
  */
@@ -942,6 +1112,11 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
     /awashpay\.awashbank\.com/i.test(clean) ||
     /awashbank\.com/i.test(clean)
 
+  const isBoa =
+    provider === 'BOA' ||
+    /bankofabyssinia\.com/i.test(clean) ||
+    /[?&]trx=/i.test(clean)
+
   const extractedTelebirrId = extractTelebirrTransactionId(clean)
   const isTelebirr =
     provider === 'TELEBIRR' ||
@@ -949,8 +1124,8 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
     clean.includes('telebirr') ||
     clean.startsWith('ODAx') ||
     clean.startsWith('8018') ||
-    (!isCbe && !isDashen && !isAwash && extractedTelebirrId !== clean && /^[A-Za-z0-9]{8,14}$/.test(extractedTelebirrId)) ||
-    (!isCbe && !isDashen && !isAwash && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
+    (!isCbe && !isDashen && !isAwash && !isBoa && extractedTelebirrId !== clean && /^[A-Za-z0-9]{8,14}$/.test(extractedTelebirrId)) ||
+    (!isCbe && !isDashen && !isAwash && !isBoa && clean.length <= 16 && /^[A-Z0-9]+$/i.test(clean))
 
   if (isCbe) {
     return verifyCbeReceipt(clean, accountDigits)
@@ -962,6 +1137,10 @@ export async function verifyEthioReceipt(params: VerifyReceiptParams): Promise<V
 
   if (isAwash) {
     return verifyAwashReceipt(clean)
+  }
+
+  if (isBoa) {
+    return verifyBoaReceipt(clean)
   }
 
   if (isTelebirr) {
