@@ -49,6 +49,8 @@ export default function OrderDetailPage() {
   const [splitMode, setSplitMode] = useState<'equal' | 'items'>('equal')
   const [splitCount, setSplitCount] = useState(2)
   const [itemAssignments, setItemAssignments] = useState<Record<string, number>>({}) // splitId → person (1-based)
+  const [splitCreating, setSplitCreating] = useState(false)
+  const [splitResult, setSplitResult] = useState<{ id: string; label: string; total: number }[] | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -412,11 +414,38 @@ export default function OrderDetailPage() {
           Array.from({ length: item.quantity }, (_, i) => ({
             id: item.id,
             splitId: `${item.id}_${i}`,
+            menuItemId: item.menuItem.id,
             name: item.menuItem.name,
             price: item.menuItem.price,
             notes: item.notes,
           }))
         )
+
+        const handleCreateSeparateOrders = async () => {
+          if (!allAssigned) return
+          setSplitCreating(true)
+          try {
+            const splits = Array.from({ length: splitCount }, (_, i) => i + 1)
+              .map(pNum => ({
+                label: `Person ${pNum} of ${splitCount}`,
+                items: personItems(pNum).map(e => ({ menuItemId: e.menuItemId, quantity: 1, notes: e.notes })),
+              }))
+              .filter(s => s.items.length > 0)
+
+            const res = await fetch('/api/orders/split', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ originalOrderId: id, splits }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed')
+            setSplitResult(data.orders)
+          } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to split order')
+          } finally {
+            setSplitCreating(false)
+          }
+        }
         const COLORS = ['#C9A84C', '#38bdf8', '#86efac', '#f97316', '#e879f9', '#fb7185', '#a3e635', '#67e8f9']
         const perPersonEqual = splitCount > 0 ? total / splitCount : 0
 
@@ -435,8 +464,43 @@ export default function OrderDetailPage() {
                     <Scissors size={18} color="var(--gold)" />
                     <span style={{ fontWeight: '700', fontSize: '16px' }}>Separate Bill — Table {order!.table.number}</span>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowSplitModal(false)}><X size={16} /></button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setShowSplitModal(false); setSplitResult(null) }}><X size={16} /></button>
                 </div>
+
+                {/* ── Success state after orders created ── */}
+                {splitResult && (
+                  <div>
+                    <div style={{ background: 'rgba(82,183,136,0.08)', border: '1px solid var(--success-light)', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', textAlign: 'center' }}>
+                      <CheckCircle size={22} color="var(--success-light)" style={{ marginBottom: '6px' }} />
+                      <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--success-light)' }}>Separate orders created!</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Original order cancelled. Each person can now pay independently.</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {splitResult.map((o, i) => (
+                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: `1.5px solid ${COLORS[i] || '#ccc'}`, background: `${COLORS[i]}12` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: COLORS[i] || '#ccc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', color: '#000' }}>{i + 1}</span>
+                            <div>
+                              <div style={{ fontWeight: '600', fontSize: '13px' }}>{o.label}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order #{o.id.slice(-6).toUpperCase()}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontWeight: '700', color: 'var(--gold)' }}>{o.total.toFixed(2)} ETB</span>
+                            <Link href={`/dashboard/payment?orderId=${o.id}`} className="btn btn-gold btn-sm" style={{ fontSize: '12px', padding: '5px 10px' }} onClick={() => setShowSplitModal(false)}>
+                              Pay
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn btn-outline btn-sm" style={{ width: '100%', marginTop: '12px' }} onClick={() => { setShowSplitModal(false); setSplitResult(null); router.push('/dashboard/orders') }}>
+                      Back to Orders
+                    </button>
+                  </div>
+                )}
+
+                {!splitResult && (<>
 
                 {/* Mode tabs */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
@@ -566,17 +630,27 @@ export default function OrderDetailPage() {
                         ⚠ {expandedItems.length - assignedCount} item{expandedItems.length - assignedCount !== 1 ? 's' : ''} not yet assigned
                       </div>
                     )}
-                    <button className="btn btn-gold btn-sm" style={{ width: '100%', padding: '10px' }} disabled={!allAssigned}
-                      onClick={() => {
-                        for (let p = 1; p <= splitCount; p++) {
-                          const pItems = personItems(p)
-                          if (pItems.length > 0) printSplitBill(p, pItems.map(e => ({ name: e.name, price: e.price, quantity: 1 })), personTotal(p), `Person ${p} of ${splitCount}`)
-                        }
-                      }}>
-                      <Printer size={14} /> Print All Separate Bills
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                      <button className="btn btn-outline btn-sm" style={{ flex: 1, padding: '9px' }} disabled={!allAssigned}
+                        onClick={() => {
+                          for (let p = 1; p <= splitCount; p++) {
+                            const pItems = personItems(p)
+                            if (pItems.length > 0) printSplitBill(p, pItems.map(e => ({ name: e.name, price: e.price, quantity: 1 })), personTotal(p), `Person ${p} of ${splitCount}`)
+                          }
+                        }}>
+                        <Printer size={13} /> Print Bills
+                      </button>
+                      <button className="btn btn-gold btn-sm" style={{ flex: 1, padding: '9px', fontWeight: '700' }} disabled={!allAssigned || splitCreating}
+                        onClick={handleCreateSeparateOrders}>
+                        {splitCreating ? 'Creating...' : <><Scissors size={13} /> Create Separate Orders</>}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>
+                      &quot;Create Separate Orders&quot; registers each person&apos;s items as a real order — the phone can verify payment independently.
+                    </div>
                   </div>
                 )}
+                </>)}
               </div>
             </div>
           </Portal>
