@@ -22,7 +22,11 @@ interface Order {
   verifiedAt?: string | null
 }
 
-const PAYMENT_METHODS = ['Cash', 'Telebirr', 'CBE']
+const PAYMENT_METHODS = [
+  'Cash', 'Telebirr', 'CBE',
+  'Abyssinia', 'Awash', 'Dashen', 'BOA',
+  'Hibret', 'Wegagen', 'Nib', 'Oromia', 'Amhara',
+]
 
 export default function PaymentPage() {
   const searchParams = useSearchParams()
@@ -257,7 +261,7 @@ export default function PaymentPage() {
     ? discountType === 'percentage' ? (subtotal * parseFloat(discountValue)) / 100 : parseFloat(discountValue)
     : 0
   const tipAmt = parseFloat(tipAmount) || 0
-  const isDigitalPayment = method === 'Telebirr' || method === 'CBE'
+  const isDigitalPayment = method !== 'Cash'
   const total = Math.max(0, subtotal - discountAmt + tipAmt)
 
   // Helper: parse delivery/takeaway or standard table

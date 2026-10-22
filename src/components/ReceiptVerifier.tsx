@@ -1,6 +1,7 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
+import { ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, X } from 'lucide-react'
 
 export const DEFAULT_CBE_ACCOUNT = ''
 
@@ -28,15 +29,11 @@ interface ReceiptVerifierProps {
 }
 
 export default function ReceiptVerifier({
-  method: _method,
-  expectedAmount: _expectedAmount,
-  onVerified: _onVerified,
-  onClear: _onClear,
+  method,
+  expectedAmount,
+  onVerified,
+  onClear,
 }: ReceiptVerifierProps) {
-  // Verification options are commented out for now
-  return null
-
-  /*
   const [refInput, setRefInput] = useState('')
   const [accountInput, setAccountInput] = useState(DEFAULT_CBE_ACCOUNT)
   const [loading, setLoading] = useState(false)
@@ -44,16 +41,12 @@ export default function ReceiptVerifier({
   const [errorMsg, setErrorMsg] = useState('')
   const [copiedAcc, setCopiedAcc] = useState(false)
 
-  // Only show verifier for digital bank/telecom payments
-  const normalizedMethod = _method.toUpperCase()
-  const isDigital = ['TELEBIRR', 'CBE', 'CBE BIRR', 'ABYSSINIA', 'BOA', 'DASHEN', 'BANK TRANSFER'].some(m =>
-    normalizedMethod.includes(m)
-  )
-
-  if (!isDigital) return null
-
+  const normalizedMethod = method.toUpperCase()
   const isCbe = normalizedMethod.includes('CBE')
   const isTelebirr = normalizedMethod.includes('TELEBIRR')
+
+  // Only CBE and Telebirr support automated receipt verification
+  if (!isCbe && !isTelebirr) return null
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -79,10 +72,10 @@ export default function ReceiptVerifier({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: isCbe ? 'CBE' : isTelebirr ? 'TELEBIRR' : 'AUTO',
+          provider: isCbe ? 'CBE' : 'TELEBIRR',
           referenceOrUrl: refInput.trim(),
           accountDigits: accountInput.trim() || undefined,
-          expectedAmount: _expectedAmount,
+          expectedAmount,
         }),
       })
 
@@ -90,13 +83,13 @@ export default function ReceiptVerifier({
 
       if (res.ok && data.receipt && data.receipt.success) {
         setVerifiedReceipt(data.receipt)
-        if (_onVerified) _onVerified(data.receipt)
+        if (onVerified) onVerified(data.receipt)
       } else {
         const msg = data.receipt?.errorMessage || data.error || 'Receipt could not be verified'
         setErrorMsg(msg)
         setVerifiedReceipt(null)
       }
-    } catch (err: any) {
+    } catch {
       setErrorMsg('Network error connecting to verification service')
       setVerifiedReceipt(null)
     } finally {
@@ -109,7 +102,7 @@ export default function ReceiptVerifier({
     setErrorMsg('')
     setRefInput('')
     setAccountInput(DEFAULT_CBE_ACCOUNT)
-    if (_onClear) _onClear()
+    if (onClear) onClear()
   }
 
   return (
@@ -127,7 +120,7 @@ export default function ReceiptVerifier({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <ShieldCheck size={16} color="var(--gold)" />
           <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--gold)' }}>
-            Verify Official {isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : 'Bank'} Receipt
+            Verify Official {isCbe ? 'CBE' : 'Telebirr'} Receipt
           </span>
         </div>
         {verifiedReceipt && (
@@ -146,39 +139,22 @@ export default function ReceiptVerifier({
         <div>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>
-              {isCbe ? 'CBE FT Reference (or full URL)' : isTelebirr ? 'Telebirr Transaction ID (or full URL)' : 'Transaction Reference / Slip URL'}
+              {isCbe ? 'CBE FT Reference (or full URL)' : 'Telebirr Transaction ID (or full URL)'}
             </label>
             <input
               type="text"
               className="input"
               style={{ width: '100%', fontSize: '12px', height: '32px' }}
-              placeholder={isCbe ? 'e.g. FT25211G11JQ' : isTelebirr ? 'e.g. CHQ0FJ403O' : 'e.g. Reference code or receipt link'}
+              placeholder={isCbe ? 'e.g. FT25211G11JQ' : 'e.g. CHQ0FJ403O'}
               value={refInput}
               onChange={e => setRefInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleVerify()
-                }
-              }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleVerify() } }}
               disabled={loading}
             />
           </div>
 
           {errorMsg && (
-            <div
-              style={{
-                fontSize: '11px',
-                color: 'var(--danger-light)',
-                background: 'rgba(239, 68, 68, 0.1)',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                marginBottom: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
+            <div style={{ fontSize: '11px', color: 'var(--danger-light)', background: 'rgba(239, 68, 68, 0.1)', padding: '6px 10px', borderRadius: '6px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <AlertTriangle size={13} style={{ flexShrink: 0 }} />
               <span>{errorMsg}</span>
             </div>
@@ -192,25 +168,14 @@ export default function ReceiptVerifier({
             disabled={loading || !refInput.trim()}
           >
             {loading ? (
-              <>
-                <RefreshCw size={13} className="animate-spin" /> Verifying with {isCbe ? 'CBE' : isTelebirr ? 'Telebirr' : 'Bank'}...
-              </>
+              <><RefreshCw size={13} className="animate-spin" /> Verifying with {isCbe ? 'CBE' : 'Telebirr'}...</>
             ) : (
-              <>
-                <ShieldCheck size={14} /> Verify &amp; Match Amount
-              </>
+              <><ShieldCheck size={14} /> Verify &amp; Match Amount</>
             )}
           </button>
         </div>
       ) : (
-        <div
-          style={{
-            background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.35)',
-            borderRadius: '8px',
-            padding: '10px 12px',
-          }}
-        >
+        <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '8px', padding: '10px 12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
             <CheckCircle2 size={16} color="var(--success-light)" />
             <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--success-light)' }}>
@@ -237,29 +202,25 @@ export default function ReceiptVerifier({
                 {verifiedReceipt.amount ? `${verifiedReceipt.amount.toFixed(2)} ETB` : 'Confirmed'}
               </span>
             </div>
-            <div>
-              <b style={{ color: 'var(--text-primary)' }}>Ref / Slip ID:</b> {verifiedReceipt.reference}
-            </div>
+            <div><b style={{ color: 'var(--text-primary)' }}>Ref / Slip ID:</b> {verifiedReceipt.reference}</div>
             {verifiedReceipt.dateTime && (
-              <div>
-                <b style={{ color: 'var(--text-primary)' }}>Timestamp:</b> {verifiedReceipt.dateTime}
-              </div>
+              <div><b style={{ color: 'var(--text-primary)' }}>Timestamp:</b> {verifiedReceipt.dateTime}</div>
             )}
           </div>
 
           {typeof verifiedReceipt.amount === 'number' && (
             <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed rgba(16, 185, 129, 0.3)', fontSize: '11px' }}>
-              {Math.abs(verifiedReceipt.amount - _expectedAmount) < 0.5 ? (
+              {Math.abs(verifiedReceipt.amount - expectedAmount) < 0.5 ? (
                 <span style={{ color: 'var(--success-light)', fontWeight: '600' }}>
-                  ✓ Transferred amount matches order total ({_expectedAmount.toFixed(2)} ETB).
+                  ✓ Transferred amount matches order total ({expectedAmount.toFixed(2)} ETB).
                 </span>
-              ) : verifiedReceipt.amount < _expectedAmount ? (
+              ) : verifiedReceipt.amount < expectedAmount ? (
                 <span style={{ color: 'var(--danger-light)', fontWeight: '600' }}>
-                  ⚠️ Underpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) is less than order total ({_expectedAmount.toFixed(2)} ETB)!
+                  ⚠️ Underpaid: Receipt ({verifiedReceipt.amount.toFixed(2)} ETB) is less than order total ({expectedAmount.toFixed(2)} ETB)!
                 </span>
               ) : (
                 <span style={{ color: 'var(--gold)', fontWeight: '600' }}>
-                  ℹ Overpaid: Receipt amount ({verifiedReceipt.amount.toFixed(2)} ETB) covers total ({_expectedAmount.toFixed(2)} ETB) with excess.
+                  ℹ Overpaid: Receipt ({verifiedReceipt.amount.toFixed(2)} ETB) covers total ({expectedAmount.toFixed(2)} ETB) with excess.
                 </span>
               )}
             </div>
@@ -268,5 +229,4 @@ export default function ReceiptVerifier({
       )}
     </div>
   )
-  */
 }

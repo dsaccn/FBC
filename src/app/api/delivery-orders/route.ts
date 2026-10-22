@@ -65,6 +65,47 @@ export async function GET(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json()
+    const { orderId, items } = body
+
+    if (!orderId) return NextResponse.json({ error: 'orderId required' }, { status: 400 })
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'At least one item required' }, { status: 400 })
+    }
+
+    const isOfflineLocal = !process.env.VERCEL
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        orderItems: {
+          create: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            notes: item.notes?.trim() || null,
+            pendingSync: isOfflineLocal,
+          })),
+        },
+      },
+      include: {
+        table: true,
+        waiter: { select: { id: true, fullName: true, username: true } },
+        orderItems: { include: { menuItem: { include: { category: true } } } },
+      },
+    })
+
+    await deductOrderStock(items)
+    backgroundSync()
+
+    return NextResponse.json(updatedOrder)
+  } catch (err) {
+    console.error('[PATCH /api/delivery-orders]', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()

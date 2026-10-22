@@ -4,12 +4,28 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   Bike, ShoppingBag, Plus, RefreshCw, Printer, Search, Phone,
   MapPin, FileText, CheckCircle, Clock, DollarSign, X, AlertCircle,
-  ChefHat, CreditCard, ChevronRight, Minus, Trash2, ArrowLeft, ArrowRight
+  ChefHat, CreditCard, ChevronRight, Minus, Trash2, ArrowLeft, ArrowRight,
+  GitMerge, PackagePlus
 } from 'lucide-react'
 import { toast } from '@/components/ToastProvider'
 import Portal from '@/components/Portal'
 import ReceiptVerifier from '@/components/ReceiptVerifier'
 import { printTicketHtml } from '@/lib/printer'
+
+const PAYMENT_METHODS = [
+  'Cash',
+  'Telebirr',
+  'CBE',
+  'Abyssinia',
+  'Awash',
+  'Dashen',
+  'BOA',
+  'Hibret',
+  'Wegagen',
+  'Nib',
+  'Oromia',
+  'Amhara',
+]
 
 interface MenuItem {
   id: string
@@ -110,6 +126,21 @@ export default function DeliveryPage() {
   const [tipValue, setTipValue] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [paying, setPaying] = useState(false)
+
+  // Add items to existing order
+  const [orderToAddItems, setOrderToAddItems] = useState<DeliveryOrder | null>(null)
+  const [addItemsCart, setAddItemsCart] = useState<CartItem[]>([])
+  const [addItemsMobileTab, setAddItemsMobileTab] = useState<'MENU' | 'CART'>('MENU')
+  const [addingItems, setAddingItems] = useState(false)
+
+  // Merge payment
+  const [mergeSelected, setMergeSelected] = useState<Set<string>>(new Set())
+  const [showMergePayModal, setShowMergePayModal] = useState(false)
+  const [mergePayMethod, setMergePayMethod] = useState('Cash')
+  const [mergeDiscountValue, setMergeDiscountValue] = useState('')
+  const [mergeTipValue, setMergeTipValue] = useState('')
+  const [mergePayNotes, setMergePayNotes] = useState('')
+  const [mergePaying, setMergePaying] = useState(false)
 
   // Current session user
   const [sessionUser, setSessionUser] = useState<{ id: string; fullName: string; role: string } | null>(null)
@@ -345,7 +376,7 @@ export default function DeliveryPage() {
     const subtotal = activeItems.reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
     const discount = parseFloat(discountValue) || 0
     const tip = parseFloat(tipValue) || 0
-    const isTransfer = payMethod === 'CBE' || payMethod === 'Telebirr'
+    const isTransfer = payMethod !== 'Cash'
     const finalAmount = Math.max(0, subtotal - discount + (isTransfer ? tip : 0))
     const notesWithTip = tip > 0 && isTransfer
       ? (payNotes ? `${payNotes} [Tip: ${tip.toFixed(2)} ETB]` : `[Tip: ${tip.toFixed(2)} ETB]`)
@@ -574,6 +605,114 @@ export default function DeliveryPage() {
       </html>
     `
     printTicketHtml(html)
+  }
+
+  // Add-items cart helpers
+  const addToAddItemsCart = (item: MenuItem) => {
+    setAddItemsCart(prev => {
+      const existing = prev.find(c => c.menuItem.id === item.id)
+      if (existing) return prev.map(c => c.menuItem.id === item.id ? { ...c, quantity: c.quantity + 1 } : c)
+      return [...prev, { menuItem: item, quantity: 1, notes: '' }]
+    })
+    toast.success(`Added ${item.name}`, 1000)
+  }
+
+  const updateAddItemsQty = (id: string, delta: number) => {
+    setAddItemsCart(prev =>
+      prev.map(c => c.menuItem.id === id ? { ...c, quantity: Math.max(0, c.quantity + delta) } : c)
+          .filter(c => c.quantity > 0)
+    )
+  }
+
+  const addItemsSubtotal = addItemsCart.reduce((s, c) => s + c.menuItem.price * c.quantity, 0)
+
+  const handleAddItemsToOrder = async () => {
+    if (!orderToAddItems || addItemsCart.length === 0) {
+      toast.warning('Add at least one item')
+      return
+    }
+    setAddingItems(true)
+    try {
+      const res = await fetch('/api/delivery-orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: orderToAddItems.id,
+          items: addItemsCart.map(c => ({
+            menuItemId: c.menuItem.id,
+            quantity: c.quantity,
+            notes: c.notes.trim() || undefined,
+          })),
+        }),
+      })
+      if (res.ok) {
+        toast.success('Items added to order!')
+        setOrderToAddItems(null)
+        setAddItemsCart([])
+        await loadOrders(false)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Failed to add items')
+      }
+    } catch {
+      toast.error('Network error adding items')
+    } finally {
+      setAddingItems(false)
+    }
+  }
+
+  // Merge payment helpers
+  const toggleMergeSelect = (orderId: string) => {
+    setMergeSelected(prev => {
+      const next = new Set(prev)
+      next.has(orderId) ? next.delete(orderId) : next.add(orderId)
+      return next
+    })
+  }
+
+  const selectedMergeOrders = orders.filter(o => mergeSelected.has(o.id) && o.status === 'OPEN')
+
+  const handleMergePayment = async () => {
+    if (selectedMergeOrders.length < 2) return
+    const discount = parseFloat(mergeDiscountValue) || 0
+    const tip = parseFloat(mergeTipValue) || 0
+    const isTransfer = mergePayMethod !== 'Cash'
+    const totalSubtotal = selectedMergeOrders.reduce((s, o) =>
+      s + o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((ss, i) => ss + i.menuItem.price * i.quantity, 0), 0)
+
+    setMergePaying(true)
+    try {
+      await Promise.all(selectedMergeOrders.map(async (order) => {
+        const orderSub = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+        const orderDiscount = totalSubtotal > 0 ? discount * (orderSub / totalSubtotal) : 0
+        const orderTip = isTransfer && totalSubtotal > 0 ? tip * (orderSub / totalSubtotal) : 0
+        const amount = Math.max(0, orderSub - orderDiscount + orderTip)
+        await fetch('/api/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.id,
+            cashierId: sessionUser?.id,
+            amount,
+            method: mergePayMethod,
+            discount: orderDiscount,
+            discountType: 'fixed',
+            notes: mergePayNotes.trim() || undefined,
+          }),
+        })
+      }))
+      toast.success(`${selectedMergeOrders.length} orders settled (${mergePayMethod})`)
+      setShowMergePayModal(false)
+      setMergeSelected(new Set())
+      setMergeDiscountValue('')
+      setMergeTipValue('')
+      setMergePayNotes('')
+      await loadOrders(false)
+    } catch {
+      toast.error('Error processing merge payment')
+    } finally {
+      setMergePaying(false)
+    }
   }
 
   // Filtered menu items for order creation dialog
@@ -881,6 +1020,25 @@ export default function DeliveryPage() {
                     </span>
                   </div>
 
+                  {isOpen && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleMergeSelect(order.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          padding: '4px 10px', fontSize: '11px', fontWeight: '600',
+                          borderRadius: '6px', cursor: 'pointer',
+                          border: `1.5px solid ${mergeSelected.has(order.id) ? '#0284c7' : '#CBD5E1'}`,
+                          background: mergeSelected.has(order.id) ? '#EFF6FF' : '#F8FAFC',
+                          color: mergeSelected.has(order.id) ? '#0284c7' : '#64748B',
+                        }}
+                      >
+                        <GitMerge size={12} />
+                        {mergeSelected.has(order.id) ? '✓ Selected for merge' : 'Select for merge'}
+                      </button>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {/* Print Customer Ticket */}
                     <button
@@ -912,16 +1070,36 @@ export default function DeliveryPage() {
 
                     {/* Settle Payment if Open */}
                     {isOpen ? (
-                      <button
-                        className="btn btn-gold btn-sm"
-                        style={{
-                          flex: 1, minWidth: '85px', padding: '8px 12px', fontSize: '12px',
-                          borderRadius: '8px', fontWeight: '700'
-                        }}
-                        onClick={() => setOrderToPay(order)}
-                      >
-                        <CreditCard size={14} /> Pay
-                      </button>
+                      <>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{
+                            padding: '8px 10px', fontSize: '12px', fontWeight: '600',
+                            background: '#F0FDF4', border: '1.5px solid #86EFAC',
+                            color: '#15803D', borderRadius: '8px'
+                          }}
+                          onClick={() => {
+                            setOrderToAddItems(order)
+                            setAddItemsCart([])
+                            setAddItemsMobileTab('MENU')
+                            setMenuSearch('')
+                            setActiveCategoryId('ALL')
+                          }}
+                          title="Add more items to this order"
+                        >
+                          <PackagePlus size={14} /> Add Items
+                        </button>
+                        <button
+                          className="btn btn-gold btn-sm"
+                          style={{
+                            flex: 1, minWidth: '85px', padding: '8px 12px', fontSize: '12px',
+                            borderRadius: '8px', fontWeight: '700'
+                          }}
+                          onClick={() => setOrderToPay(order)}
+                        >
+                          <CreditCard size={14} /> Pay
+                        </button>
+                      </>
                     ) : (
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -937,6 +1115,186 @@ export default function DeliveryPage() {
             )
           })}
         </div>
+      )}
+
+      {/* ── Floating Merge Payment Bar ───────────────────────────────────────── */}
+      {mergeSelected.size >= 2 && (
+        <Portal>
+          <div style={{
+            position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 900, background: '#0F172A', border: '2px solid #0284c7',
+            borderRadius: '14px', padding: '12px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'center',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+              <GitMerge size={18} style={{ color: '#38bdf8' }} />
+              <span style={{ fontSize: '14px', fontWeight: '700' }}>{mergeSelected.size} orders selected</span>
+              <span style={{ color: '#94A3B8', fontSize: '13px' }}>
+                · Total: <b style={{ color: '#C9A84C' }}>
+                  {selectedMergeOrders.reduce((s, o) =>
+                    s + o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((ss, i) => ss + i.menuItem.price * i.quantity, 0), 0
+                  ).toFixed(2)} ETB
+                </b>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn btn-ghost btn-sm" style={{ fontSize: '12px', color: '#94A3B8', padding: '6px 12px' }} onClick={() => setMergeSelected(new Set())}>
+                Clear
+              </button>
+              <button className="btn btn-gold btn-sm" style={{ fontSize: '13px', fontWeight: '700', padding: '8px 18px' }} onClick={() => setShowMergePayModal(true)}>
+                <CreditCard size={14} /> Pay Together
+              </button>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* ── Modal: Add Items to Existing Order ───────────────────────────────── */}
+      {orderToAddItems && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => setOrderToAddItems(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(5, 4, 2, 0.88)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+            <div className="delivery-order-dialog" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--black-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--black-card)', flexShrink: 0, gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(134,239,172,0.14)', color: '#15803D' }}>
+                    <PackagePlus size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>
+                      Add Items — {parseDeliveryMeta(orderToAddItems.table.number, orderToAddItems.orderItems).orderName}
+                    </h3>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                      Select items to append to this open order
+                    </p>
+                  </div>
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{ padding: '6px', borderRadius: '8px' }} onClick={() => setOrderToAddItems(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Mobile Tab Switcher */}
+              <div className="delivery-mobile-tabs" style={{ borderBottom: '1px solid var(--black-border)', background: 'var(--black-surface)', display: 'flex' }}>
+                <button type="button" onClick={() => setAddItemsMobileTab('MENU')} style={{ flex: 1, padding: '10px', fontSize: '12px', fontWeight: '600', background: addItemsMobileTab === 'MENU' ? 'rgba(201,168,76,0.12)' : 'transparent', color: addItemsMobileTab === 'MENU' ? 'var(--gold)' : 'var(--text-secondary)', border: 'none', borderBottom: addItemsMobileTab === 'MENU' ? '2px solid var(--gold)' : '2px solid transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <span>🍽️ Select Items</span>
+                  <span style={{ padding: '1px 6px', borderRadius: '10px', background: addItemsMobileTab === 'MENU' ? 'var(--gold)' : 'rgba(255,255,255,0.1)', color: addItemsMobileTab === 'MENU' ? 'var(--black)' : 'inherit', fontSize: '11px', fontWeight: '700' }}>
+                    {addItemsCart.reduce((s, c) => s + c.quantity, 0)}
+                  </span>
+                </button>
+                <button type="button" onClick={() => setAddItemsMobileTab('CART')} style={{ flex: 1, padding: '10px', fontSize: '12px', fontWeight: '600', background: addItemsMobileTab === 'CART' ? 'rgba(201,168,76,0.12)' : 'transparent', color: addItemsMobileTab === 'CART' ? 'var(--gold)' : 'var(--text-secondary)', border: 'none', borderBottom: addItemsMobileTab === 'CART' ? '2px solid var(--gold)' : '2px solid transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <span>📋 Items to Add</span>
+                  {addItemsSubtotal > 0 && (
+                    <span style={{ padding: '1px 6px', borderRadius: '10px', background: 'rgba(201,168,76,0.2)', color: 'var(--gold)', fontSize: '11px', fontWeight: '700' }}>
+                      {addItemsSubtotal.toFixed(0)} ETB
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="delivery-modal-body">
+                {/* Left: Menu */}
+                <div className="delivery-col-menu" style={{ display: addItemsMobileTab === 'MENU' ? 'flex' : 'none', flexDirection: 'column', minHeight: 0, height: '100%', position: 'relative' }}>
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--black-border)', flexShrink: 0 }}>
+                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input type="text" placeholder="Search menu items..." value={menuSearch} onChange={e => setMenuSearch(e.target.value)} className="input" style={{ width: '100%', paddingLeft: '32px', fontSize: '13px', height: '34px' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                      <button type="button" className={`btn btn-sm ${activeCategoryId === 'ALL' ? 'btn-gold' : 'btn-ghost'}`} style={{ fontSize: '11px', padding: '4px 10px', whiteSpace: 'nowrap' }} onClick={() => setActiveCategoryId('ALL')}>All ({menuItems.length})</button>
+                      {categories.map(cat => (
+                        <button key={cat.id} type="button" className={`btn btn-sm ${activeCategoryId === cat.id ? 'btn-gold' : 'btn-ghost'}`} style={{ fontSize: '11px', padding: '4px 10px', whiteSpace: 'nowrap' }} onClick={() => setActiveCategoryId(cat.id)}>
+                          {cat.name} ({menuItems.filter(i => i.category?.id === cat.id).length})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', alignContent: 'start' }}>
+                    {filteredMenuItems.map(item => {
+                      const inCart = addItemsCart.find(c => c.menuItem.id === item.id)
+                      return (
+                        <div key={item.id} onClick={() => addToAddItemsCart(item)} style={{ background: inCart ? 'rgba(201,168,76,0.08)' : 'var(--black-card)', border: inCart ? '1.5px solid var(--gold)' : '1px solid var(--black-border)', borderRadius: '10px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '80px', position: 'relative' }}>
+                          {inCart && <div style={{ position: 'absolute', top: '6px', right: '6px', background: 'var(--gold)', color: 'var(--black)', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '800' }}>{inCart.quantity}</div>}
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '12px', color: 'var(--text-primary)', marginBottom: '2px', paddingRight: inCart ? '20px' : '0' }}>{item.name}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{item.category?.name || 'Item'}</div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                            <span style={{ color: 'var(--gold)', fontWeight: '700', fontSize: '12px' }}>{item.price.toFixed(2)} ETB</span>
+                            <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: inCart ? 'var(--gold)' : 'rgba(201,168,76,0.15)', color: inCart ? 'var(--black)' : 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700' }}>+</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {addItemsCart.length > 0 && (
+                    <div className="delivery-mobile-bottom-bar" style={{ padding: '10px 14px', borderTop: '1px solid var(--black-border)', background: 'linear-gradient(135deg, #241C0E 0%, #1A1408 100%)', flexShrink: 0 }}>
+                      <button type="button" className="btn btn-gold btn-sm" style={{ width: '100%', padding: '10px', justifyContent: 'space-between', fontSize: '13px' }} onClick={() => setAddItemsMobileTab('CART')}>
+                        <span>🛒 {addItemsCart.reduce((s, c) => s + c.quantity, 0)} item(s) · {addItemsSubtotal.toFixed(2)} ETB</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Review <ArrowRight size={14} /></span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Cart */}
+                <div className="delivery-col-cart" style={{ display: addItemsMobileTab === 'CART' ? 'flex' : 'none', flexDirection: 'column', minHeight: 0, height: '100%', background: 'var(--black-surface)' }}>
+                  <div className="delivery-mobile-tabs" style={{ padding: '8px 14px', background: 'rgba(201,168,76,0.06)', borderBottom: '1px solid var(--black-border)', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--gold)' }} onClick={() => setAddItemsMobileTab('MENU')}>
+                      <ArrowLeft size={13} /> Back to Menu
+                    </button>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{addItemsCart.reduce((s, c) => s + c.quantity, 0)} item(s)</span>
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px' }}>
+                    {addItemsCart.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '36px 14px', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '28px', marginBottom: '6px' }}>🛒</div>
+                        <div style={{ fontSize: '12px', fontWeight: '500' }}>No items selected yet</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {addItemsCart.map(item => (
+                          <div key={item.menuItem.id} style={{ background: 'var(--black-card)', border: '1px solid var(--black-border)', borderRadius: '8px', padding: '8px 10px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: '600', fontSize: '12px' }}>{item.menuItem.name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontWeight: '700', color: 'var(--gold)', fontSize: '12px' }}>{(item.menuItem.price * item.quantity).toFixed(2)} ETB</span>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px', color: 'var(--danger-light)', minWidth: 'auto', height: 'auto' }} onClick={() => setAddItemsCart(prev => prev.filter(c => c.menuItem.id !== item.menuItem.id))}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--black-surface)', padding: '2px 4px', borderRadius: '6px', border: '1px solid var(--black-border)' }}>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 5px', height: '22px', minWidth: '22px' }} onClick={() => updateAddItemsQty(item.menuItem.id, -1)}><Minus size={11} /></button>
+                                <span style={{ fontWeight: '700', fontSize: '12px', minWidth: '18px', textAlign: 'center' }}>{item.quantity}</span>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 5px', height: '22px', minWidth: '22px' }} onClick={() => updateAddItemsQty(item.menuItem.id, 1)}><Plus size={11} /></button>
+                              </div>
+                              <input type="text" placeholder="Item note..." value={item.notes} onChange={e => { const val = e.target.value; setAddItemsCart(prev => prev.map(c => c.menuItem.id === item.menuItem.id ? { ...c, notes: val } : c)) }} className="input" style={{ fontSize: '11px', height: '26px', flex: 1 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '12px 16px', borderTop: '1px solid var(--black-border)', background: 'var(--black-card)', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Adding ({addItemsCart.reduce((s, c) => s + c.quantity, 0)} items):</span>
+                      <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--gold)' }}>{addItemsSubtotal.toFixed(2)} ETB</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setOrderToAddItems(null)}>Cancel</button>
+                      <button type="button" className="btn btn-gold btn-sm" style={{ flex: 1, padding: '8px 12px', fontSize: '12px' }} onClick={handleAddItemsToOrder} disabled={addingItems || addItemsCart.length === 0}>
+                        <PackagePlus size={13} /> {addingItems ? 'Adding...' : 'Add to Order'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
 
       {/* ── Modal: Create Delivery / Takeaway Order ───────────────────────────── */}
@@ -1596,13 +1954,13 @@ export default function DeliveryPage() {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>
                   Payment Method
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
-                  {['Cash', 'Telebirr', 'CBE'].map(m => (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {PAYMENT_METHODS.map(m => (
                     <button
                       key={m}
                       type="button"
                       className={`btn btn-sm ${payMethod === m ? 'btn-gold' : 'btn-outline'}`}
-                      style={{ fontSize: '12px' }}
+                      style={{ fontSize: '12px', padding: '5px 12px' }}
                       onClick={() => setPayMethod(m)}
                     >
                       {m}
@@ -1611,8 +1969,8 @@ export default function DeliveryPage() {
                 </div>
               </div>
 
-              {/* Tip for digital payments */}
-              {(payMethod === 'Telebirr' || payMethod === 'CBE') && (
+              {/* Tip for non-cash payments */}
+              {payMethod !== 'Cash' && (
                 <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: 'var(--gold)' }}>
                     💝 Tip (Optional)
@@ -1630,15 +1988,15 @@ export default function DeliveryPage() {
                 </div>
               )}
 
-              {/* Official Receipt Verifier - Commented out for now */}
-              {/*
+              {/* Receipt Verifier — active for CBE and Telebirr only */}
               {(() => {
                 const sub = orderToPay.orderItems
                   .filter(i => i.status !== 'CANCELLED')
                   .reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
                 const disc = parseFloat(discountValue) || 0
-                const finalAmt = Math.max(0, sub - disc)
-
+                const tip = parseFloat(tipValue) || 0
+                const isTransfer = payMethod !== 'Cash'
+                const finalAmt = Math.max(0, sub - disc + (isTransfer ? tip : 0))
                 return (
                   <ReceiptVerifier
                     method={payMethod}
@@ -1646,7 +2004,7 @@ export default function DeliveryPage() {
                     onVerified={(receipt) => {
                       const verifiedTag = `[Verified ${receipt.provider} | Ref: ${receipt.reference}${receipt.payerName ? ` | Payer: ${receipt.payerName}` : ''}]`
                       setPayNotes(prev => prev ? `${prev} ${verifiedTag}` : verifiedTag)
-                      toast.success(`Verified official ${receipt.provider} slip: ${receipt.amount ? `${receipt.amount.toFixed(2)} ETB` : 'Confirmed'}`)
+                      toast.success(`Verified ${receipt.provider}: ${receipt.amount ? `${receipt.amount.toFixed(2)} ETB` : 'Confirmed'}`)
                     }}
                     onClear={() => {
                       setPayNotes(prev => prev.replace(/\[Verified[^\]]+\]/g, '').trim())
@@ -1654,7 +2012,6 @@ export default function DeliveryPage() {
                   />
                 )
               })()}
-              */}
 
               {/* Discount Input */}
               <div style={{ marginBottom: '14px' }}>
@@ -1693,7 +2050,7 @@ export default function DeliveryPage() {
                   .reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
                 const disc = parseFloat(discountValue) || 0
                 const tip = parseFloat(tipValue) || 0
-                const isTransfer = payMethod === 'CBE' || payMethod === 'Telebirr'
+                const isTransfer = payMethod !== 'Cash'
                 const finalAmt = Math.max(0, sub - disc + (isTransfer ? tip : 0))
 
                 return (
@@ -1739,6 +2096,111 @@ export default function DeliveryPage() {
                   disabled={paying}
                 >
                   {paying ? 'Processing...' : 'Confirm & Complete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* ── Modal: Merge Payment ─────────────────────────────────────────────── */}
+      {showMergePayModal && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => setShowMergePayModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(5, 4, 2, 0.88)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '24px', borderRadius: '16px', border: '1px solid var(--black-border)', background: 'var(--black-card)', boxShadow: '0 25px 60px rgba(0,0,0,0.85)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <GitMerge size={18} style={{ color: '#38bdf8' }} />
+                  <h3 style={{ fontSize: '17px', fontWeight: '700', margin: 0 }}>Pay {selectedMergeOrders.length} Orders Together</h3>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowMergePayModal(false)}><X size={18} /></button>
+              </div>
+
+              {/* Orders summary */}
+              <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedMergeOrders.map(order => {
+                  const meta = parseDeliveryMeta(order.table.number, order.orderItems)
+                  const sub = order.orderItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.menuItem.price * i.quantity, 0)
+                  return (
+                    <div key={order.id} style={{ background: 'var(--black-surface)', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--gold)' }}>{meta.orderName}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{order.orderItems.filter(i => i.status !== 'CANCELLED').length} items</div>
+                      </div>
+                      <span style={{ fontSize: '14px', fontWeight: '700' }}>{sub.toFixed(2)} ETB</span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Payment Method */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Payment Method</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {PAYMENT_METHODS.map(m => (
+                    <button key={m} type="button" className={`btn btn-sm ${mergePayMethod === m ? 'btn-gold' : 'btn-outline'}`} style={{ fontSize: '12px', padding: '5px 12px' }} onClick={() => setMergePayMethod(m)}>{m}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tip for non-cash payments */}
+              {mergePayMethod !== 'Cash' && (
+                <div style={{ marginBottom: '14px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: 'var(--gold)' }}>💝 Tip (Optional)</label>
+                  <input type="number" placeholder="0.00 ETB" value={mergeTipValue} onChange={e => setMergeTipValue(e.target.value)} className="input" style={{ width: '100%' }} min="0" step="5" />
+                </div>
+              )}
+
+              {/* Discount */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Discount (ETB)</label>
+                <input type="number" placeholder="0.00" value={mergeDiscountValue} onChange={e => setMergeDiscountValue(e.target.value)} className="input" style={{ width: '100%' }} />
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Payment Reference / Notes</label>
+                <input type="text" placeholder="e.g. Telebirr ref, driver name..." value={mergePayNotes} onChange={e => setMergePayNotes(e.target.value)} className="input" style={{ width: '100%' }} />
+              </div>
+
+              {/* Total */}
+              {(() => {
+                const totalSub = selectedMergeOrders.reduce((s, o) =>
+                  s + o.orderItems.filter(i => i.status !== 'CANCELLED').reduce((ss, i) => ss + i.menuItem.price * i.quantity, 0), 0)
+                const disc = parseFloat(mergeDiscountValue) || 0
+                const tip = parseFloat(mergeTipValue) || 0
+                const isTransfer = mergePayMethod !== 'Cash'
+                const finalAmt = Math.max(0, totalSub - disc + (isTransfer ? tip : 0))
+                return (
+                  <div style={{ padding: '12px', background: 'var(--black-surface)', borderRadius: '8px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Combined Subtotal</span>
+                      <span>{totalSub.toFixed(2)} ETB</span>
+                    </div>
+                    {disc > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--warning-light)' }}>Discount</span>
+                        <span style={{ color: 'var(--warning-light)' }}>-{disc.toFixed(2)} ETB</span>
+                      </div>
+                    )}
+                    {tip > 0 && isTransfer && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--gold)' }}>💝 Tip</span>
+                        <span style={{ color: 'var(--gold)' }}>+{tip.toFixed(2)} ETB</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--black-border)' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '600' }}>Total to Pay:</span>
+                      <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gold)' }}>{finalAmt.toFixed(2)} ETB</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowMergePayModal(false)}>Cancel</button>
+                <button className="btn btn-gold" style={{ flex: 1.5 }} onClick={handleMergePayment} disabled={mergePaying}>
+                  {mergePaying ? 'Processing...' : `Settle ${selectedMergeOrders.length} Orders`}
                 </button>
               </div>
             </div>
