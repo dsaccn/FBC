@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Printer, FileText, X, CheckCircle, AlertCircle, Plus, Unlink, Merge, Scissors, Users } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from '@/components/ToastProvider'
@@ -36,6 +36,7 @@ interface Order {
 export default function OrderDetailPage() {
   const { id } = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<{ id: string; username: string; fullName: string; role: string } | null>(null)
@@ -66,6 +67,17 @@ export default function OrderDetailPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Auto-open split modal when navigated here with ?split=true
+  useEffect(() => {
+    if (searchParams.get('split') === 'true' && order) {
+      setShowSplitModal(true)
+      setSplitMode('items')
+      setSplitCount(2)
+      setItemAssignments({})
+      setSplitResult(null)
+    }
+  }, [searchParams, order])
 
   function printCancellationTicket(item: OrderItem, tableNumber: string, qty: number) {
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })

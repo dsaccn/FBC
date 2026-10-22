@@ -22,6 +22,7 @@ import {
   DollarSign,
   Receipt,
   ChevronDown,
+  Scissors,
 } from 'lucide-react'
 import Portal from '@/components/Portal'
 import { printTicketHtml } from '@/lib/printer'
@@ -845,6 +846,13 @@ export default function OrdersPage() {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--gold)' }}>{total.toFixed(2)} ETB</div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    {order.status === 'OPEN' && (
+                      <Link href={`/dashboard/orders/${order.id}?split=true`} className="btn btn-outline btn-sm"
+                        style={{ borderColor: 'rgba(201,168,76,0.5)', color: 'var(--gold)' }}
+                        title="Separate bill between guests">
+                        <Scissors size={13} /> Split
+                      </Link>
+                    )}
                     <Link href={`/dashboard/orders/${order.id}`} className="btn btn-outline btn-sm">
                       <Eye size={13} /> View
                     </Link>
