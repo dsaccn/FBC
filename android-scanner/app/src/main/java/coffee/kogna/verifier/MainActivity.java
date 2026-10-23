@@ -41,6 +41,7 @@ import android.graphics.Bitmap;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -167,6 +168,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtResultPosMatch;
     private LinearLayout layoutPostScanTablePicker;
     private LinearLayout layoutPostScanTableButtons;
+    private ScrollView scrollPostScanTableButtons;
     private ImageView btnCopyRef;
     private Button btnScanNext;
     private Button btnRetryVerification;
@@ -383,6 +385,7 @@ public class MainActivity extends AppCompatActivity {
         txtResultPosMatch = findViewById(R.id.txtResultPosMatch);
         layoutPostScanTablePicker = findViewById(R.id.layoutPostScanTablePicker);
         layoutPostScanTableButtons = findViewById(R.id.layoutPostScanTableButtons);
+        scrollPostScanTableButtons = findViewById(R.id.scrollPostScanTableButtons);
         btnCopyRef = findViewById(R.id.btnCopyRef);
         btnScanNext = findViewById(R.id.btnScanNext);
         btnRetryVerification = findViewById(R.id.btnRetryVerification);
@@ -2389,6 +2392,17 @@ public class MainActivity extends AppCompatActivity {
                 chip.setOnClickListener(v -> linkVerifiedReceiptToOrder(order));
                 if (currentRow != null) currentRow.addView(chip);
                 colIndex++;
+            }
+
+            // Limit scroll height to ~4 rows when there are many orders
+            if (scrollPostScanTableButtons != null) {
+                if (currentOpenOrders.size() > 4) {
+                    int maxHeightPx = Math.round(240f * getResources().getDisplayMetrics().density);
+                    scrollPostScanTableButtons.getLayoutParams().height = maxHeightPx;
+                } else {
+                    scrollPostScanTableButtons.getLayoutParams().height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+                }
+                scrollPostScanTableButtons.requestLayout();
             }
         });
     }
