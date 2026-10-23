@@ -1886,6 +1886,7 @@ public class MainActivity extends AppCompatActivity {
                     playBeep(true);
                     clearSelectedOrder();
                     fetchOpenOrders(false);
+                    updateHistoryLinked(lastVerifiedRef, orderName);
                     if (layoutPostScanTablePicker != null) layoutPostScanTablePicker.setVisibility(View.GONE);
                 } else {
                     txtResultPosMatch.setText("✅ Recorded on Cashier PC");
@@ -2115,25 +2116,40 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
+            int dp8 = Math.round(8f * getResources().getDisplayMetrics().density);
+            int dp4 = Math.round(4f * getResources().getDisplayMetrics().density);
+            LinearLayout currentRow = null;
+            int colIndex = 0;
+
             for (final OpenOrder order : currentOpenOrders) {
+                if (colIndex % 2 == 0) {
+                    currentRow = new LinearLayout(MainActivity.this);
+                    currentRow.setOrientation(LinearLayout.HORIZONTAL);
+                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    rowLp.setMargins(0, 0, 0, dp8);
+                    currentRow.setLayoutParams(rowLp);
+                    layoutPostScanTableButtons.addView(currentRow);
+                }
+
                 TextView chip = new TextView(MainActivity.this);
-                chip.setText(String.format(Locale.US, "%s (%.0f ETB)", order.displayTitle, order.total));
-                chip.setBackgroundResource(R.drawable.bg_order_chip);
-                chip.setTextColor(ContextCompat.getColor(MainActivity.this, R.color.gold));
+                chip.setText(String.format(Locale.US, "%s\n%.0f ETB", order.displayTitle, order.total));
+                chip.setBackgroundResource(order.isVerified ? R.drawable.badge_status_green : R.drawable.bg_order_chip);
+                chip.setTextColor(ContextCompat.getColor(MainActivity.this, order.isVerified ? R.color.status_green : R.color.gold));
                 chip.setTextSize(12);
-                chip.setPadding(30, 16, 30, 16);
+                chip.setPadding(dp8, dp8, dp8, dp8);
                 chip.setClickable(true);
                 chip.setFocusable(true);
+                chip.setGravity(android.view.Gravity.CENTER);
 
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                );
-                lp.setMargins(0, 0, 16, 0);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                if (colIndex % 2 == 0) lp.setMargins(0, 0, dp4, 0);
+                else lp.setMargins(dp4, 0, 0, 0);
                 chip.setLayoutParams(lp);
 
                 chip.setOnClickListener(v -> linkVerifiedReceiptToOrder(order));
-                layoutPostScanTableButtons.addView(chip);
+                if (currentRow != null) currentRow.addView(chip);
+                colIndex++;
             }
         });
     }
@@ -2237,6 +2253,7 @@ public class MainActivity extends AppCompatActivity {
                                 layoutPostScanTablePicker.setVisibility(View.GONE);
                                 clearSelectedOrder();
                                 fetchOpenOrders(false);
+                                updateHistoryLinked(lastVerifiedRef, targetOrder.displayTitle);
                                 Toast.makeText(MainActivity.this, "✅ Marked Paid on Cashier PC for " + targetOrder.displayTitle, Toast.LENGTH_SHORT).show();
                             } else {
                                 handleLinkOrderError(res, statusCode);
@@ -2729,16 +2746,87 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject item = arr.getJSONObject(i);
                 double amt = item.optDouble("amount", 0.0);
                 totalBirr += amt;
+                String linkedTitle = item.optString("linkedOrderTitle", "");
+                boolean isLinked = !linkedTitle.isEmpty();
+                boolean success = item.optBoolean("success", true);
+                boolean canRestore = success && !isLinked;
 
-                TextView row = new TextView(this);
-                row.setPadding(0, 16, 0, 16);
-                row.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-                row.setText(String.format(Locale.US,
-                        "• %s | %.2f ETB | %s\n  Ref: %s | Payer: %s",
-                        item.optString("provider"), amt, item.optString("time"),
-                        item.optString("reference"), item.optString("payer")
-                ));
-                listContainer.addView(row);
+                // Card container
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.VERTICAL);
+                int dp8 = Math.round(8f * getResources().getDisplayMetrics().density);
+                int dp12 = Math.round(12f * getResources().getDisplayMetrics().density);
+                int dp6 = Math.round(6f * getResources().getDisplayMetrics().density);
+                card.setPadding(dp12, dp8, dp12, dp8);
+                card.setBackgroundResource(isLinked ? R.drawable.badge_status_green : (canRestore ? R.drawable.bg_order_chip : R.drawable.badge_status_red));
+                if (canRestore) {
+                    card.setClickable(true);
+                    card.setFocusable(true);
+                    final int idx = i;
+                    card.setOnClickListener(v -> {
+                        // Restore scan context so user can link
+                        lastVerifiedRef = item.optString("reference", "");
+                        lastVerifiedProvider = item.optString("provider", "");
+                        lastVerifiedAmount = amt;
+                        lastVerifiedPayer = item.optString("payer", "");
+                        dialog.dismiss();
+                        // Show the scanner overlay result + table picker
+                        if (scannerOverlay != null) scannerOverlay.setVisibility(View.VISIBLE);
+                        if (ordersSection != null) ordersSection.setVisibility(View.GONE);
+                        if (layoutPostScanTablePicker != null && !currentOpenOrders.isEmpty()) {
+                            layoutPostScanTablePicker.setVisibility(View.VISIBLE);
+                            populatePostScanTableButtons();
+                        }
+                    });
+                }
+
+                // Main line: payer | amount
+                LinearLayout row1 = new LinearLayout(this);
+                row1.setOrientation(LinearLayout.HORIZONTAL);
+                TextView tvPayer = new TextView(this);
+                tvPayer.setText(item.optString("payer", item.optString("reference", "?")));
+                tvPayer.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+                tvPayer.setTextSize(13f);
+                tvPayer.setTypeface(null, Typeface.BOLD);
+                LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                tvPayer.setLayoutParams(lp1);
+                TextView tvAmt = new TextView(this);
+                tvAmt.setText(String.format(Locale.US, "%.2f ETB", amt));
+                tvAmt.setTextColor(ContextCompat.getColor(this, isLinked ? R.color.status_green : R.color.gold));
+                tvAmt.setTextSize(13f);
+                tvAmt.setTypeface(null, Typeface.BOLD);
+                row1.addView(tvPayer);
+                row1.addView(tvAmt);
+                card.addView(row1);
+
+                // Sub-line: provider · time
+                TextView tvSub = new TextView(this);
+                tvSub.setText(item.optString("provider", "") + " · " + item.optString("time", ""));
+                tvSub.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+                tvSub.setTextSize(11f);
+                card.addView(tvSub);
+
+                // Status line
+                if (isLinked) {
+                    TextView tvLinked = new TextView(this);
+                    tvLinked.setText("✓ Linked → " + linkedTitle);
+                    tvLinked.setTextColor(ContextCompat.getColor(this, R.color.status_green));
+                    tvLinked.setTextSize(11f);
+                    tvLinked.setTypeface(null, Typeface.BOLD);
+                    card.addView(tvLinked);
+                } else if (canRestore) {
+                    TextView tvTap = new TextView(this);
+                    tvTap.setText("Tap to link to an order →");
+                    tvTap.setTextColor(ContextCompat.getColor(this, R.color.gold));
+                    tvTap.setTextSize(11f);
+                    card.addView(tvTap);
+                }
+
+                LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                cardLp.setMargins(0, 0, 0, dp8);
+                card.setLayoutParams(cardLp);
+                listContainer.addView(card);
             }
 
             txtHistoryTotal.setText(String.format(Locale.US, "Today's Total: %.2f ETB (%d scans)", totalBirr, arr.length()));
@@ -2767,9 +2855,27 @@ public class MainActivity extends AppCompatActivity {
             item.put("payer", payer);
             item.put("time", new SimpleDateFormat("HH:mm", Locale.US).format(new Date()));
             item.put("success", success);
+            item.put("linkedOrderTitle", "");
 
             arr.put(item);
             prefs.edit().putString(KEY_HISTORY, arr.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private void updateHistoryLinked(String ref, String orderTitle) {
+        try {
+            String historyJson = prefs.getString(KEY_HISTORY, "[]");
+            JSONArray arr = new JSONArray(historyJson);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.getJSONObject(i);
+                if (ref.equals(item.optString("reference"))) {
+                    item.put("linkedOrderTitle", orderTitle);
+                    arr.put(i, item);
+                    break;
+                }
+            }
+            prefs.edit().putString(KEY_HISTORY, arr.toString()).apply();
+            updateTodaySummary();
         } catch (Exception ignored) {}
     }
 
