@@ -4,10 +4,15 @@ import { backgroundSync } from '@/lib/sync-engine'
 
 const MERGED_ORDER_ID = 'cmvkwf3ai000apxhxzunrct4h'
 const DELIVERY_TABLE_ID = 'tbl_static_delivery'
+const SCANNER_TOKEN = 'kogna_scanner_secure_2026'
 
 // One-time recovery endpoint — moves delivery items back from merged Table 10 order
-// GET /api/system/recover-delivery
-export async function GET() {
+// GET /api/system/recover-delivery?key=kogna_scanner_secure_2026
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  if (searchParams.get('key') !== SCANNER_TOKEN) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const merged = await prisma.order.findUnique({
       where: { id: MERGED_ORDER_ID },

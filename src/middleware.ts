@@ -54,6 +54,7 @@ export async function middleware(req: NextRequest) {
   if (
     pathname === '/scanner' ||
     pathname === '/api/verify-receipt' ||
+    pathname === '/api/system/recover-delivery' ||
     pathname.startsWith('/api/scanner') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/abebe') ||
