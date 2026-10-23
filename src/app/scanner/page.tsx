@@ -56,6 +56,7 @@ interface ScanHistoryItem {
   payerName?: string
   timestamp: string
   success: boolean
+  linkedOrderTitle?: string
 }
 
 export interface OpenOrder {
@@ -483,8 +484,14 @@ export default function QRScannerPage() {
       const data = await res.json()
       if (data.success) {
         const targetOrder = openOrders.find(o => o.id === targetOrderId)
-        setLinkedSuccessMessage(`⚡ Verified payment sent to Cashier for ${targetOrder?.displayTitle || 'Order'}!`)
+        const title = targetOrder?.displayTitle || 'Order'
+        setLinkedSuccessMessage(`⚡ Verified payment sent to Cashier for ${title}!`)
         fetchOpenOrders()
+        if (verifiedResult?.reference) {
+          setHistory(prev => prev.map(h =>
+            h.reference === verifiedResult.reference ? { ...h, linkedOrderTitle: title } : h
+          ))
+        }
       } else {
         alert(data.error || 'Failed to link payment to order')
       }
@@ -734,9 +741,11 @@ export default function QRScannerPage() {
         setVerifiedResult(receipt)
         setAmountMatches(finalResultData?.amountMatches ?? null)
 
+        let autoLinkedTitle: string | undefined
         if (finalResultData?.linkedOrder) {
           const target = openOrders.find(o => o.id === finalResultData.linkedOrder.id)
-          setLinkedSuccessMessage(`⚡ Automatically sent to Cashier POS for ${target?.displayTitle || 'Table'}!`)
+          autoLinkedTitle = target?.displayTitle || 'Table'
+          setLinkedSuccessMessage(`⚡ Automatically sent to Cashier POS for ${autoLinkedTitle}!`)
           fetchOpenOrders()
         }
 
@@ -751,6 +760,7 @@ export default function QRScannerPage() {
           payerName: receipt.payerName,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
           success: true,
+          linkedOrderTitle: autoLinkedTitle,
         }
         setHistory(prev => [historyEntry, ...prev.slice(0, 19)])
       } else {
@@ -1497,11 +1507,9 @@ export default function QRScannerPage() {
             </div>
             {openOrders.length > 0 ? (
               <div style={{
-                display: 'flex',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
                 gap: '8px',
-                overflowX: 'auto',
-                paddingBottom: '4px',
-                scrollbarWidth: 'none'
               }}>
                 {openOrders.map(order => (
                   <button
@@ -1509,7 +1517,6 @@ export default function QRScannerPage() {
                     type="button"
                     onClick={() => handleSelectOrder(order)}
                     style={{
-                      flexShrink: 0,
                       padding: '8px 12px',
                       borderRadius: '10px',
                       border: order.isVerified
@@ -2895,34 +2902,66 @@ export default function QRScannerPage() {
               <div style={{ textAlign: 'center', padding: '20px', color: '#94A3B8', fontSize: '13px', fontStyle: 'italic' }}>
                 No receipts scanned in this session yet.
               </div>
-            ) : history.map(item => (
-              <div
-                key={item.id}
-                style={{
-                  background: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '10px',
-                  padding: '9px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '12px'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.success ? '#059669' : '#DC2626' }} />
-                    <span>{item.payerName || item.reference}</span>
+            ) : history.map(item => {
+              const isLinked = Boolean(item.linkedOrderTitle)
+              const canRestore = item.success && !isLinked
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={!canRestore && isLinked}
+                  onClick={canRestore ? () => {
+                    setVerifiedResult({
+                      success: true,
+                      provider: item.provider as any,
+                      reference: item.reference,
+                      amount: item.amount,
+                      payerName: item.payerName,
+                      currency: 'ETB',
+                      status: 'COMPLETED',
+                    })
+                    setShowHistory(false)
+                  } : undefined}
+                  style={{
+                    background: isLinked ? '#F0FDF4' : canRestore ? '#FFFBEB' : '#FEF2F2',
+                    border: `1px solid ${isLinked ? '#A7F3D0' : canRestore ? '#FDE68A' : '#FECACA'}`,
+                    borderRadius: '10px',
+                    padding: '9px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '12px',
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: canRestore ? 'pointer' : 'default',
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0, background: item.success ? '#059669' : '#DC2626' }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.payerName || item.reference}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      {item.provider} · {item.timestamp}
+                    </div>
+                    {isLinked && (
+                      <div style={{ fontSize: '11px', color: '#059669', fontWeight: '700', marginTop: '2px' }}>
+                        ✓ Linked → {item.linkedOrderTitle}
+                      </div>
+                    )}
+                    {canRestore && (
+                      <div style={{ fontSize: '11px', color: '#B45309', fontWeight: '600', marginTop: '2px' }}>
+                        Tap to link to an order
+                      </div>
+                    )}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
-                    {item.provider} · {item.timestamp}
-                  </div>
-                </div>
-                <b style={{ color: item.success ? '#059669' : '#DC2626', fontVariantNumeric: 'tabular-nums', fontWeight: '800' }}>
-                  {typeof item.amount === 'number' ? formatMoney(item.amount) : (item.success ? 'OK' : 'FAIL')}
-                </b>
-              </div>
-            ))}
+                  <b style={{ color: item.success ? '#059669' : '#DC2626', fontVariantNumeric: 'tabular-nums', fontWeight: '800', marginLeft: '8px', flexShrink: 0 }}>
+                    {typeof item.amount === 'number' ? formatMoney(item.amount) : (item.success ? 'OK' : 'FAIL')}
+                  </b>
+                </button>
+              )
+            })}
           </div>
         )}
       </footer>
