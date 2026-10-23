@@ -1,5 +1,12 @@
 apply plugin: 'com.android.application'
 
+// Load keystore.properties if it exists (local machine fallback)
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace 'coffee.kogna.verifier'
     compileSdk 34
@@ -16,13 +23,17 @@ android {
 
     signingConfigs {
         kogna {
+            // 1. Environment variables (CI / build server)
             def ksPath = System.getenv("KOGNA_KEYSTORE_PATH")
+            // 2. keystore.properties file (local machine)
+            if (!ksPath && keystoreProps['storeFile']) ksPath = keystoreProps['storeFile']
+
             if (ksPath && file(ksPath).exists()) {
                 storeFile file(ksPath)
-                storePassword System.getenv("KOGNA_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("KOGNA_KEY_ALIAS")
-                keyPassword System.getenv("KOGNA_KEY_PASSWORD")
-                storeType "PKCS12"
+                storePassword System.getenv("KOGNA_KEYSTORE_PASSWORD") ?: keystoreProps['storePassword']
+                keyAlias     System.getenv("KOGNA_KEY_ALIAS")          ?: keystoreProps['keyAlias']
+                keyPassword  System.getenv("KOGNA_KEY_PASSWORD")        ?: keystoreProps['keyPassword']
+                storeType    "PKCS12"
             }
         }
     }
@@ -33,6 +44,7 @@ android {
             signingConfig (signingConfigs.kogna.storeFile != null ? signingConfigs.kogna : signingConfigs.debug)
         }
         debug {
+            // Always use the Kogna keystore so APK signatures are consistent across machines
             signingConfig (signingConfigs.kogna.storeFile != null ? signingConfigs.kogna : signingConfigs.debug)
         }
     }
