@@ -902,12 +902,12 @@ export default function OrdersPage() {
                         <Scissors size={13} /> Split
                       </Link>
                     )}
-                    {order.status === 'OPEN' && !info.isSpecial && (
+                    {order.status === 'OPEN' && (
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
                         style={{ borderColor: 'rgba(201,168,76,0.5)', color: 'var(--gold)' }}
-                        title="Combine with another table — pay together"
+                        title="Combine with another order — pay together"
                         onClick={() => setMergeSource(order)}
                       >
                         <GitMerge size={13} /> Merge
@@ -969,8 +969,7 @@ export default function OrdersPage() {
                 {orders
                   .filter(o =>
                     o.status === 'OPEN' &&
-                    o.id !== mergeSource.id &&
-                    !parseOrderInfo(o.table.number).isSpecial
+                    o.id !== mergeSource.id
                   )
                   .sort((a, b) => {
                     const na = parseInt(a.table.number) || 999
@@ -999,7 +998,7 @@ export default function OrdersPage() {
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: '600', fontSize: '14px' }}>Table {target.table.number}</div>
+                          <div style={{ fontWeight: '600', fontSize: '14px' }}>{parseOrderInfo(target.table.number, target.orderItems).title}</div>
                           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
                             {target.orderItems.length} items · {target.waiter?.fullName}
                           </div>
@@ -1013,9 +1012,9 @@ export default function OrdersPage() {
                       </button>
                     )
                   })}
-                {orders.filter(o => o.status === 'OPEN' && o.id !== mergeSource.id && !parseOrderInfo(o.table.number).isSpecial).length === 0 && (
+                {orders.filter(o => o.status === 'OPEN' && o.id !== mergeSource.id).length === 0 && (
                   <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0', fontSize: '13px' }}>
-                    No other open table orders to merge with.
+                    No other open orders to merge with.
                   </p>
                 )}
               </div>
