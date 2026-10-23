@@ -1130,6 +1130,17 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // If order is already verified/linked, tapping it offers to unlink — never opens camera
+        if (order.isVerified) {
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Unlink Payment")
+                    .setMessage("Remove verified payment from " + order.displayTitle + "?")
+                    .setPositiveButton("Unlink", (d, w) -> clearOrderVerification(order))
+                    .setNegativeButton("Cancel", null)
+                    .show();
+            return;
+        }
+
         // If a verified receipt is currently shown, tap = link payment
         if (cardResult != null && cardResult.getVisibility() == View.VISIBLE && lastVerifiedRef != null && !lastVerifiedRef.isEmpty()) {
             linkVerifiedReceiptToOrder(order);
@@ -1145,6 +1156,65 @@ public class MainActivity extends AppCompatActivity {
             // Auto-open scanner so cashier can scan immediately after selecting a table
             openScannerOverlay();
         }
+    }
+
+    private void clearOrderVerification(final OpenOrder order) {
+        showLoading("Unlinking " + order.displayTitle + "...");
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+
+        List<String> endpoints = new ArrayList<>();
+        if (activePosUrl != null && !activePosUrl.trim().isEmpty())
+            endpoints.add(activePosUrl.trim().replaceAll("/+$", ""));
+        if (!endpoints.contains(DEFAULT_LOCAL_URL)) endpoints.add(DEFAULT_LOCAL_URL);
+        if (!endpoints.contains(DEFAULT_TUNNEL_URL)) endpoints.add(DEFAULT_TUNNEL_URL);
+
+        tryClearVerificationEndpoints(endpoints, 0, order, apiKey);
+    }
+
+    private void tryClearVerificationEndpoints(List<String> endpoints, int index, OpenOrder order, String apiKey) {
+        if (index >= endpoints.size()) {
+            mainHandler.post(() -> {
+                hideLoading();
+                Toast.makeText(this, "Could not reach server to unlink", Toast.LENGTH_SHORT).show();
+            });
+            return;
+        }
+        String url = endpoints.get(index) + "/api/scanner/verify-order?orderId=" + order.id + "&key=" + apiKey;
+        Request req = new Request.Builder()
+                .url(url)
+                .addHeader("x-api-key", apiKey)
+                .delete()
+                .build();
+        new OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+                .newCall(req).enqueue(new Callback() {
+                    @Override public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                        tryClearVerificationEndpoints(endpoints, index + 1, order, apiKey);
+                    }
+                    @Override public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                        final String body = response.body() != null ? response.body().string() : "{}";
+                        if (response.isSuccessful()) {
+                            mainHandler.post(() -> {
+                                hideLoading();
+                                try {
+                                    JSONObject res = new JSONObject(body);
+                                    if (res.optBoolean("success", false)) {
+                                        Toast.makeText(MainActivity.this, "✅ Payment unlinked from " + order.displayTitle, Toast.LENGTH_SHORT).show();
+                                        fetchOpenOrders(false);
+                                    } else {
+                                        Toast.makeText(MainActivity.this, res.optString("error", "Unlink failed"), Toast.LENGTH_SHORT).show();
+                                    }
+                                } catch (Exception ex) {
+                                    Toast.makeText(MainActivity.this, "Unlink error", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        } else {
+                            tryClearVerificationEndpoints(endpoints, index + 1, order, apiKey);
+                        }
+                    }
+                });
     }
 
     private void updateSelectedOrderBanner() {
