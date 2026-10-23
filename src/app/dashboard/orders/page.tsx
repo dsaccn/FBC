@@ -1114,33 +1114,38 @@ export default function OrdersPage() {
                         <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--black-border)', textAlign: 'left' }}>
                           <th style={{ padding: '8px 12px' }}>Item</th>
                           <th style={{ padding: '8px 12px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '8px 12px' }}>Time</th>
                           <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount (ETB)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {reportStats.paidOrders.length === 0 ? (
                           <tr>
-                            <td colSpan={4} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <td colSpan={3} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
                               No paid orders for this period.
                             </td>
                           </tr>
-                        ) : reportStats.paidOrders.map((o, idx) => {
-                          const activeItems = o.orderItems.filter(i => i.status !== 'CANCELLED')
-                          const time = new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })
-                          return activeItems.map((item, i) => (
-                            <tr key={`${o.id}-${i}`} style={{ borderBottom: i === activeItems.length - 1 ? '2px solid var(--black-border)' : '1px solid rgba(255,255,255,0.04)' }}>
-                              <td style={{ padding: '6px 12px', fontWeight: '600' }}>{item.menuItem.name}</td>
-                              <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{item.quantity}</td>
-                              <td style={{ padding: '6px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                {i === 0 ? time : ''}
-                              </td>
-                              <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>
-                                {(item.menuItem.price * item.quantity).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))
-                        })}
+                        ) : (() => {
+                          const agg: Record<string, { name: string; qty: number; amount: number }> = {}
+                          for (const o of reportStats.paidOrders) {
+                            for (const item of o.orderItems.filter(i => i.status !== 'CANCELLED')) {
+                              const key = item.menuItem.name
+                              if (!agg[key]) agg[key] = { name: key, qty: 0, amount: 0 }
+                              agg[key].qty += item.quantity
+                              agg[key].amount += item.menuItem.price * item.quantity
+                            }
+                          }
+                          return Object.values(agg)
+                            .sort((a, b) => b.amount - a.amount)
+                            .map(row => (
+                              <tr key={row.name} style={{ borderBottom: '1px solid var(--black-border)' }}>
+                                <td style={{ padding: '7px 12px', fontWeight: '600' }}>{row.name}</td>
+                                <td style={{ padding: '7px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{row.qty}</td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>
+                                  {row.amount.toFixed(2)}
+                                </td>
+                              </tr>
+                            ))
+                        })()}
                       </tbody>
                     </table>
                   </div>
