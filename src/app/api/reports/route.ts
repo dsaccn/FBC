@@ -309,7 +309,7 @@ export async function GET(req: Request) {
   // Staff performance (Revenue net of tips, tips tracked separately)
   const staffPerf: Record<string, { name: string; orders: number; revenue: number; tips: number }> = {}
   payments.forEach(p => {
-    const name = p.order.waiter.fullName
+    const name = p.cashier?.fullName || p.order.waiter.fullName
     const tip = extractTip(p)
     const net = Math.max(0, p.amount - tip)
     if (!staffPerf[name]) staffPerf[name] = { name, orders: 0, revenue: 0, tips: 0 }

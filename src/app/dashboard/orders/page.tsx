@@ -347,8 +347,11 @@ export default function OrdersPage() {
             o.waiterId === selectedStaffId ||
             (selName && o.waiter?.fullName?.toLowerCase().trim() === selName)
 
-          // If Cashier is viewing, they only match payments processed as cashier
-          return isCashier ? matchesCashier : (matchesCashier || matchesWaiter)
+          // Paid orders: always attribute to cashier only (who collected the money)
+          // Open/cancelled orders: also match the waiter who created them
+          if (isCashier) return matchesCashier
+          if (o.status === 'PAID') return matchesCashier
+          return matchesCashier || matchesWaiter
         })
 
     let totalPaidRevenue = 0
