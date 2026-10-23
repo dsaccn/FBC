@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Scissors,
+  GitMerge,
 } from 'lucide-react'
 import Portal from '@/components/Portal'
 import { printTicketHtml } from '@/lib/printer'
@@ -79,6 +80,8 @@ export default function OrdersPage() {
   const [currentUser, setCurrentUser] = useState<{ id?: string; fullName: string; role: string } | null>(null)
   const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL')
   const [showSoldOrders, setShowSoldOrders] = useState(false)
+  const [mergeSource, setMergeSource] = useState<Order | null>(null)
+  const [merging, setMerging] = useState(false)
 
   // Fetch current session: if cashier, default selection to their own account
   useEffect(() => {
@@ -563,6 +566,29 @@ export default function OrdersPage() {
     printTicketHtml(html)
   }
 
+  const handleMerge = async (source: Order, target: Order) => {
+    if (!source.table?.id || !target.table?.id) return
+    setMerging(true)
+    try {
+      const res = await fetch('/api/tables/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceTableId: source.table.id, targetTableId: target.table.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMergeSource(null)
+        await load(false)
+      } else {
+        alert(data.error || 'Merge failed')
+      }
+    } catch {
+      alert('Merge failed — network error')
+    } finally {
+      setMerging(false)
+    }
+  }
+
   // Print Cashier / Staff Shift Report on Thermal Slip
   const printShiftSummary = () => {
     const now = new Date().toLocaleString('en-ET', { timeZone: 'Africa/Addis_Ababa' })
@@ -876,6 +902,17 @@ export default function OrdersPage() {
                         <Scissors size={13} /> Split
                       </Link>
                     )}
+                    {order.status === 'OPEN' && !info.isSpecial && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ borderColor: 'rgba(201,168,76,0.5)', color: 'var(--gold)' }}
+                        title="Combine with another table — pay together"
+                        onClick={() => setMergeSource(order)}
+                      >
+                        <GitMerge size={13} /> Merge
+                      </button>
+                    )}
                     <Link href={`/dashboard/orders/${order.id}`} className="btn btn-outline btn-sm">
                       <Eye size={13} /> View
                     </Link>
@@ -907,6 +944,90 @@ export default function OrdersPage() {
             )
           })}
         </div>
+      )}
+
+      {/* ── MERGE TABLES MODAL ────────────────────────────────────────────────── */}
+      {mergeSource && (
+        <Portal>
+          <div className="modal-overlay" onClick={() => !merging && setMergeSource(null)}>
+            <div className="modal" style={{ maxWidth: '480px', width: '92%' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--black-border)', paddingBottom: '14px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <GitMerge size={20} color="var(--gold)" />
+                  <h3 style={{ fontSize: '17px', fontWeight: '700', margin: 0 }}>Merge with {parseOrderInfo(mergeSource.table.number).title}</h3>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '4px', height: 'auto' }} onClick={() => setMergeSource(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Select the table to combine with. Their orders will be joined into one bill and paid together.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+                {orders
+                  .filter(o =>
+                    o.status === 'OPEN' &&
+                    o.id !== mergeSource.id &&
+                    !parseOrderInfo(o.table.number).isSpecial
+                  )
+                  .sort((a, b) => {
+                    const na = parseInt(a.table.number) || 999
+                    const nb = parseInt(b.table.number) || 999
+                    return na - nb
+                  })
+                  .map(target => {
+                    const tTotal = getOrderTotal(target)
+                    return (
+                      <button
+                        key={target.id}
+                        type="button"
+                        disabled={merging}
+                        onClick={() => handleMerge(mergeSource, target)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 16px',
+                          background: 'rgba(201,168,76,0.05)',
+                          border: '1px solid rgba(201,168,76,0.25)',
+                          borderRadius: '10px',
+                          cursor: merging ? 'not-allowed' : 'pointer',
+                          textAlign: 'left',
+                          opacity: merging ? 0.6 : 1,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '14px' }}>Table {target.table.number}</div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {target.orderItems.length} items · {target.waiter?.fullName}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: '700', color: 'var(--gold)', fontSize: '15px' }}>{tTotal.toFixed(2)} ETB</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            → combined: {(getOrderTotal(mergeSource) + tTotal).toFixed(2)} ETB
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                {orders.filter(o => o.status === 'OPEN' && o.id !== mergeSource.id && !parseOrderInfo(o.table.number).isSpecial).length === 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0', fontSize: '13px' }}>
+                    No other open table orders to merge with.
+                  </p>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--black-border)' }}>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setMergeSource(null)} disabled={merging}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
 
       {/* ── SHIFT & SALES REPORT MODAL (PORTAL) ──────────────────────────────────── */}
