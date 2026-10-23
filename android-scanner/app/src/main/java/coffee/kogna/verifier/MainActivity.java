@@ -211,6 +211,10 @@ public class MainActivity extends AppCompatActivity {
     private final List<OpenOrder> currentOpenOrders = new ArrayList<>();
     private OpenOrder selectedOrder = null;
 
+    // Merge / Split state
+    private boolean isMergeMode = false;
+    private OpenOrder mergeSourceOrder = null;
+
     // Orders-First Hub state
     private LinearLayout ordersSection;
     private View scannerOverlay;
@@ -1123,6 +1127,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleOrderSelection(OpenOrder order) {
+        // Merge mode: second tap picks the merge target
+        if (isMergeMode && mergeSourceOrder != null) {
+            if (order.id.equals(mergeSourceOrder.id)) {
+                cancelMergeMode(); // tapping source again cancels
+            } else {
+                confirmAndMerge(mergeSourceOrder, order);
+            }
+            return;
+        }
+
         if (isCurrentResultDuplicate) {
             Toast.makeText(this, getString(R.string.cannot_link_duplicate), Toast.LENGTH_LONG).show();
             playBeep(false);
@@ -1219,7 +1233,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateSelectedOrderBanner() {
-        if (selectedOrder != null) {
+        if (isMergeMode && mergeSourceOrder != null) {
+            bannerSelectedOrder.setVisibility(View.VISIBLE);
+            txtSelectedOrderTitle.setText("🔗 Tap another table to merge with " + mergeSourceOrder.displayTitle);
+        } else if (selectedOrder != null) {
             bannerSelectedOrder.setVisibility(View.VISIBLE);
             txtSelectedOrderTitle.setText(getString(R.string.order_selected_format, String.format(Locale.US, "%s (%.2f ETB)", selectedOrder.displayTitle, selectedOrder.total)));
         } else {
@@ -1229,8 +1246,126 @@ public class MainActivity extends AppCompatActivity {
 
     private void clearSelectedOrder() {
         selectedOrder = null;
+        isMergeMode = false;
+        mergeSourceOrder = null;
         bannerSelectedOrder.setVisibility(View.GONE);
         fetchOpenOrders(false);
+    }
+
+    private void startMergeMode(OpenOrder order) {
+        isMergeMode = true;
+        mergeSourceOrder = order;
+        selectedOrder = null;
+        updateSelectedOrderBanner();
+        refreshOrderGrid();
+    }
+
+    private void cancelMergeMode() {
+        isMergeMode = false;
+        mergeSourceOrder = null;
+        updateSelectedOrderBanner();
+        refreshOrderGrid();
+    }
+
+    private void confirmAndMerge(OpenOrder source, OpenOrder target) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Merge Tables")
+                .setMessage("Combine " + source.displayTitle + " + " + target.displayTitle + " into one bill?\n\nThey will pay together as a single order.")
+                .setPositiveButton("Merge", (d, w) -> { cancelMergeMode(); performMerge(source, target); })
+                .setNegativeButton("Cancel", (d, w) -> cancelMergeMode())
+                .show();
+    }
+
+    private void performMerge(OpenOrder source, OpenOrder target) {
+        showLoading("Merging " + source.displayTitle + " + " + target.displayTitle + "...");
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        try {
+            JSONObject body = new JSONObject();
+            body.put("sourceTableId", source.tableId);
+            body.put("targetTableId", target.tableId);
+            String url = activePosUrl.replaceAll("/+$", "") + "/api/tables/merge";
+            Request req = new Request.Builder()
+                    .url(url)
+                    .header("x-scanner-token", apiKey)
+                    .post(RequestBody.create(body.toString(), MediaType.parse("application/json; charset=utf-8")))
+                    .build();
+            httpClient.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    mainHandler.post(() -> { hideLoading(); Toast.makeText(MainActivity.this, "Merge failed: " + e.getMessage(), Toast.LENGTH_SHORT).show(); });
+                }
+                @Override public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    String respBody = response.body() != null ? response.body().string() : "";
+                    mainHandler.post(() -> {
+                        hideLoading();
+                        try {
+                            JSONObject res = new JSONObject(respBody);
+                            if (res.optBoolean("success", false)) {
+                                String label = res.optString("mergeGroupLabel", "");
+                                Toast.makeText(MainActivity.this, "✅ Merged into Table " + label, Toast.LENGTH_SHORT).show();
+                                fetchOpenOrders(false);
+                            } else {
+                                Toast.makeText(MainActivity.this, res.optString("error", "Merge failed"), Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) { Toast.makeText(MainActivity.this, "Merge failed", Toast.LENGTH_SHORT).show(); }
+                    });
+                }
+            });
+        } catch (Exception e) { hideLoading(); Toast.makeText(this, "Merge failed: " + e.getMessage(), Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void showSplitDialog(OpenOrder order) {
+        String[] options = {"2 bills", "3 bills", "4 bills", "5 bills"};
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Split Bill — " + order.displayTitle)
+                .setMessage(String.format(Locale.US, "Total: %.2f ETB\nSplit evenly into how many bills?", order.total))
+                .setItems(options, (d, which) -> {
+                    int ways = which + 2;
+                    double perPerson = order.total / ways;
+                    new android.app.AlertDialog.Builder(this)
+                            .setTitle("Confirm Split")
+                            .setMessage(String.format(Locale.US, "Split %s into %d bills of ~%.2f ETB each?", order.displayTitle, ways, perPerson))
+                            .setPositiveButton("Split", (d2, w2) -> performSplit(order, ways))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void performSplit(OpenOrder order, int ways) {
+        showLoading(String.format("Splitting %s into %d bills...", order.displayTitle, ways));
+        final String apiKey = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY);
+        try {
+            JSONObject body = new JSONObject();
+            body.put("orderId", order.id);
+            body.put("ways", ways);
+            String url = activePosUrl.replaceAll("/+$", "") + "/api/scanner/split-bill?key=" + apiKey;
+            Request req = new Request.Builder()
+                    .url(url)
+                    .header("x-scanner-token", apiKey)
+                    .post(RequestBody.create(body.toString(), MediaType.parse("application/json; charset=utf-8")))
+                    .build();
+            httpClient.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    mainHandler.post(() -> { hideLoading(); Toast.makeText(MainActivity.this, "Split failed: " + e.getMessage(), Toast.LENGTH_SHORT).show(); });
+                }
+                @Override public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    String respBody = response.body() != null ? response.body().string() : "";
+                    mainHandler.post(() -> {
+                        hideLoading();
+                        try {
+                            JSONObject res = new JSONObject(respBody);
+                            if (res.optBoolean("success", false)) {
+                                Toast.makeText(MainActivity.this, "✅ Bill split into " + ways + " parts", Toast.LENGTH_SHORT).show();
+                                fetchOpenOrders(false);
+                            } else {
+                                Toast.makeText(MainActivity.this, res.optString("error", "Split failed"), Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) { Toast.makeText(MainActivity.this, "Split failed", Toast.LENGTH_SHORT).show(); }
+                    });
+                }
+            });
+        } catch (Exception e) { hideLoading(); Toast.makeText(this, "Split failed: " + e.getMessage(), Toast.LENGTH_SHORT).show(); }
     }
 
     // ==========================================
@@ -2665,10 +2800,26 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        card.setBackgroundResource(selectedOrder != null && selectedOrder.id.equals(order.id)
-                ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
+        boolean isMergeSource = isMergeMode && mergeSourceOrder != null && mergeSourceOrder.id.equals(order.id);
+        card.setBackgroundResource(
+                isMergeSource || (selectedOrder != null && selectedOrder.id.equals(order.id))
+                        ? R.drawable.bg_order_chip_selected : R.drawable.bg_order_chip);
 
         card.setOnClickListener(v -> toggleOrderSelection(order));
+        card.setOnLongClickListener(v -> {
+            android.widget.PopupMenu popup = new android.widget.PopupMenu(this, card);
+            popup.getMenu().add(0, 1, 0, "✂️ Split Bill");
+            if (!order.isDelivery && !order.isTakeaway) {
+                popup.getMenu().add(0, 2, 0, "🔗 Merge with Another Table");
+            }
+            popup.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == 1) showSplitDialog(order);
+                else if (item.getItemId() == 2) startMergeMode(order);
+                return true;
+            });
+            popup.show();
+            return true;
+        });
         row.addView(card);
     }
 
