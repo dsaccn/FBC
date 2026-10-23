@@ -286,12 +286,20 @@ export async function parseTelebirrReceiptHtml(
   let isReceiverMatched = true
   if (targetPhone && targetPhone.trim()) {
     isReceiverMatched = matchMaskedAccountOrPhone(targetPhone, receiverPhone)
-    // Fallback: If receiver phone is masked or missing, check merchantName against receiverName
-    if (!isReceiverMatched && settings.merchantName && receiverName) {
+    // Fallback: If receiver phone is masked or missing, check merchantName or account holder name
+    if (!isReceiverMatched && receiverName) {
       const cleanRecv = receiverName.toLowerCase().replace(/[^a-z0-9]/g, '')
-      const cleanMerch = settings.merchantName.toLowerCase().replace(/[^a-z0-9]/g, '')
-      if (cleanRecv.includes(cleanMerch) || cleanMerch.includes(cleanRecv)) {
-        isReceiverMatched = true
+      if (settings.merchantName) {
+        const cleanMerch = settings.merchantName.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (cleanRecv.includes(cleanMerch) || cleanMerch.includes(cleanRecv)) {
+          isReceiverMatched = true
+        }
+      }
+      if (!isReceiverMatched && settings.telebirrReceiverName) {
+        const cleanHolder = settings.telebirrReceiverName.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (cleanRecv.includes(cleanHolder) || cleanHolder.includes(cleanRecv)) {
+          isReceiverMatched = true
+        }
       }
     }
   }

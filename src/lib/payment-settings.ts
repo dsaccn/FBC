@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 
 export interface PaymentVerificationSettings {
   telebirrReceiverPhone: string
+  telebirrReceiverName?: string
   cbeReceiverAccount: string
   merchantName?: string
   lastUpdated?: string
@@ -73,6 +74,7 @@ export async function getPaymentSettings(forceRefresh = false): Promise<PaymentV
         const parsed = JSON.parse(rows[0].value)
         cachedSettings = {
           telebirrReceiverPhone: parsed.telebirrReceiverPhone || '',
+          telebirrReceiverName: parsed.telebirrReceiverName || '',
           cbeReceiverAccount: parsed.cbeReceiverAccount || process.env.DEFAULT_CBE_ACCOUNT || '',
           merchantName: parsed.merchantName || 'Kogna Coffee',
           lastUpdated: parsed.lastUpdated,
@@ -92,6 +94,7 @@ export async function getPaymentSettings(forceRefresh = false): Promise<PaymentV
         const parsed = JSON.parse(raw)
         cachedSettings = {
           telebirrReceiverPhone: parsed.telebirrReceiverPhone || '',
+          telebirrReceiverName: parsed.telebirrReceiverName || '',
           cbeReceiverAccount: parsed.cbeReceiverAccount || process.env.DEFAULT_CBE_ACCOUNT || '',
           merchantName: parsed.merchantName || 'Kogna Coffee',
           lastUpdated: parsed.lastUpdated,
@@ -124,6 +127,7 @@ export async function getPaymentSettings(forceRefresh = false): Promise<PaymentV
 
           cachedSettings = {
             telebirrReceiverPhone: parsed.telebirrReceiverPhone || '',
+            telebirrReceiverName: parsed.telebirrReceiverName || '',
             cbeReceiverAccount: parsed.cbeReceiverAccount || process.env.DEFAULT_CBE_ACCOUNT || '',
             merchantName: parsed.merchantName || 'Kogna Coffee',
             lastUpdated: parsed.lastUpdated,
