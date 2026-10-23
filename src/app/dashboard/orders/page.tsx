@@ -1112,50 +1112,34 @@ export default function OrdersPage() {
                     <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--black-border)', textAlign: 'left' }}>
-                          <th style={{ padding: '8px 12px' }}>#</th>
-                          <th style={{ padding: '8px 12px' }}>Items Sold</th>
+                          <th style={{ padding: '8px 12px' }}>Item</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'center' }}>Qty</th>
                           <th style={{ padding: '8px 12px' }}>Time</th>
-                          <th style={{ padding: '8px 12px' }}>Method</th>
                           <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount (ETB)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {reportStats.paidOrders.length === 0 ? (
                           <tr>
-                            <td colSpan={5} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <td colSpan={4} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
                               No paid orders for this period.
                             </td>
                           </tr>
                         ) : reportStats.paidOrders.map((o, idx) => {
-                          const method = (o.payment?.method || 'Cash')
-                          const methodColor = method.toLowerCase().includes('cash')
-                            ? 'var(--success-light)'
-                            : method.toLowerCase().includes('telebirr')
-                            ? '#0284c7'
-                            : method.toLowerCase().includes('cbe') || method.toLowerCase().includes('bank')
-                            ? '#7c3aed'
-                            : 'var(--text-muted)'
                           const activeItems = o.orderItems.filter(i => i.status !== 'CANCELLED')
-                          return (
-                            <tr key={o.id} style={{ borderBottom: '1px solid var(--black-border)' }}>
-                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)', verticalAlign: 'top' }}>{idx + 1}</td>
-                              <td style={{ padding: '7px 12px' }}>
-                                {activeItems.map((item, i) => (
-                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                                    <span style={{ fontWeight: '600' }}>{item.quantity}x {item.menuItem.name}</span>
-                                    <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{(item.menuItem.price * item.quantity).toFixed(2)}</span>
-                                  </div>
-                                ))}
+                          const time = new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })
+                          return activeItems.map((item, i) => (
+                            <tr key={`${o.id}-${i}`} style={{ borderBottom: i === activeItems.length - 1 ? '2px solid var(--black-border)' : '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '6px 12px', fontWeight: '600' }}>{item.menuItem.name}</td>
+                              <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{item.quantity}</td>
+                              <td style={{ padding: '6px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                {i === 0 ? time : ''}
                               </td>
-                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-                                {new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })}
-                              </td>
-                              <td style={{ padding: '7px 12px', fontWeight: '600', color: methodColor, verticalAlign: 'top', whiteSpace: 'nowrap' }}>{method}</td>
-                              <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)', verticalAlign: 'top' }}>
-                                {getOrderTotal(o).toFixed(2)}
+                              <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>
+                                {(item.menuItem.price * item.quantity).toFixed(2)}
                               </td>
                             </tr>
-                          )
+                          ))
                         })}
                       </tbody>
                     </table>
