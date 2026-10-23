@@ -40,7 +40,7 @@ interface OrderItem {
 interface Order {
   id: string
   tableId?: string
-  table: { id?: string; number: string }
+  table: { id?: string; number: string; mergeGroupLabel?: string | null; mergedWithId?: string | null }
   waiterId?: string
   waiter: { id?: string; fullName: string; username?: string; role?: string }
   orderItems: OrderItem[]
@@ -566,6 +566,17 @@ export default function OrdersPage() {
     printTicketHtml(html)
   }
 
+  const handleUnmerge = async (order: Order) => {
+    if (!order.table?.id) return
+    if (!confirm(`Unmerge ${parseOrderInfo(order.table.number, order.orderItems).title}? The tables will be separated. All items stay on this order.`)) return
+    try {
+      const res = await fetch(`/api/tables/merge?tableId=${order.table.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) { await load(false) }
+      else alert(data.error || 'Unmerge failed')
+    } catch { alert('Unmerge failed — network error') }
+  }
+
   const handleMerge = async (source: Order, target: Order) => {
     if (!source.table?.id || !target.table?.id) return
     setMerging(true)
@@ -902,6 +913,17 @@ export default function OrdersPage() {
                         <Scissors size={13} /> Split
                       </Link>
                     )}
+                    {order.status === 'OPEN' && order.table?.mergeGroupLabel && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }}
+                        title="Separate merged tables back into individual orders"
+                        onClick={() => handleUnmerge(order)}
+                      >
+                        <GitMerge size={13} /> Unmerge
+                      </button>
+                    )}
                     {order.status === 'OPEN' && (
                       <button
                         type="button"
@@ -967,10 +989,14 @@ export default function OrdersPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
                 {orders
-                  .filter(o =>
-                    o.status === 'OPEN' &&
-                    o.id !== mergeSource.id
-                  )
+                  .filter(o => {
+                    if (o.status !== 'OPEN' || o.id === mergeSource.id) return false
+                    const sourceIsSpecial = parseOrderInfo(mergeSource.table.number).isSpecial
+                    const targetIsSpecial = parseOrderInfo(o.table.number).isSpecial
+                    // Don't allow merging delivery/takeaway with dine-in tables
+                    if (sourceIsSpecial !== targetIsSpecial) return false
+                    return true
+                  })
                   .sort((a, b) => {
                     const na = parseInt(a.table.number) || 999
                     const nb = parseInt(b.table.number) || 999
