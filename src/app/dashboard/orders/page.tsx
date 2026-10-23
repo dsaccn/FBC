@@ -1113,7 +1113,7 @@ export default function OrdersPage() {
                       <thead>
                         <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--black-border)', textAlign: 'left' }}>
                           <th style={{ padding: '8px 12px' }}>#</th>
-                          <th style={{ padding: '8px 12px' }}>Table</th>
+                          <th style={{ padding: '8px 12px' }}>Items Sold</th>
                           <th style={{ padding: '8px 12px' }}>Time</th>
                           <th style={{ padding: '8px 12px' }}>Method</th>
                           <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount (ETB)</th>
@@ -1135,17 +1135,23 @@ export default function OrdersPage() {
                             : method.toLowerCase().includes('cbe') || method.toLowerCase().includes('bank')
                             ? '#7c3aed'
                             : 'var(--text-muted)'
+                          const activeItems = o.orderItems.filter(i => i.status !== 'CANCELLED')
                           return (
                             <tr key={o.id} style={{ borderBottom: '1px solid var(--black-border)' }}>
-                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
-                              <td style={{ padding: '7px 12px', fontWeight: '600' }}>
-                                {o.table?.number ? `Table ${o.table.number}` : o.tableId ? `Table ${o.tableId}` : '—'}
+                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)', verticalAlign: 'top' }}>{idx + 1}</td>
+                              <td style={{ padding: '7px 12px' }}>
+                                {activeItems.map((item, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                    <span style={{ fontWeight: '600' }}>{item.quantity}x {item.menuItem.name}</span>
+                                    <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{(item.menuItem.price * item.quantity).toFixed(2)}</span>
+                                  </div>
+                                ))}
                               </td>
-                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)' }}>
+                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                                 {new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })}
                               </td>
-                              <td style={{ padding: '7px 12px', fontWeight: '600', color: methodColor }}>{method}</td>
-                              <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>
+                              <td style={{ padding: '7px 12px', fontWeight: '600', color: methodColor, verticalAlign: 'top', whiteSpace: 'nowrap' }}>{method}</td>
+                              <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)', verticalAlign: 'top' }}>
                                 {getOrderTotal(o).toFixed(2)}
                               </td>
                             </tr>
