@@ -22,6 +22,7 @@ import {
   DollarSign,
   Receipt,
   ChevronDown,
+  ChevronUp,
   Scissors,
 } from 'lucide-react'
 import Portal from '@/components/Portal'
@@ -77,6 +78,7 @@ export default function OrdersPage() {
   const [staffList, setStaffList] = useState<StaffUser[]>([])
   const [currentUser, setCurrentUser] = useState<{ id?: string; fullName: string; role: string } | null>(null)
   const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL')
+  const [showSoldOrders, setShowSoldOrders] = useState(false)
 
   // Fetch current session: if cashier, default selection to their own account
   useEffect(() => {
@@ -411,6 +413,9 @@ export default function OrdersPage() {
       }
     }
 
+    const paidOrders = targetOrders.filter(o => o.status === 'PAID')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
     return {
       totalPaidRevenue,
       paidCount,
@@ -427,6 +432,7 @@ export default function OrdersPage() {
       openTotalValue,
       openCount,
       cancelledCount,
+      paidOrders,
     }
   }, [orders, selectedStaffId, selectedStaffObj, isCashier])
 
@@ -952,7 +958,7 @@ export default function OrdersPage() {
                   <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                     <select
                       value={selectedStaffId}
-                      onChange={e => setSelectedStaffId(e.target.value)}
+                      onChange={e => { setSelectedStaffId(e.target.value); setShowSoldOrders(false) }}
                       className="input"
                       style={{
                         fontSize: '12px',
@@ -1085,6 +1091,68 @@ export default function OrdersPage() {
               </div>
 
 
+
+              {/* Sold Orders Toggle */}
+              <div style={{ marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ width: '100%', justifyContent: 'center', gap: '6px', fontSize: '12px' }}
+                  onClick={() => setShowSoldOrders(v => !v)}
+                >
+                  {showSoldOrders ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showSoldOrders ? 'Hide' : 'Show'} Sold Orders ({reportStats.paidCount})
+                </button>
+
+                {showSoldOrders && (
+                  <div style={{ marginTop: '10px', border: '1px solid var(--black-border)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--black-border)', textAlign: 'left' }}>
+                          <th style={{ padding: '8px 12px' }}>#</th>
+                          <th style={{ padding: '8px 12px' }}>Table</th>
+                          <th style={{ padding: '8px 12px' }}>Time</th>
+                          <th style={{ padding: '8px 12px' }}>Method</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount (ETB)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportStats.paidOrders.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                              No paid orders for this period.
+                            </td>
+                          </tr>
+                        ) : reportStats.paidOrders.map((o, idx) => {
+                          const method = (o.payment?.method || 'Cash')
+                          const methodColor = method.toLowerCase().includes('cash')
+                            ? 'var(--success-light)'
+                            : method.toLowerCase().includes('telebirr')
+                            ? '#0284c7'
+                            : method.toLowerCase().includes('cbe') || method.toLowerCase().includes('bank')
+                            ? '#7c3aed'
+                            : 'var(--text-muted)'
+                          return (
+                            <tr key={o.id} style={{ borderBottom: '1px solid var(--black-border)' }}>
+                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                              <td style={{ padding: '7px 12px', fontWeight: '600' }}>
+                                {o.table?.number ? `Table ${o.table.number}` : o.tableId ? `Table ${o.tableId}` : '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: 'var(--text-muted)' }}>
+                                {new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' })}
+                              </td>
+                              <td style={{ padding: '7px 12px', fontWeight: '600', color: methodColor }}>{method}</td>
+                              <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--gold)' }}>
+                                {getOrderTotal(o).toFixed(2)}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
 
               {/* Modal Actions */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--black-border)' }}>
