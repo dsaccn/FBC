@@ -2832,21 +2832,34 @@ public class MainActivity extends AppCompatActivity {
                 if (canRestore) {
                     card.setClickable(true);
                     card.setFocusable(true);
-                    final int idx = i;
                     card.setOnClickListener(v -> {
-                        // Restore scan context so user can link
+                        // Restore scan context
                         lastVerifiedRef = item.optString("reference", "");
                         lastVerifiedProvider = item.optString("provider", "");
                         lastVerifiedAmount = amt;
                         lastVerifiedPayer = item.optString("payer", "");
-                        dialog.dismiss();
-                        // Show the scanner overlay result + table picker
-                        if (scannerOverlay != null) scannerOverlay.setVisibility(View.VISIBLE);
-                        if (ordersSection != null) ordersSection.setVisibility(View.GONE);
-                        if (layoutPostScanTablePicker != null && !currentOpenOrders.isEmpty()) {
-                            layoutPostScanTablePicker.setVisibility(View.VISIBLE);
-                            populatePostScanTableButtons();
+                        lastVerifiedReceiver = "";
+                        isCurrentResultDuplicate = false;
+
+                        if (currentOpenOrders.isEmpty()) {
+                            Toast.makeText(this, "No open orders available", Toast.LENGTH_SHORT).show();
+                            return;
                         }
+
+                        // Build order list for picker
+                        String[] titles = new String[currentOpenOrders.size()];
+                        for (int j = 0; j < currentOpenOrders.size(); j++) {
+                            titles[j] = currentOpenOrders.get(j).displayTitle;
+                        }
+
+                        new AlertDialog.Builder(this)
+                                .setTitle("Link to Order")
+                                .setItems(titles, (d2, which) -> {
+                                    dialog.dismiss();
+                                    linkVerifiedReceiptToOrder(currentOpenOrders.get(which));
+                                })
+                                .setNegativeButton("Cancel", null)
+                                .show();
                     });
                 }
 
