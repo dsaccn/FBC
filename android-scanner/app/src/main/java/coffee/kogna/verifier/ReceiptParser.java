@@ -30,6 +30,7 @@ public final class ReceiptParser {
     public static class TelebirrReceipt {
         public boolean isValid = false;
         public boolean isCompleted = false;
+        public boolean isNotFound = false; // bank explicitly returned "not found" — reference doesn't exist
         public String status = "";
         public String reference = "";
         public double amount = 0.0;
@@ -359,7 +360,11 @@ public final class ReceiptParser {
         TelebirrReceipt res = new TelebirrReceipt();
         res.reference = reference != null ? reference : "";
 
-        if (html == null || html.length() < 300 || html.contains("This request is not correct") || html.contains("not found")) {
+        if (html == null || html.length() < 300) {
+            return res;
+        }
+        if (html.contains("This request is not correct") || html.contains("not found") || html.contains("Invalid transaction")) {
+            res.isNotFound = true;
             return res;
         }
 

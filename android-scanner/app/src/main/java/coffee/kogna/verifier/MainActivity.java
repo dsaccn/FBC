@@ -1202,6 +1202,7 @@ public class MainActivity extends AppCompatActivity {
                                     JSONObject res = new JSONObject(body);
                                     if (res.optBoolean("success", false)) {
                                         Toast.makeText(MainActivity.this, "✅ Payment unlinked from " + order.displayTitle, Toast.LENGTH_SHORT).show();
+                                        clearHistoryLinkForOrder(order.displayTitle);
                                         fetchOpenOrders(false);
                                     } else {
                                         Toast.makeText(MainActivity.this, res.optString("error", "Unlink failed"), Toast.LENGTH_SHORT).show();
@@ -1394,6 +1395,23 @@ public class MainActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     String html = response.body().string();
                     ReceiptParser.TelebirrReceipt receipt = ReceiptParser.parseTelebirrReceiptHtml(payment.reference, html);
+
+                    // Bank explicitly says this reference does not exist — show immediately, don't waste time on fallbacks
+                    if (receipt.isNotFound && isResolved.compareAndSet(false, true)) {
+                        cancelAllVerificationCalls();
+                        mainHandler.post(() -> {
+                            showVerificationResult(
+                                    false, "TELEBIRR", payment.reference, 0.0, "-", "-",
+                                    "-", "RECEIPT NOT FOUND", payment.slipUrl,
+                                    "🚫 This Telebirr reference does not exist. The receipt may be FAKE — do not accept this payment."
+                            );
+                            playBeep(false);
+                            vibrateError();
+                        });
+                        directFinished.set(true);
+                        return;
+                    }
+
                     if (receipt.isValid && receipt.isCompleted) {
                         boolean won = evaluateInstantTelebirr(payment.reference, receipt, html, payment.slipUrl, isResolved);
                         if (won) return;
@@ -1451,6 +1469,22 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                 if (isResolved.get()) return;
+
+                // CBE returns 404 when the token doesn't exist — flag as fake immediately
+                if (response.code() == 404 && isResolved.compareAndSet(false, true)) {
+                    cancelAllVerificationCalls();
+                    mainHandler.post(() -> {
+                        showVerificationResult(
+                                false, "CBE", cleanToken, 0.0, "-", "-",
+                                "-", "RECEIPT NOT FOUND", payment.slipUrl,
+                                "🚫 This CBE reference does not exist. The receipt may be FAKE — do not accept this payment."
+                        );
+                        playBeep(false);
+                        vibrateError();
+                    });
+                    directFinished.set(true);
+                    return;
+                }
 
                 if (response.isSuccessful() && response.body() != null) {
                     try {
@@ -2966,6 +3000,26 @@ public class MainActivity extends AppCompatActivity {
             }
             prefs.edit().putString(KEY_HISTORY, arr.toString()).apply();
             updateTodaySummary();
+        } catch (Exception ignored) {}
+    }
+
+    private void clearHistoryLinkForOrder(String orderTitle) {
+        try {
+            String historyJson = prefs.getString(KEY_HISTORY, "[]");
+            JSONArray arr = new JSONArray(historyJson);
+            boolean changed = false;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.getJSONObject(i);
+                if (orderTitle.equals(item.optString("linkedOrderTitle", ""))) {
+                    item.put("linkedOrderTitle", "");
+                    arr.put(i, item);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                prefs.edit().putString(KEY_HISTORY, arr.toString()).apply();
+                updateTodaySummary();
+            }
         } catch (Exception ignored) {}
     }
 
