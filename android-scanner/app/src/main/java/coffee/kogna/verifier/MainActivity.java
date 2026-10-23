@@ -2916,10 +2916,17 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
 
         btnClear.setOnClickListener(v -> {
-            prefs.edit().putString(KEY_HISTORY, "[]").apply();
-            dialog.dismiss();
-            updateTodaySummary();
-            Toast.makeText(this, "History cleared", Toast.LENGTH_SHORT).show();
+            new AlertDialog.Builder(this)
+                    .setTitle("Clear History")
+                    .setMessage("This will permanently delete all scan history. This cannot be undone.")
+                    .setPositiveButton("Clear All", (d2, w) -> {
+                        prefs.edit().putString(KEY_HISTORY, "[]").apply();
+                        dialog.dismiss();
+                        updateTodaySummary();
+                        Toast.makeText(this, "History cleared", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
         });
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
