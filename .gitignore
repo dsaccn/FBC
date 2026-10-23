@@ -25,6 +25,7 @@
 *.pem
 *.log
 /logs/
+/scratch/
 
 # debug
 npm-debug.log*
