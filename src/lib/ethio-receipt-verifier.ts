@@ -198,7 +198,11 @@ async function verifyWithVerifyEtPublic(
       signal: AbortSignal.timeout(12000),
     })
 
-    if (res.status === 429 || (!res.ok && res.status !== 202)) return null
+    if (res.status === 429) {
+      // Rate limited — surface a clear message instead of silent null
+      throw Object.assign(new Error('verify.et rate limit reached. Please wait a minute and try again.'), { isRateLimit: true })
+    }
+    if (!res.ok && res.status !== 202) return null
 
     const json = await res.json()
     let vd: any = null
@@ -485,10 +489,20 @@ export async function verifyTelebirrReceipt(
         }
       }
       // Fallback: verify.et public API (handles SuperApp/Send Money tokens)
-      const settings = await getPaymentSettings()
-      const targetPhone = (accountDigits?.trim()) || settings.telebirrReceiverPhone || ''
-      const verifyEtResult = await verifyWithVerifyEtPublic(transactionId, targetPhone || undefined)
-      if (verifyEtResult) return verifyEtResult
+      try {
+        const settings = await getPaymentSettings()
+        const targetPhone = (accountDigits?.trim()) || settings.telebirrReceiverPhone || ''
+        const verifyEtResult = await verifyWithVerifyEtPublic(transactionId, targetPhone || undefined)
+        if (verifyEtResult) return verifyEtResult
+      } catch (etErr: any) {
+        if (etErr.isRateLimit) {
+          return {
+            success: false, provider: 'TELEBIRR', reference: transactionId, currency: 'ETB',
+            status: 'FAILED',
+            errorMessage: 'verify.et rate limit reached. Please wait 1–2 minutes and scan again.',
+          }
+        }
+      }
     }
     return result
   } catch (err: any) {
