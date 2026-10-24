@@ -98,7 +98,7 @@ export interface DetectedTransaction {
   reference: string
   officialUrl?: string
   isTelebirrCandidate: boolean
-  /** True when reference was extracted from EMVCo 000A hex tag — cannot be used with the web receipt URL */
+  /** True when reference was extracted from EMVCo 000A hex tag (Telebirr Send Money / SuperApp token) */
   isEMVCoToken?: boolean
 }
 
@@ -360,8 +360,6 @@ export default function QRScannerPage() {
   const [verifiedResult, setVerifiedResult] = useState<VerifiedReceipt | null>(null)
   const [amountMatches, setAmountMatches] = useState<boolean | null>(null)
   const [copiedRef, setCopiedRef] = useState(false)
-  const [showSendMoneyPrompt, setShowSendMoneyPrompt] = useState(false)
-
   // Recent scans drawer
   const [history, setHistory] = useState<ScanHistoryItem[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -645,7 +643,6 @@ export default function QRScannerPage() {
     setVerifying(true)
     setVerifiedResult(null)
     setAmountMatches(null)
-    setShowSendMoneyPrompt(false)
 
     let finalResultData: any = null
     let finalReceiptPayload: any = null
@@ -658,16 +655,6 @@ export default function QRScannerPage() {
     const detected = detectProviderAndCleanRef(clean, prov)
     const effectiveProvider = prov !== 'AUTO' ? prov : (detected.provider !== 'UNKNOWN' ? detected.provider : 'AUTO')
     const candidateId = detected.reference || clean
-
-    // "Send Money" (API/App) QRs contain an EMVCo SuperApp token that differs from the web receipt ID.
-    // Attempting the server call will always return "not found" and trigger the APK "FAKE" overlay.
-    // Short-circuit here and show a client-side prompt instead.
-    if (detected.isEMVCoToken) {
-      isVerifyingRef.current = false
-      setVerifying(false)
-      setShowSendMoneyPrompt(true)
-      return
-    }
 
     try {
       // ⚡ Option B: Device-level fetch via Android Native Bridge if running inside KognaVerifier APK
@@ -1097,7 +1084,6 @@ export default function QRScannerPage() {
     setLinkedSuccessMessage(null)
     setVerifiedResult(null)
     setAmountMatches(null)
-    setShowSendMoneyPrompt(false)
     setManualCode('')
     if (mode === 'camera') {
       setIsCameraOpen(true)
@@ -1370,7 +1356,6 @@ export default function QRScannerPage() {
               isVerifyingRef.current = false
               setMode('camera')
               setVerifiedResult(null)
-              setShowSendMoneyPrompt(false)
             }}
             style={{
               padding: '10px 12px',
@@ -1628,101 +1613,6 @@ export default function QRScannerPage() {
             <p style={{ fontSize: '13px', color: '#64748B', maxWidth: '320px', margin: 0, lineHeight: 1.5 }}>
               Connecting directly to Ethio Telecom / Commercial Bank of Ethiopia to validate transaction slip authenticity.
             </p>
-          </div>
-        )}
-
-        {/* --- STATE A2: SEND MONEY QR PROMPT --- */}
-        {!verifying && showSendMoneyPrompt && !verifiedResult && (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-          }}>
-            <div style={{
-              background: '#FFFBEB',
-              border: '1.5px solid #F59E0B',
-              borderRadius: '20px',
-              padding: '24px 20px',
-              boxShadow: '0 4px 20px rgba(180,138,30,0.08)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '50%',
-                  background: '#FEF3C7', border: '2px solid #F59E0B',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <span style={{ fontSize: '22px' }}>⚠️</span>
-                </div>
-                <div>
-                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#92400E' }}>Send Money QR — Cannot Verify</div>
-                  <div style={{ fontSize: '12px', color: '#B45309', marginTop: '2px' }}>This QR type uses a different receipt ID</div>
-                </div>
-              </div>
-              <p style={{ fontSize: '13px', color: '#78350F', lineHeight: 1.6, margin: '0 0 16px' }}>
-                Telebirr <strong>"Send Money"</strong> (API/App transfer) QR codes contain a SuperApp token that does not match the web receipt URL. The verification server cannot look it up.
-              </p>
-              <div style={{
-                background: '#FFF7ED',
-                border: '1px solid #FCD34D',
-                borderRadius: '12px',
-                padding: '14px 16px',
-                marginBottom: '16px',
-              }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: '#92400E', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  What to do
-                </div>
-                <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#78350F', lineHeight: 1.7 }}>
-                  <li>Ask the customer to open their Telebirr app</li>
-                  <li>Find this transaction in their history</li>
-                  <li>Tap <strong>Share</strong> or <strong>Copy Link</strong> on the receipt</li>
-                  <li>Paste the URL here using the keyboard button below</li>
-                </ol>
-              </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => {
-                    setShowSendMoneyPrompt(false)
-                    setMode('manual')
-                    stopScanner()
-                    setIsCameraOpen(false)
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '12px 16px',
-                    background: 'linear-gradient(135deg, #D4AF37 0%, #B48A1E 100%)',
-                    border: 'none',
-                    borderRadius: '12px',
-                    color: '#FFFFFF',
-                    fontSize: '14px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(180,138,30,0.3)',
-                  }}
-                >
-                  ⌨️ Enter Receipt URL
-                </button>
-                <button
-                  onClick={() => {
-                    setShowSendMoneyPrompt(false)
-                    setVerifiedResult(null)
-                  }}
-                  style={{
-                    padding: '12px 16px',
-                    background: '#FFFFFF',
-                    border: '1.5px solid #E2E8F0',
-                    borderRadius: '12px',
-                    color: '#64748B',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
           </div>
         )}
 

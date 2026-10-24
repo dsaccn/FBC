@@ -1402,16 +1402,6 @@ public class MainActivity extends AppCompatActivity {
 
         DetectedPayment payment = detectPayment(payload);
 
-        // "Send Money" (API/App) QRs contain an EMVCo SuperApp token that differs from
-        // the web receipt ID. Direct bank verification will always return "not found".
-        // Show a guidance dialog instead — never display the "FAKE" overlay for this case.
-        if (payment.isEMVCoToken) {
-            barcodeView.pause();
-            playBeep(false);
-            mainHandler.post(() -> showSendMoneyQrDialog());
-            return;
-        }
-
         isVerifying = true;
         barcodeView.pause();
         playBeep(true);
@@ -1419,30 +1409,6 @@ public class MainActivity extends AppCompatActivity {
         showLoading("Verifying official bank slip & receiver...");
 
         new Thread(() -> startDirectPhoneVerification(payment)).start();
-    }
-
-    private void showSendMoneyQrDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("⚠️ Send Money QR — Cannot Verify")
-                .setMessage(
-                    "This QR is a Telebirr \"Send Money\" (API/App) SuperApp token.\n\n" +
-                    "The web receipt uses a different ID — direct verification always fails for this QR type.\n\n" +
-                    "What to do:\n" +
-                    "1. Ask the customer to open their Telebirr app\n" +
-                    "2. Find this transaction in their history\n" +
-                    "3. Tap Share or Copy Link on the receipt\n" +
-                    "4. Paste the receipt URL using the ⌨️ Manual button"
-                )
-                .setPositiveButton("⌨️ Enter Receipt URL", (d, w) -> {
-                    d.dismiss();
-                    showManualInputDialog();
-                })
-                .setNegativeButton("Dismiss", (d, w) -> {
-                    d.dismiss();
-                    resetScannerToActive();
-                })
-                .setCancelable(true)
-                .show();
     }
 
     private void startDirectPhoneVerification(final DetectedPayment payment) {
