@@ -496,12 +496,12 @@ export async function verifyTelebirrReceipt(
         const settings = await getPaymentSettings()
         const targetPhone = (accountDigits?.trim()) || settings.telebirrReceiverPhone || ''
         const verifyEtResult = await verifyWithVerifyEtPublic(transactionId, targetPhone || undefined)
-        if (verifyEtResult) return verifyEtResult
+        if (verifyEtResult?.success) return verifyEtResult
         // Try 0→O swap: verify.et uses the original SuperApp token which may have O not 0
         const oVariant = transactionId.replace(/0/g, 'O')
         if (oVariant !== transactionId) {
           const verifyEtResult2 = await verifyWithVerifyEtPublic(oVariant, targetPhone || undefined)
-          if (verifyEtResult2) return verifyEtResult2
+          if (verifyEtResult2?.success) return verifyEtResult2
         }
       } catch (etErr: any) {
         if (etErr.isRateLimit) {
