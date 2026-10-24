@@ -257,7 +257,8 @@ async function verifyWithVerifyEtPublic(
       rawText: isSuccess ? `${vd.senderName || ''} -> ${vd.receiverName || ''} (${vd.amount || 0} ETB)` : undefined,
       errorMessage: isSuccess ? undefined : 'Telebirr transaction could not be verified',
     }
-  } catch {
+  } catch (e: any) {
+    if (e?.isRateLimit) throw e  // propagate so caller can show a clear message
     return null
   }
 }
