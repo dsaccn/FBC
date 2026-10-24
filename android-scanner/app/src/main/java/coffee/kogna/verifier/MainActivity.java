@@ -1381,6 +1381,7 @@ public class MainActivity extends AppCompatActivity {
         public String slipUrl = "";
         public boolean isTelebirr = false;
         public boolean isCbe = false;
+        public boolean isEMVCoToken = false;
     }
 
     private DetectedPayment detectPayment(String rawInput) {
@@ -1391,6 +1392,7 @@ public class MainActivity extends AppCompatActivity {
         res.slipUrl = parsed.slipUrl;
         res.isTelebirr = parsed.isTelebirr;
         res.isCbe = parsed.isCbe;
+        res.isEMVCoToken = parsed.isEMVCoToken;
         return res;
     }
 
