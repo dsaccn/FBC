@@ -733,6 +733,12 @@ export async function pullFromCloud(): Promise<{ pulled: { orders: number; order
             }
           }
 
+          const protectedUsername = d.username?.toLowerCase()
+          if (protectedUsername === 'master' || protectedUsername === 'admin' || protectedUsername === 'admin10' || protectedUsername === 'master_console') {
+            await clearDeletedUser(d.id, d.username)
+            continue
+          }
+
           if (d.username) cloudDeletedUsernames.add(d.username.toLowerCase())
           if (d.id) cloudDeletedIds.add(d.id)
           recordDeletedUser(d.id, d.username)

@@ -137,6 +137,10 @@ export function extractTelebirrTransactionId(raw: string): string {
   // 3. If it's a Base64-encoded Telebirr SuperApp QR code
   try {
     const decoded = Buffer.from(clean.replace(/\s+/g, ''), 'base64').toString('utf8')
+    // First: check if the decoded EMVCo payload contains a receipt URL (Send Money receipt QRs embed the URL)
+    const urlInDecoded = decoded.match(/\/receipt\/([A-Za-z0-9_-]{8,40})/i)
+    if (urlInDecoded) return norm(urlInDecoded[1])
+    // Then: try the 000A hex-encoded transaction reference (SuperApp payment QRs)
     const match = decoded.match(/000A([0-9a-fA-F]{20})/i)
     if (match) {
       const ascii = Buffer.from(match[1], 'hex').toString('utf8')
@@ -234,7 +238,7 @@ export async function parseTelebirrReceiptHtml(
       reference: transactionId,
       currency: 'ETB',
       status: 'FAILED',
-      errorMessage: 'Invalid or expired Telebirr transaction receipt. Please check the code.',
+      errorMessage: 'Telebirr receipt not found for this QR code. If the customer paid via "Send Money" (API/App transfer), the QR cannot be used directly — ask the customer to open their receipt in a browser, copy the link, and paste it into the verifier instead of scanning the QR.',
     }
   }
 

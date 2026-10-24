@@ -225,6 +225,17 @@ function detectProviderAndCleanRef(
         ? window.atob(clean)
         : (typeof Buffer !== 'undefined' ? Buffer.from(clean, 'base64').toString('binary') : '')
 
+      // First: check if the decoded binary contains a receipt URL (Send Money receipts embed the URL)
+      const urlInBin = binStr.match(/\/receipt\/([A-Za-z0-9_-]{8,40})/i)
+      if (urlInBin) {
+        const code = urlInBin[1].toUpperCase()
+        return {
+          provider: 'TELEBIRR',
+          reference: code,
+          officialUrl: `https://transactioninfo.ethiotelecom.et/receipt/${code}`,
+          isTelebirrCandidate: true,
+        }
+      }
       const emvMatch = binStr.match(/000A([0-9a-fA-F]{20})/i)
       if (emvMatch) {
         const hex = emvMatch[1]
