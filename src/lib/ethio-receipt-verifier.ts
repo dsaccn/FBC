@@ -206,17 +206,19 @@ async function verifyWithVerifyEtPublic(
     if (res.status === 202) {
       const requestId = json.requestId || json.verification?.requestId
       if (!requestId) return null
-      for (let i = 0; i < 3; i++) {
-        await new Promise(r => setTimeout(r, 2500))
+      for (let i = 0; i < 6; i++) {
+        await new Promise(r => setTimeout(r, 3000))
         try {
           const pollRes = await fetch(`https://verify.et/api/public/verify/${encodeURIComponent(requestId)}`, {
             headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(6000),
+            signal: AbortSignal.timeout(8000),
           })
           if (!pollRes.ok) break
           const p = await pollRes.json()
-          if (p.processingStatus === 'completed' || p.processingStatus === 'failed') {
-            vd = Array.isArray(p.data) ? p.data[0] : p.result || p
+          // API nests status under p.data, not at root level
+          const processingStatus = p.data?.processingStatus || p.processingStatus
+          if (processingStatus === 'completed' || processingStatus === 'failed') {
+            vd = p.data?.result || (Array.isArray(p.data) ? p.data[0] : p.result || p)
             break
           }
         } catch {}
