@@ -182,6 +182,81 @@ export function extractTelebirrTransactionId(raw: string): string {
 }
 
 /**
+ * Verify Telebirr SuperApp transaction number via verify.et public API.
+ * Free, no API key. Used as fallback when the official receipt URL returns "not found".
+ * Endpoint: POST https://verify.et/api/public/verify
+ */
+async function verifyWithVerifyEtPublic(
+  transactionNumber: string,
+  targetPhone?: string
+): Promise<VerifiedReceipt | null> {
+  try {
+    const res = await fetch('https://verify.et/api/public/verify?waitMs=8000', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ bank: 'telebirr', transactionNumber }),
+      signal: AbortSignal.timeout(12000),
+    })
+
+    if (res.status === 429 || (!res.ok && res.status !== 202)) return null
+
+    const json = await res.json()
+    let vd: any = null
+
+    if (res.status === 202) {
+      const requestId = json.requestId || json.verification?.requestId
+      if (!requestId) return null
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 2500))
+        try {
+          const pollRes = await fetch(`https://verify.et/api/public/verify/${encodeURIComponent(requestId)}`, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(6000),
+          })
+          if (!pollRes.ok) break
+          const p = await pollRes.json()
+          if (p.processingStatus === 'completed' || p.processingStatus === 'failed') {
+            vd = Array.isArray(p.data) ? p.data[0] : p.result || p
+            break
+          }
+        } catch {}
+      }
+    } else {
+      vd = Array.isArray(json.data) ? json.data[0] : json.verification?.result || json.result
+    }
+
+    if (!vd) return null
+
+    const isSuccess = vd.status === 'success' && vd.verified === true
+    const ref = vd.transactionNumber || vd.referenceNumber || vd.receiptNumber || transactionNumber
+
+    if (isSuccess && targetPhone?.trim()) {
+      const receiver = vd.receiverAccount || ''
+      if (receiver && !matchMaskedAccountOrPhone(targetPhone, receiver)) {
+        return {
+          success: false, provider: 'TELEBIRR', reference: ref,
+          payerName: vd.senderName, receiverName: vd.receiverName, receiverAccount: receiver,
+          amount: vd.amount, currency: vd.currency || 'ETB', dateTime: vd.timestamp,
+          status: 'FAILED', isReceiverMatched: false,
+          errorMessage: `RECEIVER MISMATCH: Payment credited to ${vd.receiverName || receiver}, NOT your Telebirr (${targetPhone})!`,
+        }
+      }
+    }
+
+    return {
+      success: isSuccess, provider: 'TELEBIRR', reference: ref,
+      payerName: vd.senderName, receiverName: vd.receiverName, receiverAccount: vd.receiverAccount,
+      isReceiverMatched: true, amount: vd.amount, currency: vd.currency || 'ETB',
+      dateTime: vd.timestamp, status: isSuccess ? 'COMPLETED' : 'FAILED',
+      rawText: isSuccess ? `${vd.senderName || ''} -> ${vd.receiverName || ''} (${vd.amount || 0} ETB)` : undefined,
+      errorMessage: isSuccess ? undefined : 'Telebirr transaction could not be verified',
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetch with automatic in-flight retry against Ethio Telecom gateway.
  * Absorbs intermittent packet drops and network latency spikes so users don't have to scan multiple times!
  */
@@ -390,23 +465,28 @@ export async function verifyTelebirrReceipt(
 
     const html = await res.text()
     const result = await parseTelebirrReceiptHtml(html, transactionId, accountDigits)
-    // If invalid receipt and ID contains '0' or 'O', attempt candidate retry
-    if (!result.success && (transactionId.includes('0') || transactionId.includes('O'))) {
-      const altCandidate = transactionId.includes('O')
-        ? transactionId.replace(/O/g, '0')
-        : transactionId.replace(/0/g, 'O')
-      if (altCandidate !== transactionId) {
-        try {
-          const altRes = await fetchTelebirrWithRetry(`https://transactioninfo.ethiotelecom.et/receipt/${altCandidate}`, 2)
-          if (altRes.ok) {
-            const altHtml = await altRes.text()
-            const altResult = await parseTelebirrReceiptHtml(altHtml, altCandidate, accountDigits)
-            if (altResult.success) {
-              return altResult
+    if (!result.success) {
+      // O/0 swap retry
+      if (transactionId.includes('0') || transactionId.includes('O')) {
+        const altCandidate = transactionId.includes('O')
+          ? transactionId.replace(/O/g, '0')
+          : transactionId.replace(/0/g, 'O')
+        if (altCandidate !== transactionId) {
+          try {
+            const altRes = await fetchTelebirrWithRetry(`https://transactioninfo.ethiotelecom.et/receipt/${altCandidate}`, 2)
+            if (altRes.ok) {
+              const altHtml = await altRes.text()
+              const altResult = await parseTelebirrReceiptHtml(altHtml, altCandidate, accountDigits)
+              if (altResult.success) return altResult
             }
-          }
-        } catch {}
+          } catch {}
+        }
       }
+      // Fallback: verify.et public API (handles SuperApp/Send Money tokens)
+      const settings = await getPaymentSettings()
+      const targetPhone = (accountDigits?.trim()) || settings.telebirrReceiverPhone || ''
+      const verifyEtResult = await verifyWithVerifyEtPublic(transactionId, targetPhone || undefined)
+      if (verifyEtResult) return verifyEtResult
     }
     return result
   } catch (err: any) {
