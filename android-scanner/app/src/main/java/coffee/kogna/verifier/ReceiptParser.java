@@ -25,6 +25,8 @@ public final class ReceiptParser {
         public boolean isBoa = false;
         public boolean isAwash = false;
         public boolean isDashen = false;
+        /** True when reference was extracted from EMVCo 000A hex tag — web receipt URL uses a different ID */
+        public boolean isEMVCoToken = false;
     }
 
     public static class TelebirrReceipt {
@@ -186,6 +188,19 @@ public final class ReceiptParser {
             try {
                 byte[] decoded = Base64.getDecoder().decode(clean.replaceAll("\\s+", ""));
                 String isoString = new String(decoded, StandardCharsets.ISO_8859_1);
+
+                // Check for embedded receipt URL first (some QR types include it directly)
+                Matcher urlInBin = Pattern.compile("/receipt/([A-Za-z0-9_-]{8,40})", Pattern.CASE_INSENSITIVE).matcher(isoString);
+                if (urlInBin.find()) {
+                    String code = normalizeOcrReference("TELEBIRR", urlInBin.group(1));
+                    res.provider = "TELEBIRR";
+                    res.reference = code;
+                    res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
+                    res.isTelebirr = true;
+                    return res;
+                }
+
+                // Fall through to 000A SuperApp token extraction
                 Matcher emvMatch = Pattern.compile("000A([0-9a-fA-F]{20})", Pattern.CASE_INSENSITIVE).matcher(isoString);
                 if (emvMatch.find()) {
                     String hex = emvMatch.group(1);
@@ -200,6 +215,7 @@ public final class ReceiptParser {
                         res.reference = code;
                         res.slipUrl = "https://transactioninfo.ethiotelecom.et/receipt/" + code;
                         res.isTelebirr = true;
+                        res.isEMVCoToken = true; // SuperApp token — web receipt uses a different ID
                         return res;
                     }
                 }
