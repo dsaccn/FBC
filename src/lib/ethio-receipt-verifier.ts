@@ -490,11 +490,19 @@ export async function verifyTelebirrReceipt(
         }
       }
       // Fallback: verify.et public API (handles SuperApp/Send Money tokens)
+      // Try both the normalised token (O→0) and the 0→O variant because SuperApp
+      // tokens can contain a genuine capital O that the normaliser replaced.
       try {
         const settings = await getPaymentSettings()
         const targetPhone = (accountDigits?.trim()) || settings.telebirrReceiverPhone || ''
         const verifyEtResult = await verifyWithVerifyEtPublic(transactionId, targetPhone || undefined)
         if (verifyEtResult) return verifyEtResult
+        // Try 0→O swap: verify.et uses the original SuperApp token which may have O not 0
+        const oVariant = transactionId.replace(/0/g, 'O')
+        if (oVariant !== transactionId) {
+          const verifyEtResult2 = await verifyWithVerifyEtPublic(oVariant, targetPhone || undefined)
+          if (verifyEtResult2) return verifyEtResult2
+        }
       } catch (etErr: any) {
         if (etErr.isRateLimit) {
           return {
